@@ -164,8 +164,9 @@
   .field{display:flex;flex-direction:column;gap:5px;}
   .field.span2{grid-column:1/-1;}
   .field label{font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;}
-  .field input,.field select{border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:13px;font-family:'Montserrat',sans-serif;outline:none;background:var(--paper);}
-  .field input:focus,.field select:focus{border-color:var(--teal);background:var(--surface);}
+  .field input,.field select,.field textarea{border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:13px;font-family:'Montserrat',sans-serif;outline:none;background:var(--paper);}
+  .field textarea{resize:vertical;min-height:64px;line-height:1.5;}
+  .field input:focus,.field select:focus,.field textarea:focus{border-color:var(--teal);background:var(--surface);}
   .field input.mono-in{font-family:'Montserrat',sans-serif;}
   .field.checkbox{flex-direction:row;align-items:center;gap:8px;}
   .field.checkbox label{text-transform:none;font-size:12.5px;color:var(--ink);}
@@ -437,7 +438,10 @@
   <div class="view" id="view-ordenes">
     <div class="topbar">
       <div><h1>Órdenes de compra</h1><div class="sub">Se cargan para pedir autorización antes de comprar</div></div>
-      <div class="topbar-actions"><button class="btn btn-primary" onclick="openModalOrdenCompra(null)">+ Nueva orden de compra</button></div>
+      <div class="topbar-actions">
+        <button class="btn btn-ghost" onclick="openModalConfigEmpresa()">⚙ Datos de la empresa</button>
+        <button class="btn btn-primary" onclick="openModalOrdenCompra(null)">+ Nueva orden de compra</button>
+      </div>
     </div>
     <div class="section-title"><div class="filter-tabs">
       <div class="filter-tab active" data-filter="pendiente" onclick="setOrdenesFilter('pendiente')">Pendientes</div>
@@ -488,8 +492,9 @@
       <span class="link-btn" onclick="setPagosFilter('proveedores')">← Volver a proveedores</span>
       <div class="topbar" style="margin-top:10px;">
         <div><h1 id="proveedor-detalle-nombre" style="font-size:18px;">—</h1><div class="sub">Total adeudado: <b id="proveedor-detalle-deuda" class="mono">$ 0</b></div></div>
-        <div class="topbar-actions"><button class="btn btn-primary" onclick="openModalPagoProveedor()">+ Registrar pago</button></div>
+        <div class="topbar-actions"><button class="btn btn-ghost" onclick="openModalEditarProveedor(state.selectedProveedorId)">Editar datos</button><button class="btn btn-primary" onclick="openModalPagoProveedor()">+ Registrar pago</button></div>
       </div>
+      <div class="card" id="proveedor-detalle-contacto" style="margin-bottom:16px;font-size:12.5px;color:var(--muted);"></div>
       <div class="card card-table"><table>
         <thead><tr><th>Factura</th><th>Concepto</th><th>Nº OC</th><th>Destino</th><th class="num">Monto</th><th class="num">Pagado</th><th class="num">Saldo</th><th>Estado</th></tr></thead>
         <tbody id="proveedor-detalle-body"></tbody>
@@ -666,11 +671,11 @@ let state = {
     {id:'p4', tipo:'fijo', obraId:null, categoria:'costosFijos', concepto:'Sueldos administración', cantidad:1, unitario:2100000, ivaAplica:false, monto:2100000, proveedorId:'pr5', numeroFactura:'RRHH-08-2026', fechaFactura:'2026-08-01', formaPago:'Transferencia', fechaPago:'2026-08-01', pagosRealizados:[{fecha:'2026-08-01', monto:2100000, fondo:'costosFijos', formaPago:'Transferencia'}]},
   ],
   proveedores: [
-    {id:'pr1', nombre:'Isolan SA'},
-    {id:'pr2', nombre:'Metalúrgica Cruz'},
-    {id:'pr3', nombre:'Bulonera Sur'},
-    {id:'pr4', nombre:'AFIP'},
-    {id:'pr5', nombre:'Administración interna'},
+    {id:'pr1', nombre:'Isolan SA', cuit:'', telefono:'', email:''},
+    {id:'pr2', nombre:'Metalúrgica Cruz', cuit:'', telefono:'', email:''},
+    {id:'pr3', nombre:'Bulonera Sur', cuit:'', telefono:'', email:''},
+    {id:'pr4', nombre:'AFIP', cuit:'', telefono:'', email:''},
+    {id:'pr5', nombre:'Administración interna', cuit:'', telefono:'', email:''},
   ],
   stock: [
     {id:'s1', nombre:'Lana de vidrio 50mm', unidad:'m2', cantidad:180, costoUnitario:14000},
@@ -684,12 +689,22 @@ let state = {
   ],
   selectedObraId:'o1',
   ordenesCompra: [
-    {id:'oc1', numero:'OC-0001', fecha:'2026-08-01', solicitante:'Julio', tipo:'obra', obraId:'o1', categoria:'materiaPrima', stockNombre:null, concepto:'Fijaciones y flejes adicionales', cantidad:5, unitario:8500, monto:42500, proveedorId:'pr3', estado:'pendiente', comentarioDueno:null, pagoId:null},
-    {id:'oc2', numero:'OC-0002', fecha:'2026-07-28', solicitante:'Rulo', tipo:'stock', obraId:null, categoria:null, stockNombre:'Barrera de vapor', concepto:'Reposición barrera de vapor', cantidad:10, unitario:46000, monto:460000, proveedorId:'pr1', estado:'autorizada', comentarioDueno:null, pagoId:null},
+    {id:'oc1', numero:'OC-0001', fecha:'2026-08-01', solicitante:'Julio', tipo:'obra', obraId:'o1', categoria:'materiaPrima', stockNombre:null, concepto:'Fijaciones y flejes adicionales', cantidad:5, unitario:8500, monto:42500, proveedorId:'pr3', estado:'pendiente', comentarioDueno:null, pagoId:null, cotizacionUsd:null, notaMaterial:'', notaGeneral:''},
+    {id:'oc2', numero:'OC-0002', fecha:'2026-07-28', solicitante:'Rulo', tipo:'stock', obraId:null, categoria:null, stockNombre:'Barrera de vapor', concepto:'Reposición barrera de vapor', cantidad:10, unitario:46000, monto:460000, proveedorId:'pr1', estado:'autorizada', comentarioDueno:null, pagoId:null, cotizacionUsd:null, notaMaterial:'', notaGeneral:''},
   ],
   ordenesFilter:'pendiente',
   selectedProveedorId:null,
   pagosFilter:'todos',
+  datosEmpresa: {
+    nombre: 'Aislaciones Quilmes S.R.L.',
+    cuit: '',
+    telefono: '',
+    email: '',
+    direccion: '',
+    localidad: '',
+    condicionImpositiva: 'Responsable Inscripto',
+    condicionesGenerales: 'Los materiales se recibirán junto con la factura, el remito y el certificado de material o ensayo correspondiente — condición necesaria para cursar el pago.\nEl pago se realiza según la forma y el plazo indicados en esta orden.\nCualquier cambio en cantidad, precio o condiciones debe acordarse por escrito antes de la entrega.',
+  },
 };
 const getObra = (id)=> state.obras.find(o=>o.id===id);
 const getProveedor = (id)=> state.proveedores.find(p=>p.id===id);
@@ -1326,6 +1341,117 @@ function verOrdenEnPagos(id){
   showView('pagos');
   setPagosFilter(o.tipo);
 }
+function openModalConfigEmpresa(){
+  const e = state.datosEmpresa;
+  modalEl.innerHTML = `<h3>Datos de la empresa</h3><div class="modal-sub">Aparecen impresos en el encabezado y el pie de cada orden de compra</div>
+    <div class="form-grid">
+      <div class="field span2"><label>Nombre / razón social</label><input id="f-emp-nombre" value="${e.nombre}"></div>
+      <div class="field"><label>CUIT</label><input id="f-emp-cuit" placeholder="30-12345678-9" value="${e.cuit}"></div>
+      <div class="field"><label>Condición impositiva</label><select id="f-emp-condicion">
+        ${['Responsable Inscripto','Monotributista','Exento','Consumidor Final'].map(c=>`<option ${e.condicionImpositiva===c?'selected':''}>${c}</option>`).join('')}
+      </select></div>
+      <div class="field"><label>Teléfono</label><input id="f-emp-tel" placeholder="(011) 15-0000-0000" value="${e.telefono}"></div>
+      <div class="field"><label>E-mail</label><input id="f-emp-mail" type="email" placeholder="compras@aislacionesquilmes.com.ar" value="${e.email}"></div>
+      <div class="field"><label>Dirección</label><input id="f-emp-direccion" placeholder="Calle y número" value="${e.direccion}"></div>
+      <div class="field"><label>Localidad</label><input id="f-emp-localidad" placeholder="Ciudad, Provincia" value="${e.localidad}"></div>
+      <div class="field span2"><label>Condiciones generales de la orden de compra</label><textarea id="f-emp-condiciones" placeholder="Una condición por línea" style="min-height:110px;">${e.condicionesGenerales}</textarea></div>
+    </div>
+    <div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" onclick="submitConfigEmpresa()">Guardar</button></div>`;
+  overlay.classList.add('open');
+}
+function submitConfigEmpresa(){
+  const e = state.datosEmpresa;
+  e.nombre = document.getElementById('f-emp-nombre').value.trim() || e.nombre;
+  e.cuit = document.getElementById('f-emp-cuit').value.trim();
+  e.condicionImpositiva = document.getElementById('f-emp-condicion').value;
+  e.telefono = document.getElementById('f-emp-tel').value.trim();
+  e.email = document.getElementById('f-emp-mail').value.trim();
+  e.direccion = document.getElementById('f-emp-direccion').value.trim();
+  e.localidad = document.getElementById('f-emp-localidad').value.trim();
+  e.condicionesGenerales = document.getElementById('f-emp-condiciones').value;
+  closeModal(); renderAll();
+}
+function imprimirOrden(id){
+  const o = getOrden(id); if(!o) return;
+  const e = state.datosEmpresa;
+  const prov = getProveedor(o.proveedorId);
+  const obra = o.tipo==='obra' ? getObra(o.obraId) : null;
+  const estadoTxt = {pendiente:'Pendiente de autorización', autorizada:'Autorizada', comprada:'Comprada', rechazada:'Rechazada'}[o.estado];
+  const condicionesLis = (e.condicionesGenerales||'').split('\n').map(l=>l.trim()).filter(Boolean).map(l=>`<li>${l}</li>`).join('');
+  const win = window.open('', '_blank');
+  if(!win){ alert('El navegador bloqueó la ventana emergente. Habilitá los pop-ups para descargar la orden.'); return; }
+  win.document.write(`<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>${o.numero} — Orden de compra</title>
+  <style>
+    *{box-sizing:border-box;} body{font-family:Arial,Helvetica,sans-serif;color:#14181C;padding:32px;max-width:780px;margin:0 auto;font-size:13px;}
+    h1{font-size:18px;margin:0 0 2px;} .sub{color:#6B7573;font-size:12px;}
+    .head{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #14181C;padding-bottom:14px;margin-bottom:16px;}
+    .head .emp b{font-size:15px;} .head .emp div{margin-top:2px;color:#333;}
+    .head .oc{text-align:right;}
+    .head .oc .badge{display:inline-block;background:#14181C;color:#fff;padding:4px 10px;border-radius:4px;font-weight:700;letter-spacing:.03em;}
+    table{width:100%;border-collapse:collapse;margin:14px 0;} th,td{border:1px solid #DCE3E1;padding:7px 9px;font-size:12.5px;text-align:left;}
+    th{background:#F1F4F3;text-transform:uppercase;font-size:10.5px;letter-spacing:.04em;}
+    td.num,th.num{text-align:right;}
+    .box{border:1px solid #DCE3E1;border-radius:6px;padding:10px 12px;margin-bottom:14px;}
+    .box h4{margin:0 0 6px;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:#6B7573;}
+    .totales{display:flex;justify-content:flex-end;margin:10px 0;} .totales table{width:280px;margin:0;}
+    .totales td:first-child{color:#6B7573;} .totales tr:last-child td{font-weight:700;font-size:14px;}
+    .cond ul{margin:4px 0 0;padding-left:18px;} .cond li{margin-bottom:3px;}
+    .firmas{display:flex;gap:24px;margin-top:36px;} .firmas div{flex:1;border-top:1px solid #333;padding-top:6px;font-size:11.5px;color:#6B7573;text-align:center;}
+    .foot{margin-top:24px;font-size:10.5px;color:#9AA3A1;text-align:center;}
+    @media print{ body{padding:0;} }
+  </style></head>
+  <body>
+    <div class="head">
+      <div class="emp">
+        <b>${e.nombre}</b>
+        ${e.direccion?`<div>${e.direccion}${e.localidad?', '+e.localidad:''}</div>`:''}
+        ${e.telefono?`<div>Tel: ${e.telefono}</div>`:''}
+        ${e.email?`<div>${e.email}</div>`:''}
+        ${e.cuit?`<div>CUIT: ${e.cuit}</div>`:''}
+        ${e.condicionImpositiva?`<div>${e.condicionImpositiva}</div>`:''}
+      </div>
+      <div class="oc">
+        <div class="badge">ORDEN DE COMPRA</div>
+        <h1 style="margin-top:8px;">${o.numero}</h1>
+        <div class="sub">Fecha: ${o.fecha}</div>
+        <div class="sub">Estado: ${estadoTxt}</div>
+        ${obra?`<div class="sub">Obra Nº: <b>${obra.code}</b></div>`:''}
+      </div>
+    </div>
+
+    <div class="box">
+      <h4>Proveedor</h4>
+      <div><b>${prov?prov.nombre:'—'}</b></div>
+      ${prov?.cuit?`<div>CUIT: ${prov.cuit}</div>`:''}
+      ${prov?.telefono?`<div>Tel: ${prov.telefono}</div>`:''}
+      ${prov?.email?`<div>${prov.email}</div>`:''}
+    </div>
+
+    <table>
+      <thead><tr><th>Cantidad</th><th>Detalle</th><th class="num">Precio unitario</th><th class="num">Importe</th></tr></thead>
+      <tbody>
+        <tr><td>${o.cantidad}</td><td>${o.concepto}${o.notaMaterial?`<div class="sub" style="margin-top:3px;font-style:italic;">Nota: ${o.notaMaterial}</div>`:''}</td><td class="num">${fmt(o.unitario)}</td><td class="num">${fmt(o.monto)}</td></tr>
+      </tbody>
+    </table>
+
+    <div class="totales"><table>
+      <tr><td>Monto estimado</td><td class="num">${fmt(o.monto)}</td></tr>
+      ${o.cotizacionUsd?`<tr><td>Cotización USD</td><td class="num">$ ${o.cotizacionUsd} / US$1</td></tr>`:''}
+    </table></div>
+
+    ${o.notaGeneral?`<div class="box"><h4>Nota general</h4><div>${o.notaGeneral}</div></div>`:''}
+    ${condicionesLis?`<div class="box cond"><h4>Condiciones generales</h4><ul>${condicionesLis}</ul></div>`:''}
+
+    <div class="firmas">
+      <div>Solicitado por<br>${o.solicitante}</div>
+      <div>Autorizó</div>
+      <div>Recibí conforme</div>
+    </div>
+    <div class="foot">Generado por el sistema de gestión de ${e.nombre} — ${today()}</div>
+    <script>window.onload=function(){ window.print(); };<\/script>
+  </body></html>`);
+  win.document.close();
+}
 function ordenDestinoTxt(o){
   if(o.tipo==='obra') return getObra(o.obraId)?.code || '—';
   if(o.tipo==='stock') return 'Stock — '+(o.stockNombre||'');
@@ -1344,6 +1470,8 @@ function renderOrdenes(){
     if(o.estado==='autorizada') acciones = `<span class="link-btn" onclick="openModalEfectivizarOrden('${o.id}')">Marcar como comprada →</span>`;
     if(o.estado==='comprada') acciones = `<span class="link-btn" onclick="verOrdenEnPagos('${o.id}')">Ver en Pagos →</span>`;
     if(o.estado==='rechazada') acciones = o.comentarioDueno ? `<span class="hint">Motivo: ${o.comentarioDueno}</span>` : '';
+    if(acciones) acciones += ' · ';
+    acciones += `<span class="link-btn" onclick="imprimirOrden('${o.id}')" title="Abrir para imprimir o guardar como PDF">⬇ Descargar OC</span>`;
     return `<tr><td class="mono">${o.numero}</td><td class="mono">${o.fecha}</td><td>${o.solicitante}</td><td>${ordenDestinoTxt(o)}</td><td>${prov?prov.nombre:'—'}</td><td class="num">${fmt(o.monto)}</td><td><span class="estado-dot ${estadoDot}"></span>${estadoTxt}</td><td>${acciones}</td></tr>`;
   }).join('') : `<tr class="empty-row"><td colspan="8">No hay órdenes de compra en este filtro</td></tr>`;
 }
@@ -1361,13 +1489,19 @@ function openModalOrdenCompra(id){
       <div class="field" id="wrap-oc-obra"><label>Obra</label><select id="f-obra">${obraOptions}</select></div>
       <div class="field" id="wrap-oc-cat"><label>Categoría</label><select id="f-cat"><option value="materiaPrima" ${existing&&existing.categoria==='materiaPrima'?'selected':''}>Materiales</option><option value="logistica" ${existing&&existing.categoria==='logistica'?'selected':''}>Logística</option><option value="estadia" ${existing&&existing.categoria==='estadia'?'selected':''}>Estadía de obra</option><option value="otros" ${existing&&existing.categoria==='otros'?'selected':''}>Otros no previstos</option></select></div>
       <div class="field span2" id="wrap-oc-stock"><label>Material</label><input id="f-stock-nombre" placeholder="Nombre del material" value="${existing&&existing.stockNombre?existing.stockNombre:''}"></div>
-      <div class="field"><label>Proveedor</label><select id="f-proveedor" onchange="onProveedorSelectChange(this)">${proveedorOptionsHTML(existing?existing.proveedorId:null)}</select></div>
+      <div class="field span2"><label>Proveedor</label><select id="f-proveedor" onchange="onProveedorSelectChange(this)">${proveedorOptionsHTML(existing?existing.proveedorId:null)}</select><div style="margin-top:4px;font-size:11.5px;color:var(--muted);">Para cargar o corregir CUIT/teléfono/mail de un proveedor ya existente, andá a Pagos → Proveedores → Editar datos.</div></div>
       <div class="field hidden span2" id="wrap-proveedor-nuevo"><label>Nombre del nuevo proveedor</label><input id="f-proveedor-nuevo" placeholder="Nombre"></div>
+      <div class="field hidden" id="wrap-proveedor-nuevo-cuit"><label>CUIT</label><input id="f-proveedor-nuevo-cuit" placeholder="30-12345678-9"></div>
+      <div class="field hidden" id="wrap-proveedor-nuevo-tel"><label>Teléfono</label><input id="f-proveedor-nuevo-tel" placeholder="(011) 15-0000-0000"></div>
+      <div class="field hidden" id="wrap-proveedor-nuevo-mail"><label>E-mail</label><input id="f-proveedor-nuevo-mail" type="email" placeholder="contacto@proveedor.com"></div>
       <div class="field span2"><label>Detalle</label><input id="f-concepto" placeholder="Ej: Fijaciones y flejes" value="${existing?existing.concepto:''}"></div>
       <div class="field"><label>Cantidad</label><input id="f-cantidad" class="mono-in" type="number" value="${existing?existing.cantidad:1}" oninput="previewOcMonto()"></div>
       <div class="field"><label>Precio unitario estimado ($)</label><input id="f-unitario" class="mono-in" type="number" value="${existing?existing.unitario:0}" oninput="previewOcMonto()"></div>
+      <div class="field"><label>Cotización USD (opcional)</label><input id="f-cotizacion-usd" class="mono-in" type="number" placeholder="Ej: 1450" value="${existing&&existing.cotizacionUsd?existing.cotizacionUsd:''}"></div>
       <div class="field"><label>Solicitante</label><input id="f-solicitante" placeholder="Nombre" value="${existing?existing.solicitante:''}"></div>
       <div class="field"><label>Fecha</label><input id="f-fecha" type="date" value="${existing?existing.fecha:today()}"></div>
+      <div class="field span2"><label>Nota sobre el material</label><textarea id="f-nota-material" placeholder="Ej: entregar en obra, marca específica, etc.">${existing&&existing.notaMaterial?existing.notaMaterial:''}</textarea></div>
+      <div class="field span2"><label>Nota general de la orden</label><textarea id="f-nota-general" placeholder="Observaciones generales para esta OC">${existing&&existing.notaGeneral?existing.notaGeneral:''}</textarea></div>
     </div>
     <div class="modal-preview" style="background:var(--teal-soft);border-radius:10px;padding:12px 14px;margin-top:12px;font-size:13px;color:var(--teal-deep);font-family:'Montserrat',sans-serif;" id="oc-preview">Monto estimado: $ 0</div>
     <div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" onclick="submitOrdenCompra('${id||''}')">${existing?'Guardar cambios':'Enviar a autorización'}</button></div>`;
@@ -1396,11 +1530,14 @@ function submitOrdenCompra(id){
   const monto = cantidad*unitario;
   const solicitante = document.getElementById('f-solicitante').value.trim() || 'Sin especificar';
   const fecha = document.getElementById('f-fecha').value || today();
+  const cotizacionUsd = +document.getElementById('f-cotizacion-usd').value || null;
+  const notaMaterial = document.getElementById('f-nota-material').value.trim();
+  const notaGeneral = document.getElementById('f-nota-general').value.trim();
   if(id){
     const o = getOrden(id);
-    Object.assign(o, {tipo, obraId, categoria, stockNombre, proveedorId, concepto, cantidad, unitario, monto, solicitante, fecha});
+    Object.assign(o, {tipo, obraId, categoria, stockNombre, proveedorId, concepto, cantidad, unitario, monto, solicitante, fecha, cotizacionUsd, notaMaterial, notaGeneral});
   } else {
-    state.ordenesCompra.push({id:newId('oc'), numero: nextOcNumero(), fecha, solicitante, tipo, obraId, categoria, stockNombre, concepto, cantidad, unitario, monto, proveedorId, estado:'pendiente', comentarioDueno:null, pagoId:null});
+    state.ordenesCompra.push({id:newId('oc'), numero: nextOcNumero(), fecha, solicitante, tipo, obraId, categoria, stockNombre, concepto, cantidad, unitario, monto, proveedorId, estado:'pendiente', comentarioDueno:null, pagoId:null, cotizacionUsd, notaMaterial, notaGeneral});
   }
   closeModal(); renderAll();
 }
@@ -1506,7 +1643,7 @@ function renderProveedoresLista(){
   document.getElementById('proveedores-body').innerHTML = state.proveedores.length ? state.proveedores.map(pr=>{
     const facturas = state.pagos.filter(p=>p.proveedorId===pr.id && pagoEstado(p)!=='pagado');
     const deuda = facturas.reduce((a,p)=>a+pagoSaldo(p),0);
-    return `<tr><td style="font-weight:600;">${pr.nombre}</td><td class="num">${facturas.length}</td><td class="num">${fmt(deuda)}</td><td><span class="link-btn" onclick="openProveedorDetalle('${pr.id}')">Ver detalle →</span></td></tr>`;
+    return `<tr><td style="font-weight:600;">${pr.nombre}</td><td class="num">${facturas.length}</td><td class="num">${fmt(deuda)}</td><td><span class="link-btn" onclick="openProveedorDetalle('${pr.id}')">Ver detalle →</span> · <span class="link-btn" onclick="openModalEditarProveedor('${pr.id}')">Editar datos</span></td></tr>`;
   }).join('') : `<tr class="empty-row"><td colspan="4">Todavía no hay proveedores cargados</td></tr>`;
 }
 function openProveedorDetalle(id){ state.selectedProveedorId = id; renderPagos(); }
@@ -1514,6 +1651,8 @@ function renderProveedorDetalle(id){
   const pr = getProveedor(id); if(!pr) return;
   document.getElementById('proveedor-detalle-nombre').textContent = pr.nombre;
   document.getElementById('proveedor-detalle-deuda').textContent = fmt(proveedorDeuda(id));
+  const contactoParts = [pr.cuit?`CUIT ${pr.cuit}`:null, pr.telefono?`Tel. ${pr.telefono}`:null, pr.email?pr.email:null].filter(Boolean);
+  document.getElementById('proveedor-detalle-contacto').textContent = contactoParts.length ? contactoParts.join(' · ') : 'Sin CUIT/teléfono/mail cargados — usá "Editar datos" para completarlos.';
   const facturas = state.pagos.filter(p=>p.proveedorId===id).sort((a,b)=>(a.fechaPago||'').localeCompare(b.fechaPago||''));
   document.getElementById('proveedor-detalle-body').innerHTML = facturas.length ? facturas.map(p=>{
     const est = pagoEstado(p);
@@ -1534,6 +1673,9 @@ function proveedorOptionsHTML(selectedId){
 }
 function onProveedorSelectChange(sel){
   document.getElementById('wrap-proveedor-nuevo').classList.toggle('hidden', sel.value!=='__nuevo__');
+  document.getElementById('wrap-proveedor-nuevo-cuit')?.classList.toggle('hidden', sel.value!=='__nuevo__');
+  document.getElementById('wrap-proveedor-nuevo-tel')?.classList.toggle('hidden', sel.value!=='__nuevo__');
+  document.getElementById('wrap-proveedor-nuevo-mail')?.classList.toggle('hidden', sel.value!=='__nuevo__');
 }
 function resolveProveedorId(){
   const sel = document.getElementById('f-proveedor');
@@ -1542,10 +1684,33 @@ function resolveProveedorId(){
     const nombre = document.getElementById('f-proveedor-nuevo').value.trim();
     if(!nombre) return null;
     const id = newId('pr');
-    state.proveedores.push({id, nombre});
+    const cuit = document.getElementById('f-proveedor-nuevo-cuit')?.value.trim() || '';
+    const telefono = document.getElementById('f-proveedor-nuevo-tel')?.value.trim() || '';
+    const email = document.getElementById('f-proveedor-nuevo-mail')?.value.trim() || '';
+    state.proveedores.push({id, nombre, cuit, telefono, email});
     return id;
   }
   return sel.value || null;
+}
+function openModalEditarProveedor(id){
+  const pr = getProveedor(id); if(!pr) return;
+  modalEl.innerHTML = `<h3>Editar datos de contacto</h3><div class="modal-sub">${pr.nombre}</div>
+    <div class="form-grid">
+      <div class="field span2"><label>Nombre</label><input id="f-ep-nombre" value="${pr.nombre}"></div>
+      <div class="field"><label>CUIT</label><input id="f-ep-cuit" placeholder="30-12345678-9" value="${pr.cuit||''}"></div>
+      <div class="field"><label>Teléfono</label><input id="f-ep-tel" placeholder="(011) 15-0000-0000" value="${pr.telefono||''}"></div>
+      <div class="field span2"><label>E-mail</label><input id="f-ep-mail" type="email" placeholder="contacto@proveedor.com" value="${pr.email||''}"></div>
+    </div>
+    <div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" onclick="submitEditarProveedor('${id}')">Guardar</button></div>`;
+  overlay.classList.add('open');
+}
+function submitEditarProveedor(id){
+  const pr = getProveedor(id); if(!pr) return;
+  pr.nombre = document.getElementById('f-ep-nombre').value.trim() || pr.nombre;
+  pr.cuit = document.getElementById('f-ep-cuit').value.trim();
+  pr.telefono = document.getElementById('f-ep-tel').value.trim();
+  pr.email = document.getElementById('f-ep-mail').value.trim();
+  closeModal(); renderAll();
 }
 function openModalPagoProveedor(){
   const pr = getProveedor(state.selectedProveedorId); if(!pr) return;
