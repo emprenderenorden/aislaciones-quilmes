@@ -89,6 +89,7 @@
   tbody tr:last-child td{border-bottom:none;}
   tbody tr:hover{background:#FAFBFB;}
   .obra-code{font-family:'Montserrat',sans-serif;font-weight:600;background:var(--teal-soft);color:var(--teal-deep);padding:2px 7px;border-radius:5px;font-size:12px;}
+  .oc-code{font-family:'Montserrat',sans-serif;font-weight:600;background:var(--paper);color:var(--muted);border:1px solid var(--line);padding:2px 7px;border-radius:5px;font-size:11.5px;white-space:nowrap;}
   .link-btn{color:var(--teal);font-weight:600;cursor:pointer;font-size:12.5px;white-space:nowrap;}
   .link-btn:hover{text-decoration:underline;}
   .link-btn.danger{color:var(--bad);}
@@ -470,7 +471,7 @@
       <div class="filter-tab" data-filter="proveedores" onclick="setPagosFilter('proveedores')">Proveedores</div>
     </div></div>
     <div class="card card-table" id="pagos-table-egresos"><table>
-      <thead><tr><th>Obra / destino</th><th>Concepto</th><th>Proveedor / factura</th><th class="num">Monto</th><th class="num">Saldo</th><th>Fecha de pago</th><th>Estado</th><th></th></tr></thead>
+      <thead><tr><th>Obra / destino</th><th>Concepto</th><th>Nº OC</th><th>Proveedor / factura</th><th class="num">Monto</th><th class="num">Saldo</th><th>Fecha de pago</th><th>Estado</th><th></th></tr></thead>
       <tbody id="pagos-body"></tbody>
     </table></div>
     <div class="card card-table hidden" id="pagos-table-fima"><table>
@@ -490,7 +491,7 @@
         <div class="topbar-actions"><button class="btn btn-primary" onclick="openModalPagoProveedor()">+ Registrar pago</button></div>
       </div>
       <div class="card card-table"><table>
-        <thead><tr><th>Factura</th><th>Concepto</th><th>Destino</th><th class="num">Monto</th><th class="num">Pagado</th><th class="num">Saldo</th><th>Estado</th></tr></thead>
+        <thead><tr><th>Factura</th><th>Concepto</th><th>Nº OC</th><th>Destino</th><th class="num">Monto</th><th class="num">Pagado</th><th class="num">Saldo</th><th>Estado</th></tr></thead>
         <tbody id="proveedor-detalle-body"></tbody>
       </table></div>
     </div>
@@ -839,7 +840,7 @@ function renderObraDetail(){
 
     <div class="section-title"><h2>Materiales y gastos reales de la obra</h2><div class="st-actions"><button class="btn btn-ghost btn-sm" onclick="openModalCompra('${o.id}')">+ Registrar compra/gasto</button></div></div>
     <div class="card card-table"><table>
-      <thead><tr><th>Categoría</th><th>Detalle</th><th>Proveedor / factura</th><th class="num">Monto</th><th class="num">Saldo</th><th>Fecha de pago</th><th>Estado</th><th></th></tr></thead>
+      <thead><tr><th>Categoría</th><th>Detalle</th><th>Nº OC</th><th>Proveedor / factura</th><th class="num">Monto</th><th class="num">Saldo</th><th>Fecha de pago</th><th>Estado</th><th></th></tr></thead>
       <tbody>${obraPagosRows(o.id)}</tbody>
     </table></div>
 
@@ -881,14 +882,14 @@ function obraPagosRows(obraId){
     const action = est!=='pagado' ? `<span class="link-btn" onclick="openModalFinalizarPago('${p.id}')">Registrar pago →</span>` : '';
     const prov = getProveedor(p.proveedorId);
     const provTxt = prov ? `${prov.nombre}${p.numeroFactura?' · '+p.numeroFactura:''}` : '—';
-    return `<tr><td>${catLabel[p.categoria]||p.categoria}</td><td>${p.concepto}</td><td>${provTxt}</td><td class="num">${fmt(p.monto)}</td><td class="num">${fmt(pagoSaldo(p))}</td><td class="mono">${p.fechaPago||'—'}</td><td><span class="estado-dot ${estadoDot}"></span>${estadoTxt}</td><td>${action}</td></tr>`;
+    return `<tr><td>${catLabel[p.categoria]||p.categoria}</td><td>${p.concepto}</td><td>${ocBadge(p.numeroOC)}</td><td>${provTxt}</td><td class="num">${fmt(p.monto)}</td><td class="num">${fmt(pagoSaldo(p))}</td><td class="mono">${p.fechaPago||'—'}</td><td><span class="estado-dot ${estadoDot}"></span>${estadoTxt}</td><td>${action}</td></tr>`;
   });
   const stockRows = state.stockMovimientos.filter(m=>m.tipo==='consumo' && m.obraId===obraId).map(m=>{
     const item = getStockItem(m.stockId);
-    return `<tr><td>Materiales</td><td>${item?item.nombre:'—'} (de stock, x${m.cantidad})</td><td>—</td><td class="num">${fmt(m.monto)}</td><td class="num">$ 0</td><td class="mono">${m.fecha}</td><td><span class="estado-dot good"></span>No aplica</td><td></td></tr>`;
+    return `<tr><td>Materiales</td><td>${item?item.nombre:'—'} (de stock, x${m.cantidad})</td><td>—</td><td>—</td><td class="num">${fmt(m.monto)}</td><td class="num">$ 0</td><td class="mono">${m.fecha}</td><td><span class="estado-dot good"></span>No aplica</td><td></td></tr>`;
   });
   const rows = [...pagoRows, ...stockRows];
-  if(!rows.length) return `<tr class="empty-row"><td colspan="8">Todavía no hay compras registradas en esta obra</td></tr>`;
+  if(!rows.length) return `<tr class="empty-row"><td colspan="9">Todavía no hay compras registradas en esta obra</td></tr>`;
   return rows.join('');
 }
 function iniciarObra(id){ getObra(id).estado='en curso'; renderAll(); }
@@ -1319,6 +1320,12 @@ function nextOcNumero(){
 }
 function getOrden(id){ return state.ordenesCompra.find(o=>o.id===id); }
 function setOrdenesFilter(f){ state.ordenesFilter=f; document.querySelectorAll('#view-ordenes .filter-tab').forEach(t=>t.classList.toggle('active', t.dataset.filter===f)); renderOrdenes(); }
+function ocBadge(numeroOC){ return numeroOC ? `<span class="oc-code">${numeroOC}</span>` : '—'; }
+function verOrdenEnPagos(id){
+  const o = getOrden(id); if(!o) return;
+  showView('pagos');
+  setPagosFilter(o.tipo);
+}
 function ordenDestinoTxt(o){
   if(o.tipo==='obra') return getObra(o.obraId)?.code || '—';
   if(o.tipo==='stock') return 'Stock — '+(o.stockNombre||'');
@@ -1335,7 +1342,7 @@ function renderOrdenes(){
     let acciones = '';
     if(o.estado==='pendiente') acciones = `<span class="link-btn" onclick="openModalOrdenCompra('${o.id}')">Editar</span> · <span class="link-btn" onclick="openModalAutorizarOrden('${o.id}')">Autorizar</span> · <span class="link-btn danger" onclick="openModalRechazarOrden('${o.id}')">Rechazar</span>`;
     if(o.estado==='autorizada') acciones = `<span class="link-btn" onclick="openModalEfectivizarOrden('${o.id}')">Marcar como comprada →</span>`;
-    if(o.estado==='comprada') acciones = `<span class="tag good">Ver en Pagos</span>`;
+    if(o.estado==='comprada') acciones = `<span class="link-btn" onclick="verOrdenEnPagos('${o.id}')">Ver en Pagos →</span>`;
     if(o.estado==='rechazada') acciones = o.comentarioDueno ? `<span class="hint">Motivo: ${o.comentarioDueno}</span>` : '';
     return `<tr><td class="mono">${o.numero}</td><td class="mono">${o.fecha}</td><td>${o.solicitante}</td><td>${ordenDestinoTxt(o)}</td><td>${prov?prov.nombre:'—'}</td><td class="num">${fmt(o.monto)}</td><td><span class="estado-dot ${estadoDot}"></span>${estadoTxt}</td><td>${acciones}</td></tr>`;
   }).join('') : `<tr class="empty-row"><td colspan="8">No hay órdenes de compra en este filtro</td></tr>`;
@@ -1451,7 +1458,7 @@ function submitEfectivizarOrden(id){
     if(o.cantidad>0) item.costoUnitario = montoNeto/o.cantidad;
     state.stockMovimientos.push({id:newId('sm'), fecha: fechaPago||today(), tipo:'compra', stockId:item.id, cantidad:o.cantidad, obraId:null, monto});
   }
-  const pago = {id:newId('p'), tipo:o.tipo, obraId:o.obraId, categoria:o.categoria||'costosFijos', concepto:o.concepto+' (OC '+o.numero+')', cantidad:o.cantidad, unitario:o.cantidad?montoNeto/o.cantidad:montoNeto, ivaAplica, monto, proveedorId:o.proveedorId, numeroFactura, fechaFactura, formaPago, fechaPago, pagosRealizados:[]};
+  const pago = {id:newId('p'), tipo:o.tipo, obraId:o.obraId, categoria:o.categoria||'costosFijos', concepto:o.concepto, numeroOC:o.numero, cantidad:o.cantidad, unitario:o.cantidad?montoNeto/o.cantidad:montoNeto, ivaAplica, monto, proveedorId:o.proveedorId, numeroFactura, fechaFactura, formaPago, fechaPago, pagosRealizados:[]};
   state.pagos.push(pago);
   if(o.tipo==='obra'){ const obra=getObra(o.obraId); if(obra) obra.real[o.categoria]+=monto; }
   o.estado='comprada'; o.pagoId=pago.id;
@@ -1491,8 +1498,8 @@ function renderPagos(){
     const destino = p.obraId ? `<span class="link-btn" onclick="goToObra('${p.obraId}')"><span class="obra-code">${getObra(p.obraId)?.code||''}</span></span>` : (p.tipo==='stock' ? 'Stock' : 'Negocio general');
     const prov = getProveedor(p.proveedorId);
     const provTxt = prov ? `${prov.nombre}${p.numeroFactura?' · '+p.numeroFactura:''}` : '—';
-    return `<tr><td>${destino}</td><td>${p.concepto}</td><td>${provTxt}</td><td class="num">${fmt(p.monto)}</td><td class="num">${fmt(pagoSaldo(p))}</td><td class="mono">${p.fechaPago||'—'}</td><td><span class="estado-dot ${estadoDot}"></span>${estadoTxt}</td><td>${action}</td></tr>`;
-  }).join('') : `<tr class="empty-row"><td colspan="8">No hay pagos registrados</td></tr>`;
+    return `<tr><td>${destino}</td><td>${p.concepto}</td><td>${ocBadge(p.numeroOC)}</td><td>${provTxt}</td><td class="num">${fmt(p.monto)}</td><td class="num">${fmt(pagoSaldo(p))}</td><td class="mono">${p.fechaPago||'—'}</td><td><span class="estado-dot ${estadoDot}"></span>${estadoTxt}</td><td>${action}</td></tr>`;
+  }).join('') : `<tr class="empty-row"><td colspan="9">No hay pagos registrados</td></tr>`;
 }
 function proveedorDeuda(provId){ return state.pagos.filter(p=>p.proveedorId===provId).reduce((a,p)=>a+pagoSaldo(p),0); }
 function renderProveedoresLista(){
@@ -1513,8 +1520,8 @@ function renderProveedorDetalle(id){
     const estadoDot = est==='pagado'?'good':'warn';
     const estadoTxt = est==='pagado'?'Pagado':(est==='parcial'?'Parcial':(est==='sin_fecha'?'Sin fecha':'Pendiente'));
     const destino = p.obraId ? `<span class="obra-code">${getObra(p.obraId)?.code||''}</span>` : (p.tipo==='stock'?'Stock':'Negocio general');
-    return `<tr><td>${p.numeroFactura||'—'}</td><td>${p.concepto}</td><td>${destino}</td><td class="num">${fmt(p.monto)}</td><td class="num">${fmt(pagoMontoPagado(p))}</td><td class="num">${fmt(pagoSaldo(p))}</td><td><span class="estado-dot ${estadoDot}"></span>${estadoTxt}</td></tr>`;
-  }).join('') : `<tr class="empty-row"><td colspan="7">Este proveedor todavía no tiene facturas registradas</td></tr>`;
+    return `<tr><td>${p.numeroFactura||'—'}</td><td>${p.concepto}</td><td>${ocBadge(p.numeroOC)}</td><td>${destino}</td><td class="num">${fmt(p.monto)}</td><td class="num">${fmt(pagoMontoPagado(p))}</td><td class="num">${fmt(pagoSaldo(p))}</td><td><span class="estado-dot ${estadoDot}"></span>${estadoTxt}</td></tr>`;
+  }).join('') : `<tr class="empty-row"><td colspan="8">Este proveedor todavía no tiene facturas registradas</td></tr>`;
 }
 
 /* ======================= MODALS ======================= */
