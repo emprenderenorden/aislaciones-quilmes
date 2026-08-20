@@ -1,0 +1,1934 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Aislaciones Quilmes · Gestión Financiera</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  :root{
+    --ink:#14181C; --ink-2:#1E2530; --paper:#F1F4F3; --surface:#FFFFFF; --line:#DCE3E1;
+    --teal:#7B1E2B; --teal-deep:#4A1019; --teal-soft:#F5E6E8;
+    --copper:#9C3B47; --copper-soft:#F5E6E8;
+    --good:#2F8F5B; --good-soft:#E4F3EA;
+    --warn:#B9820F; --warn-soft:#FBF0DA;
+    --bad:#C0463D; --bad-soft:#FBE7E5;
+    --muted:#6B7573; --muted-2:#9AA3A1;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{font-family:'Montserrat',sans-serif;background:var(--paper);color:var(--ink);display:flex;min-height:100vh;font-size:14px;}
+  h1,h2,h3,.display{font-family:'Montserrat',sans-serif;}
+  .mono{font-family:'Montserrat',sans-serif;font-variant-numeric:tabular-nums;}
+
+  .sidebar{width:220px;flex-shrink:0;background:var(--ink);color:#EDEFEE;display:flex;flex-direction:column;padding:22px 16px;position:sticky;top:0;height:100vh;transition:width .18s ease,padding .18s ease;overflow:hidden;}
+  .sidebar.collapsed{width:72px;padding:22px 12px;}
+  .sidebar.collapsed .brand{justify-content:center;}
+  .sidebar.collapsed .brand-text,.sidebar.collapsed .nav-label,.sidebar.collapsed .sidebar-foot{display:none;}
+  .sidebar.collapsed .nav-item{justify-content:center;padding:10px;}
+  .sidebar-toggle{width:30px;height:30px;border-radius:8px;border:1px solid #2A3339;background:#1B2126;color:#C7CDCB;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+  .sidebar-toggle:hover{background:#20282F;color:#fff;}
+  .brand{display:flex;align-items:center;gap:10px;margin-bottom:34px;padding:0 6px;}
+  .brand-mark{width:34px;height:34px;border-radius:8px;background:linear-gradient(135deg,var(--teal),var(--teal-deep));display:flex;align-items:center;justify-content:center;font-family:'Montserrat',sans-serif;font-weight:700;font-size:14px;color:#fff;flex-shrink:0;}
+  .brand-text{white-space:nowrap;}
+  .brand-text .l1{font-family:'Montserrat',sans-serif;font-weight:600;font-size:14.5px;line-height:1.15;}
+  .brand-text .l2{font-size:11px;color:#9AA5A3;margin-top:1px;}
+  nav{display:flex;flex-direction:column;gap:3px;}
+  .nav-item{display:flex;align-items:center;gap:11px;padding:10px 12px;border-radius:8px;color:#C7CDCB;cursor:pointer;font-size:13.5px;font-weight:500;transition:background .15s ease,color .15s ease;user-select:none;white-space:nowrap;}
+  .nav-item svg{width:16px;height:16px;flex-shrink:0;opacity:.85;}
+  .nav-item:hover{background:#20282F;color:#fff;}
+  .nav-item.active{background:var(--teal);color:#fff;}
+  .nav-item.active svg{opacity:1;}
+  .sidebar-foot{margin-top:auto;padding:12px;border-top:1px solid #2A3339;font-size:11.5px;color:#7C8583;line-height:1.5;}
+  .sidebar-foot b{color:#C7CDCB;}
+  .sidebar-backdrop{display:none;}
+
+  main{flex:1;padding:30px 38px 60px;max-width:1280px;min-width:0;}
+  .topbar{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:26px;gap:20px;flex-wrap:wrap;}
+  .topbar h1{font-size:22px;margin:0 0 4px;font-weight:600;letter-spacing:-.2px;}
+  .topbar .sub{color:var(--muted);font-size:13px;}
+  .topbar-actions{display:flex;gap:10px;align-items:center;flex-shrink:0;flex-wrap:wrap;}
+  .user-chip{display:flex;align-items:center;gap:9px;background:var(--surface);border:1px solid var(--line);padding:7px 12px 7px 8px;border-radius:30px;}
+  .avatar{width:26px;height:26px;border-radius:50%;background:var(--copper);color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;font-family:'Montserrat',sans-serif;}
+  .user-chip .name{font-size:12.5px;font-weight:600;}
+  .user-chip .role{font-size:11px;color:var(--muted);}
+
+  .view{display:none;} .view.active{display:block;}
+
+  .btn{border:none;border-radius:8px;padding:9px 15px;font-size:12.5px;font-weight:600;cursor:pointer;font-family:'Montserrat',sans-serif;display:inline-flex;align-items:center;gap:6px;transition:opacity .15s;}
+  .btn:hover{opacity:.88;}
+  .btn-primary{background:var(--teal);color:#fff;}
+  .btn-dark{background:var(--ink);color:#fff;}
+  .btn-ghost{background:var(--surface);color:var(--ink);border:1px solid var(--line);}
+  .btn-sm{padding:6px 11px;font-size:11.5px;}
+
+  .kpi-row{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:24px;}
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:18px 18px 16px;}
+  .kpi .kpi-label{font-size:11.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:600;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;}
+  .kpi .kpi-value{font-family:'Montserrat',sans-serif;font-size:25px;font-weight:600;letter-spacing:-.5px;}
+  .kpi .kpi-note{font-size:11.5px;color:var(--muted);margin-top:6px;}
+  .tag{font-size:10.5px;font-weight:600;padding:2px 7px;border-radius:5px;}
+  .tag.good{background:var(--good-soft);color:var(--good);} .tag.warn{background:var(--warn-soft);color:var(--warn);} .tag.bad{background:var(--bad-soft);color:var(--bad);}
+
+  .section-title{display:flex;align-items:center;justify-content:space-between;margin:26px 0 12px;gap:12px;}
+  .section-title h2{font-size:15.5px;font-weight:600;margin:0;}
+  .section-title .hint{font-size:12.5px;color:var(--muted);font-family:'Montserrat',sans-serif;font-weight:600;}
+  .section-title .st-actions{display:flex;gap:8px;margin-left:auto;}
+
+  .layerbar-wrap{display:flex;flex-direction:column;gap:5px;min-width:170px;}
+  .layerbar-labels{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);font-family:'Montserrat',sans-serif;}
+  .layerbar{position:relative;height:14px;border-radius:4px;background:repeating-linear-gradient(135deg,#E7ECEA 0 6px,#EEF1F0 6px 12px);border:1px solid var(--line);overflow:hidden;}
+  .layerbar .fill{position:absolute;top:0;left:0;height:100%;border-radius:3px 0 0 3px;background-image:repeating-linear-gradient(135deg,rgba(255,255,255,.16) 0 6px,rgba(255,255,255,0) 6px 12px);}
+  .layerbar .fill.good{background-color:var(--good);} .layerbar .fill.warn{background-color:var(--warn);} .layerbar .fill.bad{background-color:var(--bad);}
+
+  table{width:100%;border-collapse:collapse;font-size:13px;}
+  thead th{text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:600;padding:0 12px 10px;border-bottom:1px solid var(--line);}
+  tbody td{padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:middle;}
+  tbody tr:last-child td{border-bottom:none;}
+  tbody tr:hover{background:#FAFBFB;}
+  .obra-code{font-family:'Montserrat',sans-serif;font-weight:600;background:var(--teal-soft);color:var(--teal-deep);padding:2px 7px;border-radius:5px;font-size:12px;}
+  .link-btn{color:var(--teal);font-weight:600;cursor:pointer;font-size:12.5px;white-space:nowrap;}
+  .link-btn:hover{text-decoration:underline;}
+  .link-btn.danger{color:var(--bad);}
+  .num{font-family:'Montserrat',sans-serif;text-align:right;font-variant-numeric:tabular-nums;}
+  th.num{text-align:right;}
+  .estado-dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:6px;}
+  .estado-dot.good{background:var(--good);} .estado-dot.warn{background:var(--warn);} .estado-dot.bad{background:var(--bad);}
+  .card-table{padding:6px 4px 4px;}
+  .subtotal-row td{font-weight:700;background:#FAFBFB;}
+  .card-table.dark{background:var(--ink);border-color:var(--ink);}
+  .card-table.dark thead th{color:#9AA5A3;border-bottom-color:#2A3339;}
+  .card-table.dark tbody td{color:#EDEFEE;border-bottom-color:#2A3339;}
+  .card-table.dark tbody tr:hover{background:#1E2530;}
+  .card-table.dark .subtotal-row td{background:#20282F;color:#fff;}
+  .empty-row td{color:var(--muted-2);font-style:italic;text-align:center;padding:22px;}
+  .cell-input{border:1px solid var(--line);border-radius:6px;padding:6px 8px;font-size:12.5px;font-family:'Montserrat',sans-serif;width:100%;background:var(--paper);}
+  .cell-input.mono-in{font-family:'Montserrat',sans-serif;text-align:right;font-variant-numeric:tabular-nums;}
+
+  .obra-select{display:flex;align-items:center;gap:10px;background:var(--surface);border:1px solid var(--line);padding:8px 8px 8px 14px;border-radius:10px;margin-bottom:20px;flex-wrap:wrap;}
+  .obra-select select{border:none;background:transparent;font-family:'Montserrat',sans-serif;font-weight:600;font-size:14.5px;color:var(--ink);cursor:pointer;outline:none;}
+  .obra-meta-item{font-size:11px;}
+  .obra-meta-item .m-label{font-size:10px;text-transform:uppercase;color:var(--muted-2);letter-spacing:.05em;}
+  .obra-meta-item .m-value{font-size:13px;font-weight:600;margin-top:2px;}
+
+  .cat-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:14px;margin-bottom:8px;}
+  .cat-card .cat-name{font-size:11.5px;font-weight:600;margin-bottom:10px;display:flex;align-items:center;gap:6px;}
+  .cat-card .cat-icon{width:20px;height:20px;border-radius:6px;display:flex;align-items:center;justify-content:center;background:var(--teal-soft);color:var(--teal-deep);flex-shrink:0;font-size:9.5px;}
+
+  .result-banner{display:flex;justify-content:space-between;align-items:center;background:var(--ink);color:#fff;border-radius:12px;padding:22px 26px;margin:22px 0 6px;flex-wrap:wrap;gap:14px;}
+  .result-banner .rb-block .rb-label{font-size:11px;color:#9AA5A3;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;}
+  .result-banner .rb-block .rb-value{font-family:'Montserrat',sans-serif;font-size:22px;font-weight:600;}
+  .result-banner .rb-value.pos{color:#6FD79A;} .result-banner .rb-value.neg{color:#E88F87;}
+  .rb-divider{width:1px;background:#2A3339;align-self:stretch;}
+
+  .week-nav{display:flex;align-items:center;gap:12px;margin-bottom:20px;flex-wrap:wrap;}
+  .week-nav .week-label{font-weight:600;font-family:'Montserrat',sans-serif;font-size:14.5px;}
+  .nav-arrow{border:1px solid var(--line);background:var(--surface);border-radius:8px;width:30px;height:30px;cursor:pointer;font-size:15px;color:var(--muted);}
+  .nav-arrow:hover{background:var(--teal-soft);color:var(--teal-deep);border-color:var(--teal);}
+  .day-box{width:20px;height:20px;border-radius:5px;border:1.5px solid var(--line);}
+  .day-box.on{background:var(--good);border-color:var(--good);}
+  .day-box.off{background:transparent;}
+
+  .fund-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:8px;}
+  .fund-card{position:relative;overflow:hidden;}
+  .fund-card .fund-bar{position:absolute;left:0;bottom:0;height:4px;width:100%;}
+  .fund-card .fund-name{font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:10px;}
+  .fund-card .fund-value{font-family:'Montserrat',sans-serif;font-size:21px;font-weight:600;}
+  .fund-card .fund-target{font-size:11px;color:var(--muted);margin-top:6px;}
+  .badge-inout{font-size:11px;font-weight:600;padding:2px 8px;border-radius:5px;}
+  .badge-inout.in{background:var(--good-soft);color:var(--good);}
+  .badge-inout.out{background:var(--bad-soft);color:var(--bad);}
+
+  .filter-tabs{display:flex;gap:6px;}
+  .filter-tab{padding:6px 12px;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;background:var(--surface);border:1px solid var(--line);color:var(--muted);}
+  .filter-tab.active{background:var(--ink);color:#fff;border-color:var(--ink);}
+
+  .foot-note{margin-top:34px;padding:16px 18px;border:1px dashed var(--line);border-radius:10px;font-size:12px;color:var(--muted);line-height:1.6;background:#FAFBFB;}
+  .foot-note b{color:var(--ink);}
+  .chart-row{display:flex;align-items:center;gap:12px;padding:9px 0;}
+  .chart-row .chart-label{width:190px;flex-shrink:0;font-size:12.5px;font-weight:600;display:flex;align-items:center;gap:8px;}
+  .chart-row .chart-dot{width:9px;height:9px;border-radius:50%;flex-shrink:0;}
+  .chart-row .chart-track{flex:1;height:16px;border-radius:5px;background:var(--paper);border:1px solid var(--line);overflow:hidden;}
+  .chart-row .chart-fill{height:100%;border-radius:4px 0 0 4px;}
+  .chart-row .chart-value{width:120px;text-align:right;font-family:'Montserrat',sans-serif;font-size:12.5px;font-weight:600;flex-shrink:0;}
+
+  .overlay{position:fixed;inset:0;background:rgba(20,24,28,.5);display:none;align-items:flex-start;justify-content:center;padding:40px 20px;overflow-y:auto;z-index:50;}
+  .overlay.open{display:flex;}
+  .modal{background:var(--surface);border-radius:14px;width:100%;max-width:560px;padding:26px 28px 24px;box-shadow:0 20px 60px rgba(0,0,0,.25);}
+  .modal h3{margin:0 0 4px;font-size:17px;font-weight:600;}
+  .modal .modal-sub{font-size:12px;color:var(--muted);margin-bottom:18px;}
+  .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+  .field{display:flex;flex-direction:column;gap:5px;}
+  .field.span2{grid-column:1/-1;}
+  .field label{font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;}
+  .field input,.field select{border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:13px;font-family:'Montserrat',sans-serif;outline:none;background:var(--paper);}
+  .field input:focus,.field select:focus{border-color:var(--teal);background:var(--surface);}
+  .field input.mono-in{font-family:'Montserrat',sans-serif;}
+  .field.checkbox{flex-direction:row;align-items:center;gap:8px;}
+  .field.checkbox label{text-transform:none;font-size:12.5px;color:var(--ink);}
+  .day-toggle-row{display:flex;gap:6px;}
+  .day-toggle{width:34px;height:34px;border-radius:8px;border:1px solid var(--line);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;cursor:pointer;color:var(--muted);}
+  .day-toggle.on{background:var(--good);border-color:var(--good);color:#fff;}
+  .modal-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:20px;}
+  .hidden{display:none !important;}
+
+  .summary-line{display:flex;justify-content:space-between;padding:6px 0;font-size:13px;}
+  .summary-line.sub{color:var(--muted);padding-left:14px;font-size:12px;}
+  .summary-line.divider{border-top:1px solid var(--line);margin-top:6px;padding-top:10px;}
+  .summary-line.total{font-weight:700;font-size:15.5px;color:var(--teal-deep);}
+  .summary-line.grand{font-weight:700;font-size:18px;color:var(--ink);background:var(--teal-soft);margin:8px -18px -16px;padding:14px 18px;border-radius:0 0 12px 12px;}
+
+  @media (max-width:1080px){ .cat-grid{grid-template-columns:repeat(3,1fr);} }
+  @media (max-width:980px){ .kpi-row,.fund-grid{grid-template-columns:repeat(2,1fr);} .form-grid{grid-template-columns:1fr;} .cat-grid{grid-template-columns:repeat(2,1fr);} }
+
+  @media (max-width:860px){
+    .sidebar{position:fixed;top:0;left:0;width:64px;height:100vh;padding:16px 10px;z-index:60;transition:width .18s ease;}
+    .sidebar.collapsed{width:64px;}
+    .sidebar .brand-text,.sidebar .nav-label,.sidebar .sidebar-foot{display:none;}
+    .sidebar .brand{justify-content:center;margin-bottom:22px;}
+    .sidebar .nav-item{justify-content:center;padding:10px;}
+    .sidebar.mobile-open{width:230px;padding:16px;}
+    .sidebar.mobile-open .brand{justify-content:flex-start;}
+    .sidebar.mobile-open .brand-text,.sidebar.mobile-open .nav-label,.sidebar.mobile-open .sidebar-foot{display:block;}
+    .sidebar.mobile-open .nav-item{justify-content:flex-start;padding:10px 12px;}
+    main{margin-left:64px;padding:20px 16px 50px;max-width:100%;}
+    .sidebar-backdrop.show{display:block;position:fixed;inset:0;background:rgba(10,12,14,.45);z-index:55;}
+    .kpi-row,.fund-grid,.cat-grid{grid-template-columns:repeat(2,1fr);}
+    .topbar{align-items:stretch;}
+    .topbar-actions{width:100%;}
+  }
+  @media (max-width:520px){
+    .kpi-row,.fund-grid,.cat-grid{grid-template-columns:1fr;}
+    table{font-size:12px;}
+  }
+</style>
+</head>
+<body>
+
+<aside class="sidebar" id="sidebar">
+  <div class="brand">
+    <button class="sidebar-toggle" onclick="toggleSidebar()" title="Mostrar/ocultar menú">
+      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+    </button>
+    <div class="brand-mark">AQ</div>
+    <div class="brand-text"><div class="l1">Aislaciones Quilmes</div><div class="l2">Gestión Financiera</div></div>
+  </div>
+  <nav>
+    <div class="nav-item active" data-view="dashboard" onclick="showView('dashboard')" title="Dashboard">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>
+      <span class="nav-label">Dashboard</span>
+    </div>
+    <div class="nav-item" data-view="obra" onclick="showView('obra'); showObraSubview('lista');" title="Obras">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/><path d="M9 21v-6h6v6"/></svg>
+      <span class="nav-label">Obras</span>
+    </div>
+    <div class="nav-item" data-view="jornales" onclick="showView('jornales')" title="Jornales">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18"/><path d="M8 2v4M16 2v4"/></svg>
+      <span class="nav-label">Jornales</span>
+    </div>
+    <div class="nav-item" data-view="ordenes" onclick="showView('ordenes')" title="Órdenes de compra">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 2h6l1 4H8l1-4z"/><path d="M5 6h14l-1 15H6L5 6z"/><path d="M9 11l2 2 4-4"/></svg>
+      <span class="nav-label">Órdenes de compra</span>
+    </div>
+    <div class="nav-item" data-view="pagos" onclick="showView('pagos')" title="Pagos">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/><path d="M6 15h4"/></svg>
+      <span class="nav-label">Pagos</span>
+    </div>
+    <div class="nav-item" data-view="fima" onclick="showView('fima')" title="FIMA">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v10M9 9.5c0-1.4 1.3-2.5 3-2.5s3 1 3 2.3c0 3-6 1.5-6 4.5 0 1.4 1.3 2.5 3 2.5s3-1 3-2.4"/></svg>
+      <span class="nav-label">FIMA</span>
+    </div>
+    <div class="nav-item" data-view="stock" onclick="showView('stock')" title="Stock">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7l9-4 9 4-9 4-9-4z"/><path d="M3 7v10l9 4 9-4V7"/><path d="M12 11v10"/></svg>
+      <span class="nav-label">Stock</span>
+    </div>
+    <div class="nav-item" data-view="resultados" onclick="showView('resultados')" title="Resultados">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 3h16v18H4z"/><path d="M4 9h16M4 15h16M10 3v18"/></svg>
+      <span class="nav-label">Resultados</span>
+    </div>
+  </nav>
+  <div class="sidebar-foot"><b>Mockup v0.3</b><br>Obras ahora presupuesta como el Excel: materiales, mano de obra por puesto, beneficio, impuestos e IVA — con importación de Excel.</div>
+</aside>
+<div class="sidebar-backdrop" id="sidebar-backdrop" onclick="closeMobileSidebar()"></div>
+
+<main>
+
+  <!-- ============ DASHBOARD ============ -->
+  <div class="view active" id="view-dashboard">
+    <div class="topbar">
+      <div><h1>Dashboard general</h1><div class="sub">Liquidez y resultado consolidado del negocio</div></div>
+    </div>
+    <div class="kpi-row" id="kpi-row"></div>
+    <div class="section-title"><h2>Obras</h2><span class="hint">Presupuestado vs. real acumulado</span></div>
+    <div class="card card-table"><table><thead><tr><th>Obra</th><th>Encargado</th><th style="min-width:170px;">Desvío costos</th><th>Estado</th><th></th></tr></thead><tbody id="obras-dashboard-body"></tbody></table></div>
+    <div class="section-title"><h2>Próximos vencimientos — pagos a plazo</h2><span class="hint">A pagar desde FIMA</span></div>
+    <div class="card card-table"><table><thead><tr><th>Fecha de pago</th><th>Obra</th><th>Concepto</th><th class="num">Monto</th><th>Estado</th></tr></thead><tbody id="vencimientos-body"></tbody></table></div>
+  </div>
+
+  <!-- ============ OBRA (lista + detalle) ============ -->
+  <div class="view" id="view-obra">
+
+    <div id="obra-sub-lista">
+      <div class="topbar">
+        <div><h1>Obras</h1><div class="sub">Listado de obras — filtrá por estado, fecha o buscá por nombre</div></div>
+        <div class="topbar-actions">
+          <input type="file" id="import-excel-input" accept=".xlsx" style="display:none" onchange="handleImportExcel(event)">
+          <button class="btn btn-ghost" onclick="document.getElementById('import-excel-input').click()">⇧ Importar Excel de obra</button>
+          <button class="btn btn-primary" onclick="openPresupuestoBuilder(null)">+ Nueva obra</button>
+        </div>
+      </div>
+      <div class="card" style="margin-bottom:16px;">
+        <div class="form-grid">
+          <div class="field span2"><label>Buscar</label><input id="obra-filter-q" placeholder="Código, cliente o encargado…" oninput="renderObraLista()"></div>
+          <div class="field"><label>Estado</label><select id="obra-filter-estado" onchange="renderObraLista()"><option value="todos">Todos</option><option value="borrador">Borrador</option><option value="en curso">En curso</option><option value="finalizada">Finalizada</option></select></div>
+          <div class="field"><label>Inicio desde</label><input id="obra-filter-desde" type="date" onchange="renderObraLista()"></div>
+          <div class="field"><label>Inicio hasta</label><input id="obra-filter-hasta" type="date" onchange="renderObraLista()"></div>
+        </div>
+      </div>
+      <div class="card card-table">
+        <table><thead><tr><th>Obra</th><th>Cliente / Encargado</th><th>Inicio</th><th>Estado</th><th style="min-width:150px;">Desvío costos</th><th></th></tr></thead>
+        <tbody id="obra-lista-body"></tbody></table>
+      </div>
+    </div>
+
+    <div id="obra-sub-detalle" class="hidden">
+      <div class="topbar">
+        <div>
+          <span class="link-btn" onclick="showObraSubview('lista')">← Volver al listado</span>
+          <h1 style="margin-top:8px;"><span class="obra-code" id="obra-picker-code">—</span></h1>
+        </div>
+        <div class="topbar-actions" id="obra-lifecycle-actions"></div>
+      </div>
+      <div id="obra-meta-row" style="display:flex;gap:22px;margin-bottom:20px;"></div>
+      <div id="obra-detail-content"></div>
+    </div>
+
+  </div>
+
+  <!-- ============ PRESUPUESTO BUILDER ============ -->
+  <div class="view" id="view-presupuesto">
+    <div class="topbar">
+      <div><h1 id="pb-title">Presupuestar obra</h1><div class="sub">Igual que la planilla: materiales, mano de obra, beneficio e impuestos → presupuesto final + IVA</div></div>
+      <div class="topbar-actions">
+        <input type="file" id="import-excel-input-2" accept=".xlsx" style="display:none" onchange="handleImportExcel(event)">
+        <button class="btn btn-ghost" onclick="document.getElementById('import-excel-input-2').click()">⇧ Importar Excel</button>
+        <button class="btn btn-ghost" onclick="showView('obra'); showObraSubview('lista');">Cancelar</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="form-grid">
+        <div class="field"><label>Código de obra</label><input id="pb-code" placeholder="Ej: X-563"></div>
+        <div class="field"><label>Cliente (opcional)</label><input id="pb-cliente" placeholder="Opcional — no está en la planilla actual"></div>
+        <div class="field"><label>Encargado</label><input id="pb-encargado" placeholder="Nombre"></div>
+        <div class="field"><label>Fecha de inicio</label><input id="pb-fecha" type="date"></div>
+        <div class="field"><label>Fecha de facturación (para IVA débito)</label><input id="pb-fecha-factura" type="date"></div>
+        <div class="field"><label>Cotización USD (referencia)</label><input id="pb-cotizacion" class="cell-input mono-in" type="number" value="1450" oninput="recomputeBuildTotals()"></div>
+      </div>
+    </div>
+
+    <div class="section-title"><h2>Materiales</h2><span class="hint" id="mp-subtotal">$ 0</span></div>
+    <div class="card card-table"><table><thead><tr><th style="width:46%;">Detalle</th><th class="num">Cantidad</th><th class="num">Unitario</th><th class="num">Total</th><th></th></tr></thead><tbody id="mp-items-body"></tbody></table>
+      <div style="padding:10px 12px;"><span class="link-btn" onclick="addItem('mp')">+ Agregar ítem</span></div></div>
+
+    <div class="section-title"><h2>Logística</h2><span class="hint" id="log-subtotal">$ 0</span></div>
+    <div class="card card-table"><table><thead><tr><th style="width:46%;">Detalle</th><th class="num">Cantidad</th><th class="num">Unitario</th><th class="num">Total</th><th></th></tr></thead><tbody id="log-items-body"></tbody></table>
+      <div style="padding:10px 12px;"><span class="link-btn" onclick="addItem('log')">+ Agregar ítem</span></div></div>
+
+    <div class="section-title"><h2>Estadía de obra</h2><span class="hint" id="est-subtotal">$ 0</span></div>
+    <div class="card card-table"><table><thead><tr><th style="width:46%;">Detalle</th><th class="num">Cantidad</th><th class="num">Unitario</th><th class="num">Total</th><th></th></tr></thead><tbody id="est-items-body"></tbody></table>
+      <div style="padding:10px 12px;"><span class="link-btn" onclick="addItem('est')">+ Agregar ítem</span></div></div>
+
+    <div class="section-title"><h2>Mano de obra</h2><span class="hint" id="mo-subtotal">$ 0</span></div>
+    <div class="card card-table">
+      <table><thead><tr><th>Puesto</th><th class="num">Salario/día</th><th class="num">Nº trabajadores</th><th class="num">Subtotal/día</th></tr></thead><tbody id="mo-roles-body"></tbody></table>
+      <div class="form-grid" style="padding:14px;"><div class="field"><label>Tiempo de obra (días)</label><input id="pb-dias" class="cell-input mono-in" type="number" value="0" oninput="recomputeBuildTotals()"></div></div>
+    </div>
+
+    <div class="section-title"><h2>Parámetros del presupuesto</h2></div>
+    <div class="card">
+      <div class="form-grid">
+        <div class="field"><label>Beneficio (factor sobre costos)</label><input id="pb-benef" class="cell-input mono-in" type="number" step="0.01" value="1.08" oninput="recomputeBuildTotals()"></div>
+        <div class="field"><label>Provincia (IIBB)</label>
+          <select id="pb-provincia" class="cell-input" onchange="recomputeBuildTotals()">
+            <option value="0.04">Córdoba (4%)</option><option value="0.05">Buenos Aires (5%)</option><option value="0.03">CABA (3%)</option>
+            <option value="0.035">Santa Fe (3.5%)</option><option value="0.04">Mendoza (4%)</option><option value="0.03">Santa Cruz (3%)</option><option value="0.025">Neuquén (2.5%)</option>
+          </select>
+        </div>
+        <div class="field"><label>Impuesto débito/crédito (%)</label><input id="pb-debcred" class="cell-input mono-in" type="number" step="0.01" value="0.6" oninput="recomputeBuildTotals()"></div>
+        <div class="field"><label>IVA (%)</label><input id="pb-iva" class="cell-input mono-in" type="number" step="0.5" value="21" oninput="recomputeBuildTotals()"></div>
+        <div class="field"><label>Descuento (%)</label><input id="pb-descuento" class="cell-input mono-in" type="number" step="0.5" value="0" oninput="recomputeBuildTotals()"></div>
+      </div>
+    </div>
+
+    <div class="section-title"><h2>Distribución de la ganancia</h2><span class="hint">Vendedor, socios y AQ</span></div>
+    <div class="card">
+      <div class="form-grid">
+        <div class="field"><label>% Comisión vendedor (s/ total facturado sin IVA)</label><input id="pb-vendedor-pct" class="cell-input mono-in" type="number" step="0.5" value="8" oninput="recomputeBuildTotals()"></div>
+        <div class="field"></div>
+        <div class="field"><label>Nombre socio 1</label><input id="pb-socio1-nombre" class="cell-input" value="AL" oninput="recomputeBuildTotals()"></div>
+        <div class="field"><label>% Socio 1 (s/ ganancia neta)</label><input id="pb-socio1-pct" class="cell-input mono-in" type="number" step="0.5" value="10" oninput="recomputeBuildTotals()"></div>
+        <div class="field"><label>Nombre socio 2</label><input id="pb-socio2-nombre" class="cell-input" value="JL" oninput="recomputeBuildTotals()"></div>
+        <div class="field"><label>% Socio 2 (s/ ganancia neta)</label><input id="pb-socio2-pct" class="cell-input mono-in" type="number" step="0.5" value="30" oninput="recomputeBuildTotals()"></div>
+      </div>
+      <div class="foot-note" style="margin-top:14px;">AQ (la empresa) se queda con el resto de la ganancia neta: 100% − % Socio 1 − % Socio 2.</div>
+    </div>
+
+    <div class="section-title"><h2>Resultado del presupuesto</h2></div>
+    <div class="card" id="pb-summary"></div>
+
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="showView('obra'); showObraSubview('lista');">Cancelar</button>
+      <button class="btn btn-primary" onclick="savePresupuesto()">Guardar presupuesto (borrador)</button>
+    </div>
+    <div class="foot-note"><b>Simplificado a propósito:</b> no incluí todavía la distribución interna de ganancia entre socios/vendedor (comisiones AQ/AL/JL) que vi en tu Excel — si la necesitás en el sistema, la sumamos.</div>
+  </div>
+
+  <!-- ============ JORNALES ============ -->
+  <div class="view" id="view-jornales">
+    <div class="topbar">
+      <div><h1>Jornales</h1><div class="sub">Asistencia semanal y pago de mano de obra por obra</div></div>
+      <div class="topbar-actions"><button class="btn btn-primary" onclick="openModalJornal()">+ Agregar jornal</button></div>
+    </div>
+    <div class="week-nav">
+      <button class="nav-arrow" onclick="changeWeek(-1)">‹</button>
+      <span class="week-label" id="current-week-label">Semana actual</span>
+      <button class="nav-arrow" onclick="changeWeek(1)">›</button>
+      <span class="link-btn" style="margin-left:6px;" onclick="goToCurrentWeek()">Ir a hoy</span>
+      <span style="margin-left:auto;" class="tag good" id="jornales-total-tag">Total semana: $ 0</span>
+      <button class="btn btn-dark btn-sm" onclick="pagarSemana()">Pagar jornales de la semana</button>
+    </div>
+    <div class="card card-table"><table>
+      <thead><tr><th>Personal</th><th>Obra</th><th>Puesto</th><th>L</th><th>M</th><th>M</th><th>J</th><th>V</th><th>S</th><th>D</th><th class="num">Días</th><th class="num">Jornal</th><th class="num">Extras</th><th class="num">Total</th><th>Estado</th><th></th></tr></thead>
+      <tbody id="jornales-body"></tbody>
+    </table></div>
+    <div class="foot-note"><b>Automatización propuesta:</b> al pagar la semana, el total se descuenta del Fondo Jornales (FIMA) y se suma a "Mano de obra" de cada obra correspondiente.</div>
+
+    <div class="section-title"><h2>Resumen por persona</h2><span class="hint">Sumado por período — desde/hasta</span></div>
+    <div class="card" style="margin-bottom:16px;">
+      <div class="form-grid">
+        <div class="field"><label>Desde</label><input id="jh-desde" type="date" onchange="renderJornalesHistorial()"></div>
+        <div class="field"><label>Hasta</label><input id="jh-hasta" type="date" onchange="renderJornalesHistorial()"></div>
+        <div class="field"><label>Personal</label><select id="jh-persona" onchange="renderJornalesHistorial()"><option value="todos">Todos</option></select></div>
+        <div class="field"></div>
+      </div>
+    </div>
+    <div class="card card-table"><table>
+      <thead><tr><th>Personal</th><th class="num">Jornales trabajados</th><th class="num">Días totales</th><th class="num">Extras</th><th class="num">Total</th></tr></thead>
+      <tbody id="jornales-historial-body"></tbody>
+    </table></div>
+  </div>
+
+  <!-- ============ FIMA ============ -->
+  <div class="view" id="view-fima">
+    <div class="topbar">
+      <div><h1>FIMA — Fondo común</h1><div class="sub">Fondos separados, movimientos y costos fijos fuera de obra</div></div>
+      <div class="topbar-actions"><button class="btn btn-primary" onclick="openModalMovimientoFima()">+ Registrar movimiento</button></div>
+    </div>
+    <div class="fund-grid" id="fund-grid"></div>
+    <div class="section-title"><h2>Movimientos</h2><span class="hint">Ingresos y egresos por fondo</span></div>
+    <div class="card card-table"><table><thead><tr><th>Fecha</th><th>Fondo</th><th>Obra</th><th>Concepto</th><th></th><th class="num">Monto</th></tr></thead><tbody id="movimientos-fima-body"></tbody></table></div>
+  </div>
+
+  <!-- ============ ÓRDENES DE COMPRA ============ -->
+  <div class="view" id="view-ordenes">
+    <div class="topbar">
+      <div><h1>Órdenes de compra</h1><div class="sub">Se cargan para pedir autorización antes de comprar</div></div>
+      <div class="topbar-actions"><button class="btn btn-primary" onclick="openModalOrdenCompra(null)">+ Nueva orden de compra</button></div>
+    </div>
+    <div class="section-title"><div class="filter-tabs">
+      <div class="filter-tab active" data-filter="pendiente" onclick="setOrdenesFilter('pendiente')">Pendientes</div>
+      <div class="filter-tab" data-filter="autorizada" onclick="setOrdenesFilter('autorizada')">Autorizadas</div>
+      <div class="filter-tab" data-filter="comprada" onclick="setOrdenesFilter('comprada')">Compradas</div>
+      <div class="filter-tab" data-filter="rechazada" onclick="setOrdenesFilter('rechazada')">Rechazadas</div>
+      <div class="filter-tab" data-filter="todas" onclick="setOrdenesFilter('todas')">Todas</div>
+    </div></div>
+    <div class="card card-table"><table>
+      <thead><tr><th>Nº OC</th><th>Fecha</th><th>Solicitante</th><th>Destino</th><th>Proveedor</th><th class="num">Monto estimado</th><th>Estado</th><th></th></tr></thead>
+      <tbody id="ordenes-body"></tbody>
+    </table></div>
+    <div class="foot-note"><b>Cómo funciona:</b> una orden autorizada todavía no impacta ningún gasto real — solo habilita a comprar. Recién cuando llega la factura y se marca "Comprada" (con nº de remito/factura real) se genera el pago y se suma al gasto real de la obra o al stock.</div>
+  </div>
+
+  <!-- ============ PAGOS ============ -->
+  <div class="view" id="view-pagos">
+    <div class="topbar">
+      <div><h1>Pagos</h1><div class="sub">Gastos fijos, gastos de obra e ingresos al fondo FIMA</div></div>
+      <div class="topbar-actions">
+        <button class="btn btn-ghost" onclick="openModalMovimientoFima()">+ Ingreso a FIMA</button>
+        <button class="btn btn-primary" onclick="openModalCompra(null)">+ Registrar pago</button>
+      </div>
+    </div>
+    <div class="section-title"><div class="filter-tabs">
+      <div class="filter-tab active" data-filter="todos" onclick="setPagosFilter('todos')">Todos</div>
+      <div class="filter-tab" data-filter="fijo" onclick="setPagosFilter('fijo')">Gastos fijos</div>
+      <div class="filter-tab" data-filter="obra" onclick="setPagosFilter('obra')">Vinculados a obra</div>
+      <div class="filter-tab" data-filter="stock" onclick="setPagosFilter('stock')">Reposición de stock</div>
+      <div class="filter-tab" data-filter="fima" onclick="setPagosFilter('fima')">Ingresos a FIMA</div>
+      <div class="filter-tab" data-filter="proveedores" onclick="setPagosFilter('proveedores')">Proveedores</div>
+    </div></div>
+    <div class="card card-table" id="pagos-table-egresos"><table>
+      <thead><tr><th>Obra / destino</th><th>Concepto</th><th>Proveedor / factura</th><th class="num">Monto</th><th class="num">Saldo</th><th>Fecha de pago</th><th>Estado</th><th></th></tr></thead>
+      <tbody id="pagos-body"></tbody>
+    </table></div>
+    <div class="card card-table hidden" id="pagos-table-fima"><table>
+      <thead><tr><th>Fecha</th><th>Fondo destino (objetivo)</th><th>Concepto</th><th class="num">Monto</th></tr></thead>
+      <tbody id="pagos-fima-body"></tbody>
+    </table></div>
+    <div class="hidden" id="pagos-table-proveedores">
+      <div class="card card-table"><table>
+        <thead><tr><th>Proveedor</th><th class="num">Facturas pendientes</th><th class="num">Total adeudado</th><th></th></tr></thead>
+        <tbody id="proveedores-body"></tbody>
+      </table></div>
+    </div>
+    <div class="hidden" id="pagos-table-proveedor-detalle">
+      <span class="link-btn" onclick="setPagosFilter('proveedores')">← Volver a proveedores</span>
+      <div class="topbar" style="margin-top:10px;">
+        <div><h1 id="proveedor-detalle-nombre" style="font-size:18px;">—</h1><div class="sub">Total adeudado: <b id="proveedor-detalle-deuda" class="mono">$ 0</b></div></div>
+        <div class="topbar-actions"><button class="btn btn-primary" onclick="openModalPagoProveedor()">+ Registrar pago</button></div>
+      </div>
+      <div class="card card-table"><table>
+        <thead><tr><th>Factura</th><th>Concepto</th><th>Destino</th><th class="num">Monto</th><th class="num">Pagado</th><th class="num">Saldo</th><th>Estado</th></tr></thead>
+        <tbody id="proveedor-detalle-body"></tbody>
+      </table></div>
+    </div>
+  </div>
+
+  <!-- ============ STOCK ============ -->
+  <div class="view" id="view-stock">
+    <div class="topbar">
+      <div><h1>Stock</h1><div class="sub">Materiales que se guardan en depósito, no atados a una obra puntual</div></div>
+      <div class="topbar-actions">
+        <button class="btn btn-ghost" onclick="openModalStockItem()">+ Agregar material</button>
+        <button class="btn btn-primary" onclick="openModalStockCompra()">+ Registrar compra de stock</button>
+      </div>
+    </div>
+
+    <div class="section-title"><h2>Materiales en stock</h2><span class="hint">Cantidad y último costo</span></div>
+    <div class="card" style="margin-bottom:16px;">
+      <div class="form-grid">
+        <div class="field span2"><label>Buscar material</label><input id="stock-filter-q" placeholder="Nombre del material…" oninput="renderStock()"></div>
+      </div>
+    </div>
+    <div class="card card-table"><table>
+      <thead><tr><th>Material</th><th>Unidad</th><th class="num">Stock actual</th><th class="num">Último costo unitario</th><th class="num">Valor total</th></tr></thead>
+      <tbody id="stock-body"></tbody>
+      <tfoot><tr class="subtotal-row"><td colspan="4">Valor total del stock</td><td class="num" id="stock-valor-total">$ 0</td></tr></tfoot>
+    </table></div>
+
+    <div class="section-title"><h2>Movimientos de stock</h2><span class="hint">Compras (entradas) y consumo por obra (salidas)</span></div>
+    <div class="card" style="margin-bottom:16px;">
+      <div class="form-grid">
+        <div class="field span2"><label>Filtrar por material</label><select id="stock-mov-material" onchange="renderStock()"><option value="todos">Todos los materiales</option></select></div>
+      </div>
+    </div>
+    <div class="card card-table"><table>
+      <thead><tr><th>Fecha</th><th>Tipo</th><th>Material</th><th class="num">Cantidad</th><th>Obra</th><th class="num">Monto</th></tr></thead>
+      <tbody id="stock-mov-body"></tbody>
+    </table></div>
+
+    <div class="foot-note"><b>Cómo funciona:</b> una compra de stock suma cantidad acá y además genera un pago (según se marque pagado o no) que vas a ver reflejado en Pagos. Cuando en una obra se registra un material marcando "Utilizado de stock", se resta la cantidad de acá y se suma el costo a esa obra — pero <b>no</b> se genera un pago nuevo, porque ya se pagó al comprarlo para stock. El costo usado es el del último precio de compra registrado para ese material.</div>
+  </div>
+
+  <!-- ============ RESULTADOS ============ -->
+  <div class="view" id="view-resultados">
+    <div class="topbar">
+      <div><h1>Resultados</h1><div class="sub">Mayor mensual — ingresos y egresos efectivamente pagados</div></div>
+      <div class="topbar-actions"><select id="res-mes" class="cell-input" onchange="renderResultados()"></select></div>
+    </div>
+
+    <div class="kpi-row" id="res-kpi-row"></div>
+
+    <div class="section-title"><h2>Ingresos del mes</h2><span class="hint">Cobros registrados en obras</span></div>
+    <div class="card card-table"><table>
+      <thead><tr><th>Fecha</th><th>Obra</th><th>Medio de pago</th><th class="num">Monto</th></tr></thead>
+      <tbody id="res-ingresos-body"></tbody>
+    </table></div>
+
+    <div class="section-title"><h2>Egresos del mes</h2><span class="hint">Solo lo que tiene fecha de pago en el mes — no incluye pendientes</span></div>
+    <div class="card card-table"><table>
+      <thead><tr><th>Fecha</th><th>Categoría</th><th>Destino</th><th>Concepto</th><th class="num">Monto</th></tr></thead>
+      <tbody id="res-egresos-body"></tbody>
+    </table></div>
+
+    <div class="section-title"><h2>Egresos por categoría</h2><span class="hint">Del mismo mes</span></div>
+    <div class="card" id="res-chart-egresos"></div>
+
+    <div class="section-title"><h2>Aportes a FIMA (inversiones)</h2><span class="hint">No se cuentan como gasto ni como ingreso del negocio</span></div>
+    <div class="card card-table"><table>
+      <thead><tr><th>Fecha</th><th>Fondo</th><th>Concepto</th><th class="num">Monto</th></tr></thead>
+      <tbody id="res-fima-body"></tbody>
+    </table></div>
+
+    <div class="section-title"><h2>Pendientes con vencimiento este mes</h2><span class="hint">Aún no pagados — no impactan el resultado todavía</span></div>
+    <div class="card card-table"><table>
+      <thead><tr><th>Fecha de pago</th><th>Destino</th><th>Concepto</th><th class="num">Monto</th></tr></thead>
+      <tbody id="res-pendientes-body"></tbody>
+    </table></div>
+
+    <div class="section-title"><h2>Pendientes de cobro</h2><span class="hint">Facturado vs. cobrado, todas las obras</span></div>
+    <div class="card card-table"><table>
+      <thead><tr><th>Obra</th><th class="num">Facturado</th><th class="num">Cobrado</th><th class="num">Saldo pendiente</th></tr></thead>
+      <tbody id="res-cobros-pendientes-body"></tbody>
+    </table></div>
+
+    <div class="foot-note"><b>Cómo se arma:</b> los ingresos son los cobros cargados en cada obra. Los egresos incluyen compras/gastos de obra y gastos fijos ya pagados (con fecha de pago dentro del mes), más los jornales pagados esa semana — tomados desde los movimientos de FIMA para no duplicar lo que ya se ve en la hoja de Jornales. Los aportes a FIMA se muestran aparte porque son un movimiento interno de ahorro, no un gasto real del negocio.</div>
+
+    <div class="section-title"><h2>Reporte de IVA del mes</h2><span class="hint">Por fecha de factura, no de pago/cobro</span></div>
+    <div class="kpi-row" id="iva-kpi-row"></div>
+    <div class="section-title"><h2>IVA débito fiscal (ventas)</h2><span class="hint">Facturas de obra emitidas este mes</span></div>
+    <div class="card card-table"><table>
+      <thead><tr><th>Fecha factura</th><th>Obra</th><th class="num">Monto sin IVA</th><th class="num">IVA</th><th class="num">Total</th></tr></thead>
+      <tbody id="iva-debito-body"></tbody>
+    </table></div>
+    <div class="section-title"><h2>IVA crédito fiscal (compras)</h2><span class="hint">Facturas de proveedores emitidas este mes</span></div>
+    <div class="card card-table"><table>
+      <thead><tr><th>Fecha factura</th><th>Proveedor</th><th>Concepto</th><th class="num">Monto sin IVA</th><th class="num">IVA</th><th class="num">Total</th></tr></thead>
+      <tbody id="iva-credito-body"></tbody>
+    </table></div>
+    <div class="foot-note"><b>Cómo se arma:</b> a diferencia del mayor de arriba, el IVA se calcula por <b>fecha de factura</b> (cuándo se emitió), no por cuándo se cobró o se pagó — así coincide con lo que declararías ante AFIP. Solo entran las compras marcadas "Aplica IVA". Los materiales usados desde stock no se cuentan de nuevo: su IVA ya quedó registrado cuando se compró ese stock.</div>
+  </div>
+
+
+</main>
+
+<div class="overlay" id="overlay"><div class="modal" id="modal-content"></div></div>
+
+<script>
+/* ======================= STATE ======================= */
+const catLabel = {materiaPrima:'Materiales', manoObra:'Mano de obra', logistica:'Logística', estadia:'Estadía de obra', otros:'Otros no previstos', stock:'Reposición de stock'};
+const fondoLabel = {jornales:'Fondo Jornales', costosFijos:'Costos Fijos', emergencias:'Emergencias', inversiones:'Inversiones'};
+const fmt = (n)=> '$ ' + Math.round(n||0).toLocaleString('es-AR');
+const today = ()=> new Date().toISOString().slice(0,10);
+let idCounter = 200;
+const newId = (p)=> p+(idCounter++);
+
+let state = {
+  fondos: { jornales: 8240000, costosFijos: 12100000, emergencias: 5500000, inversiones: 15440000 },
+  caja: 3440000,
+  obras: [
+    { id:'o1', code:'X-669', cliente:'TGS Cerri', encargado:'Julio', fechaInicio:'2026-06-02', estado:'en curso',
+      presupuesto:{materiaPrima:14600000, manoObra:6000000, logistica:900000, estadia:700000},
+      presupuestoDetalle:{ivaPct:21, vendedorPct:5, socio1Nombre:'AL', socio1Pct:10, socio2Nombre:'JL', socio2Pct:30},
+      presupuestoResumen:{costos:22200000, beneficio:1776000, impuestos:1200000, subtotalPresupuesto:25176000, descuento:0, totalPresupuesto:25176000, iva:5286960, totalConIva:30462960,
+        comisionVendedor:1325053, gananciaNeta:450947, socio1Monto:45095, socio2Monto:135284, aqMonto:270568},
+      real:{materiaPrima:12800000, manoObra:6700000, logistica:600000, estadia:380000, otros:540000},
+      ingresos:{facturado:30462960, cobrado:19900000}, ingresosList:[{fecha:'2026-07-10', monto:19900000, medioPago:'Transferencia'}],
+      facturasVenta:[{id:'fv1', fecha:'2026-06-02', montoSinIva:25176000, iva:5286960, monto:30462960}] },
+    { id:'o2', code:'TGS', cliente:'TGS Gasoducto Sur', encargado:'Pablo', fechaInicio:'2026-05-10', estado:'en curso',
+      presupuesto:{materiaPrima:9000000, manoObra:5200000, logistica:600000, estadia:300000},
+      presupuestoDetalle:{ivaPct:21, vendedorPct:5, socio1Nombre:'AL', socio1Pct:10, socio2Nombre:'JL', socio2Pct:30},
+      presupuestoResumen:{costos:15100000, beneficio:1208000, impuestos:820000, subtotalPresupuesto:17128000, descuento:0, totalPresupuesto:17128000, iva:3596880, totalConIva:20724880,
+        comisionVendedor:901474, gananciaNeta:306526, socio1Monto:30653, socio2Monto:91958, aqMonto:183915},
+      real:{materiaPrima:6200000, manoObra:4300000, logistica:400000, estadia:200000, otros:0},
+      ingresos:{facturado:20724880, cobrado:9000000}, ingresosList:[{fecha:'2026-06-15', monto:9000000, medioPago:'Transferencia'}],
+      facturasVenta:[{id:'fv2', fecha:'2026-05-10', montoSinIva:17128000, iva:3596880, monto:20724880}] },
+    { id:'o3', code:'AQ-104', cliente:'Refinería Dock Sud', encargado:'Rulo', fechaInicio:'2026-04-20', estado:'en curso',
+      presupuesto:{materiaPrima:7000000, manoObra:3800000, logistica:500000, estadia:200000},
+      presupuestoDetalle:{ivaPct:21, vendedorPct:5, socio1Nombre:'AL', socio1Pct:10, socio2Nombre:'JL', socio2Pct:30},
+      presupuestoResumen:{costos:11500000, beneficio:920000, impuestos:610000, subtotalPresupuesto:13030000, descuento:0, totalPresupuesto:13030000, iva:2736300, totalConIva:15766300,
+        comisionVendedor:685790, gananciaNeta:234210, socio1Monto:23421, socio2Monto:70263, aqMonto:140526},
+      real:{materiaPrima:8100000, manoObra:4600000, logistica:600000, estadia:300000, otros:300000},
+      ingresos:{facturado:15766300, cobrado:13800000}, ingresosList:[{fecha:'2026-07-20', monto:13800000, medioPago:'Transferencia'}],
+      facturasVenta:[{id:'fv3', fecha:'2026-04-20', montoSinIva:13030000, iva:2736300, monto:15766300}] },
+  ],
+  jornales: [
+    {id:'j1', nombre:'Juan', obraId:'o1', puesto:'Trazador', semanaInicio:'2026-07-27', dias:[1,1,1,1,1,0,0], jornal:38000, extra:0, pagado:false},
+    {id:'j2', nombre:'Axel', obraId:'o1', puesto:'Montador', semanaInicio:'2026-07-27', dias:[1,1,1,1,1,0,0], jornal:34000, extra:6000, pagado:false},
+    {id:'j3', nombre:'Rulo', obraId:'o3', puesto:'Lanero', semanaInicio:'2026-07-27', dias:[1,1,0,1,1,0,0], jornal:30000, extra:0, pagado:false},
+    {id:'j4', nombre:'Roberto', obraId:'o2', puesto:'Montador', semanaInicio:'2026-07-27', dias:[1,1,1,1,1,1,0], jornal:34000, extra:0, pagado:false},
+    {id:'j5', nombre:'Juan', obraId:'o1', puesto:'Trazador', semanaInicio:'2026-07-20', dias:[1,1,1,1,1,0,0], jornal:38000, extra:0, pagado:true},
+    {id:'j6', nombre:'Juan', obraId:'o1', puesto:'Trazador', semanaInicio:'2026-07-13', dias:[1,1,1,1,0,0,0], jornal:38000, extra:15000, pagado:true},
+    {id:'j7', nombre:'Juan', obraId:'o2', puesto:'Trazador', semanaInicio:'2026-07-06', dias:[1,1,1,1,1,0,0], jornal:38000, extra:0, pagado:true},
+    {id:'j8', nombre:'Juan', obraId:'o1', puesto:'Trazador', semanaInicio:'2026-06-29', dias:[1,1,1,0,1,0,0], jornal:38000, extra:0, pagado:true},
+    {id:'j9', nombre:'Axel', obraId:'o1', puesto:'Montador', semanaInicio:'2026-07-20', dias:[1,1,1,1,1,0,0], jornal:34000, extra:0, pagado:true},
+    {id:'j10', nombre:'Axel', obraId:'o2', puesto:'Montador', semanaInicio:'2026-07-13', dias:[1,1,1,1,1,0,0], jornal:34000, extra:8000, pagado:true},
+    {id:'j11', nombre:'Axel', obraId:'o1', puesto:'Montador', semanaInicio:'2026-07-06', dias:[1,1,0,1,1,0,0], jornal:34000, extra:0, pagado:true},
+    {id:'j12', nombre:'Rulo', obraId:'o3', puesto:'Lanero', semanaInicio:'2026-07-20', dias:[1,1,1,1,1,0,0], jornal:30000, extra:0, pagado:true},
+    {id:'j13', nombre:'Rulo', obraId:'o3', puesto:'Lanero', semanaInicio:'2026-07-13', dias:[1,0,1,1,1,0,0], jornal:30000, extra:5000, pagado:true},
+    {id:'j14', nombre:'Roberto', obraId:'o2', puesto:'Montador', semanaInicio:'2026-07-20', dias:[1,1,1,1,1,0,0], jornal:34000, extra:0, pagado:true},
+    {id:'j15', nombre:'Roberto', obraId:'o2', puesto:'Montador', semanaInicio:'2026-07-13', dias:[1,1,1,1,1,1,0], jornal:34000, extra:12000, pagado:true},
+    {id:'j16', nombre:'Pablo', obraId:'o2', puesto:'Montador', semanaInicio:'2026-07-13', dias:[1,1,1,1,0,0,0], jornal:32000, extra:0, pagado:true},
+    {id:'j17', nombre:'Pablo', obraId:'o2', puesto:'Montador', semanaInicio:'2026-06-29', dias:[1,1,1,1,1,0,0], jornal:32000, extra:0, pagado:true},
+  ],
+  movimientosFima: [
+    {fecha:'2026-04-24', fondo:'jornales', obraId:'o1', concepto:'Mark IVA', tipo:'in', monto:200000},
+    {fecha:'2026-06-30', fondo:'costosFijos', obraId:null, concepto:'Alquiler depósito', tipo:'out', monto:1350000},
+    {fecha:'2026-07-08', fondo:'emergencias', obraId:'o3', concepto:'Reparación vehículo', tipo:'out', monto:620000},
+  ],
+  pagos: [
+    {id:'p1', tipo:'obra', obraId:'o1', categoria:'materiaPrima', concepto:'Lana de vidrio 50mm', cantidad:1, unitario:4200000, ivaAplica:true, monto:5082000, proveedorId:'pr1', numeroFactura:'0001-00004521', fechaFactura:'2026-07-24', formaPago:'A definir', fechaPago:null, pagosRealizados:[]},
+    {id:'p2', tipo:'obra', obraId:'o1', categoria:'materiaPrima', concepto:'Chapa lisa galvanizada', cantidad:1, unitario:5100000, ivaAplica:false, monto:5100000, proveedorId:'pr2', numeroFactura:'0002-00001187', fechaFactura:'2026-06-30', formaPago:'Transferencia', fechaPago:'2026-06-30', pagosRealizados:[{fecha:'2026-06-30', monto:5100000, fondo:'costosFijos', formaPago:'Transferencia'}]},
+    {id:'p3', tipo:'fijo', obraId:null, categoria:'costosFijos', concepto:'IIBB (Ingresos Brutos)', cantidad:1, unitario:780000, ivaAplica:false, monto:780000, proveedorId:'pr4', numeroFactura:'AFIP-072026', fechaFactura:'2026-08-01', formaPago:'A definir', fechaPago:'2026-08-15', pagosRealizados:[]},
+    {id:'p4', tipo:'fijo', obraId:null, categoria:'costosFijos', concepto:'Sueldos administración', cantidad:1, unitario:2100000, ivaAplica:false, monto:2100000, proveedorId:'pr5', numeroFactura:'RRHH-08-2026', fechaFactura:'2026-08-01', formaPago:'Transferencia', fechaPago:'2026-08-01', pagosRealizados:[{fecha:'2026-08-01', monto:2100000, fondo:'costosFijos', formaPago:'Transferencia'}]},
+  ],
+  proveedores: [
+    {id:'pr1', nombre:'Isolan SA'},
+    {id:'pr2', nombre:'Metalúrgica Cruz'},
+    {id:'pr3', nombre:'Bulonera Sur'},
+    {id:'pr4', nombre:'AFIP'},
+    {id:'pr5', nombre:'Administración interna'},
+  ],
+  stock: [
+    {id:'s1', nombre:'Lana de vidrio 50mm', unidad:'m2', cantidad:180, costoUnitario:14000},
+    {id:'s2', nombre:'Chapa lisa galvanizada', unidad:'m2', cantidad:60, costoUnitario:17000},
+    {id:'s3', nombre:'Barrera de vapor', unidad:'rollo', cantidad:12, costoUnitario:45000},
+    {id:'s4', nombre:'Fijaciones y flejes', unidad:'caja', cantidad:25, costoUnitario:8500},
+  ],
+  stockMovimientos: [
+    {id:'sm1', fecha:'2026-06-15', tipo:'compra', stockId:'s1', cantidad:200, obraId:null, monto:2800000},
+    {id:'sm2', fecha:'2026-07-05', tipo:'consumo', stockId:'s1', cantidad:20, obraId:'o2', monto:280000},
+  ],
+  selectedObraId:'o1',
+  ordenesCompra: [
+    {id:'oc1', numero:'OC-0001', fecha:'2026-08-01', solicitante:'Julio', tipo:'obra', obraId:'o1', categoria:'materiaPrima', stockNombre:null, concepto:'Fijaciones y flejes adicionales', cantidad:5, unitario:8500, monto:42500, proveedorId:'pr3', estado:'pendiente', comentarioDueno:null, pagoId:null},
+    {id:'oc2', numero:'OC-0002', fecha:'2026-07-28', solicitante:'Rulo', tipo:'stock', obraId:null, categoria:null, stockNombre:'Barrera de vapor', concepto:'Reposición barrera de vapor', cantidad:10, unitario:46000, monto:460000, proveedorId:'pr1', estado:'autorizada', comentarioDueno:null, pagoId:null},
+  ],
+  ordenesFilter:'pendiente',
+  selectedProveedorId:null,
+  pagosFilter:'todos',
+};
+const getObra = (id)=> state.obras.find(o=>o.id===id);
+const getProveedor = (id)=> state.proveedores.find(p=>p.id===id);
+const pagoMontoPagado = (p)=> (p.pagosRealizados||[]).reduce((a,x)=>a+x.monto,0);
+const pagoSaldo = (p)=> Math.max(0, p.monto - pagoMontoPagado(p));
+const pagoEstado = (p)=>{
+  const pagado = pagoMontoPagado(p);
+  if(pagado >= p.monto && p.monto>0) return 'pagado';
+  if(pagado > 0) return 'parcial';
+  return p.fechaPago ? 'pendiente' : 'sin_fecha';
+};
+const obraRealTotal = (o)=> o.real.materiaPrima+o.real.manoObra+o.real.logistica+o.real.estadia+o.real.otros;
+const obraPresTotal = (o)=> o.presupuesto.materiaPrima+o.presupuesto.manoObra+o.presupuesto.logistica+o.presupuesto.estadia;
+const liquidezTotal = ()=> state.caja + Object.values(state.fondos).reduce((a,b)=>a+b,0);
+
+/* ======================= NAV ======================= */
+function toggleSidebar(){
+  const sb = document.getElementById('sidebar');
+  if(window.innerWidth <= 860){
+    sb.classList.toggle('mobile-open');
+    document.getElementById('sidebar-backdrop').classList.toggle('show', sb.classList.contains('mobile-open'));
+  } else {
+    sb.classList.toggle('collapsed');
+  }
+}
+function closeMobileSidebar(){
+  document.getElementById('sidebar').classList.remove('mobile-open');
+  document.getElementById('sidebar-backdrop').classList.remove('show');
+}
+function showView(name){
+  document.querySelectorAll('.nav-item').forEach(i=>i.classList.toggle('active', i.dataset.view===name || (name==='presupuesto' && i.dataset.view==='obra')));
+  document.querySelectorAll('.view').forEach(v=>v.classList.toggle('active', v.id==='view-'+name));
+  if(window.innerWidth <= 860) closeMobileSidebar();
+}
+function goToObra(id){ state.selectedObraId = id; showView('obra'); showObraSubview('detalle'); renderObraDetail(); }
+function showObraSubview(which){
+  document.getElementById('obra-sub-lista').classList.toggle('hidden', which!=='lista');
+  document.getElementById('obra-sub-detalle').classList.toggle('hidden', which!=='detalle');
+  if(which==='lista') renderObraLista();
+}
+function renderObraLista(){
+  const q = (document.getElementById('obra-filter-q')?.value||'').toLowerCase();
+  const estadoF = document.getElementById('obra-filter-estado')?.value||'todos';
+  const desde = document.getElementById('obra-filter-desde')?.value||'';
+  const hasta = document.getElementById('obra-filter-hasta')?.value||'';
+  const rows = state.obras.filter(o=>{
+    if(estadoF!=='todos' && o.estado!==estadoF) return false;
+    if(desde && o.fechaInicio < desde) return false;
+    if(hasta && o.fechaInicio > hasta) return false;
+    if(q && !(o.code.toLowerCase().includes(q) || (o.cliente||'').toLowerCase().includes(q) || (o.encargado||'').toLowerCase().includes(q))) return false;
+    return true;
+  });
+  document.getElementById('obra-lista-body').innerHTML = rows.length ? rows.map(o=>{
+    const pres=obraPresTotal(o), real=obraRealTotal(o);
+    const pct = pres>0? Math.round(real/pres*100) : (real>0?100:0);
+    const fillClass = pct>105?'bad':(pct>=90?'warn':'good');
+    return `<tr style="cursor:pointer;" onclick="goToObra('${o.id}')">
+      <td><span class="obra-code">${o.code}</span></td>
+      <td>${o.cliente? o.cliente+' · ':''}${o.encargado}</td>
+      <td class="mono">${o.fechaInicio}</td>
+      <td><span class="estado-dot ${fillClass}"></span>${o.estado}</td>
+      <td><div class="layerbar-wrap"><div class="layerbar"><div class="fill ${fillClass}" style="width:${Math.min(pct,100)}%;"></div></div><div class="layerbar-labels"><span>${pct}%</span></div></div></td>
+      <td><span class="link-btn">Ver detalle →</span></td>
+    </tr>`;
+  }).join('') : `<tr class="empty-row"><td colspan="6">No hay obras que coincidan con el filtro</td></tr>`;
+}
+
+/* ======================= RENDER: DASHBOARD ======================= */
+function renderDashboard(){
+  const gananciaProy = state.obras.reduce((a,o)=> a + ((o.presupuestoResumen.beneficio||0) - (o.presupuestoResumen.descuento||0)), 0);
+  const gananciaReal = state.obras.reduce((a,o)=> a + (o.ingresos.cobrado - obraRealTotal(o)), 0);
+  const pendientes = state.pagos.filter(p=>pagoEstado(p)!=='pagado');
+  const pendientesTotal = pendientes.reduce((a,p)=>a+pagoSaldo(p),0);
+  document.getElementById('kpi-row').innerHTML = `
+    <div class="card kpi"><div class="kpi-label">Liquidez disponible</div><div class="kpi-value">${fmt(liquidezTotal())}</div><div class="kpi-note">Caja + saldos FIMA</div></div>
+    <div class="card kpi"><div class="kpi-label">Ganancia real acumulada</div><div class="kpi-value">${fmt(gananciaReal)}</div><div class="kpi-note">Proyectada ${fmt(gananciaProy)}</div></div>
+    <div class="card kpi"><div class="kpi-label">Obras activas</div><div class="kpi-value">${state.obras.filter(o=>o.estado==='en curso').length}</div><div class="kpi-note">${state.obras.filter(o=>obraRealTotal(o)>obraPresTotal(o)).length} por encima del presupuesto</div></div>
+    <div class="card kpi"><div class="kpi-label">Pagos pendientes <span class="tag warn">${pendientes.length}</span></div><div class="kpi-value">${fmt(pendientesTotal)}</div><div class="kpi-note">${pendientes[0]? (pendientes[0].fechaPago||'sin fecha asignada') : 'Sin pendientes'}</div></div>
+  `;
+  document.getElementById('obras-dashboard-body').innerHTML = state.obras.map(o=>{
+    const pres = obraPresTotal(o), real = obraRealTotal(o);
+    const pct = pres>0? Math.round(real/pres*100) : (real>0?100:0);
+    const fillClass = pct>105?'bad':(pct>=90?'warn':'good');
+    return `<tr><td><span class="obra-code">${o.code}</span></td><td>${o.encargado}</td>
+      <td><div class="layerbar-wrap"><div class="layerbar"><div class="fill ${fillClass}" style="width:${Math.min(pct,100)}%;"></div></div><div class="layerbar-labels"><span>${pct}%</span></div></div></td>
+      <td><span class="estado-dot ${fillClass}"></span>${o.estado}</td><td><span class="link-btn" onclick="goToObra('${o.id}')">Ver detalle →</span></td></tr>`;
+  }).join('') || `<tr class="empty-row"><td colspan="5">No hay obras cargadas</td></tr>`;
+  const pend = state.pagos.filter(p=>pagoEstado(p)==='pendiente'||pagoEstado(p)==='parcial').sort((a,b)=>(a.fechaPago||'').localeCompare(b.fechaPago||''));
+  document.getElementById('vencimientos-body').innerHTML = pend.length ? pend.map(p=>`<tr><td class="mono">${p.fechaPago}</td><td>${p.obraId?`<span class="obra-code">${getObra(p.obraId).code}</span>`:'—'}</td><td>${p.concepto}${pagoEstado(p)==='parcial'?' <span class="tag warn">parcial</span>':''}</td><td class="num">${fmt(pagoSaldo(p))}</td><td><span class="tag warn">Pendiente</span></td></tr>`).join('') : `<tr class="empty-row"><td colspan="5">No hay pagos con fecha pendiente</td></tr>`;
+}
+
+/* ======================= RENDER: OBRA ======================= */
+function renderObraDetail(){
+  if(!state.obras.length){ document.getElementById('obra-detail-content').innerHTML = `<div class="foot-note">Todavía no hay obras. Usá "+ Nueva obra" o importá un Excel.</div>`; document.getElementById('obra-picker-code').textContent='—'; document.getElementById('obra-meta-row').innerHTML=''; document.getElementById('obra-lifecycle-actions').innerHTML=''; return; }
+  const o = getObra(state.selectedObraId) || state.obras[0];
+  document.getElementById('obra-picker-code').textContent = o.code;
+  document.getElementById('obra-meta-row').innerHTML = `
+    <div class="obra-meta-item"><div class="m-label">Encargado</div><div class="m-value">${o.encargado}</div></div>
+    <div class="obra-meta-item"><div class="m-label">Inicio</div><div class="m-value">${o.fechaInicio}</div></div>
+    <div class="obra-meta-item"><div class="m-label">Estado</div><div class="m-value" style="color:${o.estado==='borrador'?'var(--muted)':o.estado==='finalizada'?'var(--good)':'var(--warn)'};">${o.estado}</div></div>`;
+  const actions = document.getElementById('obra-lifecycle-actions'); actions.innerHTML='';
+  if(o.estado==='borrador') actions.innerHTML = `<button class="btn btn-ghost btn-sm" onclick="openPresupuestoBuilder('${o.id}')">Editar presupuesto</button><button class="btn btn-dark btn-sm" onclick="iniciarObra('${o.id}')">Iniciar obra</button>`;
+  if(o.estado==='en curso') actions.innerHTML = `<button class="btn btn-ghost btn-sm" onclick="openPresupuestoBuilder('${o.id}')">Editar presupuesto</button><button class="btn btn-ghost btn-sm" onclick="finalizarObra('${o.id}')">Finalizar obra</button>`;
+  if(o.estado==='finalizada') actions.innerHTML = `<button class="btn btn-ghost btn-sm" onclick="openPresupuestoBuilder('${o.id}')">Editar presupuesto</button>`;
+
+  const cats = [['materiaPrima','M'],['manoObra','MO'],['logistica','L'],['estadia','E']];
+  const catCards = cats.map(([key,icon])=>{
+    const pres = o.presupuesto[key], real = o.real[key];
+    const pct = pres>0? Math.round(real/pres*100) : (real>0?100:0);
+    const fillClass = pct>105?'bad':(pct>=90?'warn':'good');
+    return `<div class="card cat-card"><div class="cat-name"><div class="cat-icon">${icon}</div>${catLabel[key]}</div>
+      <div class="layerbar-wrap"><div class="layerbar"><div class="fill ${fillClass}" style="width:${Math.min(pct,100)}%;"></div></div><div class="layerbar-labels"><span>${pct}%</span><span>${fmt(real)} / ${fmt(pres)}</span></div></div></div>`;
+  }).join('') + `<div class="card cat-card"><div class="cat-name"><div class="cat-icon">+</div>Otros no previstos</div>
+      <div class="layerbar-wrap"><div class="layerbar"><div class="fill ${o.real.otros>0?'bad':'good'}" style="width:${o.real.otros>0?100:0}%;"></div></div><div class="layerbar-labels"><span>sin presupuesto</span><span>${fmt(o.real.otros)}</span></div></div></div>`;
+
+  const cobradoPct = o.ingresos.facturado>0? Math.round(o.ingresos.cobrado/o.ingresos.facturado*100):0;
+  const realTotal = obraRealTotal(o);
+  const resultReal = o.ingresos.cobrado - realTotal;
+  const resultProy = (o.presupuestoResumen.beneficio||0) - (o.presupuestoResumen.descuento||0);
+
+  const pd = o.presupuestoDetalle || {};
+  const ivaPct = pd.ivaPct ?? 21;
+  const vendedorPct = pd.vendedorPct ?? 0;
+  const socio1Nombre = pd.socio1Nombre || 'Socio 1', socio1Pct = pd.socio1Pct ?? 0;
+  const socio2Nombre = pd.socio2Nombre || 'Socio 2', socio2Pct = pd.socio2Pct ?? 0;
+  const facturadoSinIvaReal = o.ingresos.cobrado / (1+ivaPct/100);
+  const comisionVendedorReal = (vendedorPct>=100) ? 0 : facturadoSinIvaReal*(vendedorPct/100)/(1-(vendedorPct/100));
+  const gananciaNetaReal = resultReal - comisionVendedorReal;
+  const socio1Real = gananciaNetaReal*socio1Pct/100, socio2Real = gananciaNetaReal*socio2Pct/100, aqReal = gananciaNetaReal-socio1Real-socio2Real;
+  const pr = o.presupuestoResumen;
+  const diffRow = (label,pres,real)=>`<tr><td>${label}</td><td class="num">${fmt(pres)}</td><td class="num">${fmt(real)}</td><td class="num" style="color:${real-pres>0?'var(--bad)':'var(--good)'};">${real-pres>=0?'+':''}${fmt(real-pres)}</td></tr>`;
+
+  document.getElementById('obra-detail-content').innerHTML = `
+    <div class="section-title"><h2>Costos por categoría</h2><span class="hint">Presupuestado vs. real</span></div>
+    <div class="cat-grid">${catCards}</div>
+
+    <div class="section-title"><h2>Presupuesto → Facturación</h2><span class="hint">Cadena completa, como en la planilla</span></div>
+    <div class="card" style="font-family:'Montserrat',sans-serif;font-size:13px;">
+      <div class="summary-line"><span>Costos (materiales + mano de obra)</span><span>${fmt(o.presupuestoResumen.costos)}</span></div>
+      <div class="summary-line"><span>+ Beneficio</span><span>${fmt(o.presupuestoResumen.beneficio)}</span></div>
+      <div class="summary-line"><span>+ Impuestos (IIBB + débito/crédito)</span><span>${fmt(o.presupuestoResumen.impuestos)}</span></div>
+      <div class="summary-line divider total"><span>Subtotal presupuesto</span><span>${fmt(o.presupuestoResumen.subtotalPresupuesto)}</span></div>
+      <div class="summary-line sub"><span>− Descuento</span><span>${fmt(o.presupuestoResumen.descuento)}</span></div>
+      <div class="summary-line total"><span>Total presupuesto</span><span>${fmt(o.presupuestoResumen.totalPresupuesto)}</span></div>
+      <div class="summary-line sub"><span>+ IVA</span><span>${fmt(o.presupuestoResumen.iva)}</span></div>
+      <div class="summary-line grand"><span>Total + IVA (facturado)</span><span>${fmt(o.presupuestoResumen.totalConIva)}</span></div>
+    </div>
+
+    <div class="section-title"><h2>Materiales y gastos reales de la obra</h2><div class="st-actions"><button class="btn btn-ghost btn-sm" onclick="openModalCompra('${o.id}')">+ Registrar compra/gasto</button></div></div>
+    <div class="card card-table"><table>
+      <thead><tr><th>Categoría</th><th>Detalle</th><th>Proveedor / factura</th><th class="num">Monto</th><th class="num">Saldo</th><th>Fecha de pago</th><th>Estado</th><th></th></tr></thead>
+      <tbody>${obraPagosRows(o.id)}</tbody>
+    </table></div>
+
+    <div class="section-title"><h2>Ingresos</h2><div class="st-actions"><button class="btn btn-ghost btn-sm" onclick="openModalIngreso('${o.id}')">+ Registrar cobro</button></div></div>
+    <div class="card cat-card">
+      <div class="layerbar-wrap"><div class="layerbar"><div class="fill good" style="width:${Math.min(cobradoPct,100)}%;"></div></div><div class="layerbar-labels"><span>${cobradoPct}% cobrado</span><span>${fmt(o.ingresos.cobrado)} / ${fmt(o.ingresos.facturado)}</span></div></div>
+    </div>
+    <div class="card card-table" style="margin-top:10px;"><table>
+      <thead><tr><th>Fecha</th><th>Medio de pago</th><th class="num">Monto</th></tr></thead>
+      <tbody>${(o.ingresosList&&o.ingresosList.length) ? o.ingresosList.map(i=>`<tr><td class="mono">${i.fecha}</td><td>${i.medioPago}</td><td class="num">${fmt(i.monto)}</td></tr>`).join('') : `<tr class="empty-row"><td colspan="3">Sin cobros registrados</td></tr>`}</tbody>
+    </table></div>
+
+    <div class="section-title"><h2>Presupuestado vs. real — detalle</h2><span class="hint">Para ver en qué categoría no coincide</span></div>
+    <div class="card card-table dark"><table>
+      <thead><tr><th>Categoría</th><th class="num">Presupuestado</th><th class="num">Real</th><th class="num">Diferencia</th></tr></thead>
+      <tbody>
+        ${diffRow('Materiales', o.presupuesto.materiaPrima, o.real.materiaPrima)}
+        ${diffRow('Mano de obra', o.presupuesto.manoObra, o.real.manoObra)}
+        ${diffRow('Logística', o.presupuesto.logistica, o.real.logistica)}
+        ${diffRow('Estadía de obra', o.presupuesto.estadia, o.real.estadia)}
+        ${diffRow('Otros no previstos', 0, o.real.otros)}
+        <tr class="subtotal-row">${diffRow('Costos totales', obraPresTotal(o), realTotal).replace('<tr>','').replace('</tr>','')}</tr>
+        ${diffRow('Ingresos (facturado / cobrado)', o.ingresos.facturado, o.ingresos.cobrado)}
+        <tr class="subtotal-row">${diffRow('Resultado (ganancia)', resultProy, resultReal).replace('<tr>','').replace('</tr>','')}</tr>
+        ${diffRow('Comisión vendedor', pr.comisionVendedor||0, comisionVendedorReal)}
+        ${diffRow('Ganancia neta a repartir', pr.gananciaNeta||0, gananciaNetaReal)}
+        ${diffRow(socio1Nombre, pr.socio1Monto||0, socio1Real)}
+        ${diffRow(socio2Nombre, pr.socio2Monto||0, socio2Real)}
+        ${diffRow('AQ — empresa (resto)', pr.aqMonto||0, aqReal)}
+      </tbody>
+    </table></div>
+  `;
+}
+function obraPagosRows(obraId){
+  const pagoRows = state.pagos.filter(p=>p.obraId===obraId).map(p=>{
+    const est = pagoEstado(p);
+    const estadoDot = est==='pagado'?'good':(est==='parcial'?'warn':'warn');
+    const estadoTxt = est==='pagado'?'Pagado':(est==='parcial'?'Parcial':(est==='sin_fecha'?'Sin fecha':'Pendiente'));
+    const action = est!=='pagado' ? `<span class="link-btn" onclick="openModalFinalizarPago('${p.id}')">Registrar pago →</span>` : '';
+    const prov = getProveedor(p.proveedorId);
+    const provTxt = prov ? `${prov.nombre}${p.numeroFactura?' · '+p.numeroFactura:''}` : '—';
+    return `<tr><td>${catLabel[p.categoria]||p.categoria}</td><td>${p.concepto}</td><td>${provTxt}</td><td class="num">${fmt(p.monto)}</td><td class="num">${fmt(pagoSaldo(p))}</td><td class="mono">${p.fechaPago||'—'}</td><td><span class="estado-dot ${estadoDot}"></span>${estadoTxt}</td><td>${action}</td></tr>`;
+  });
+  const stockRows = state.stockMovimientos.filter(m=>m.tipo==='consumo' && m.obraId===obraId).map(m=>{
+    const item = getStockItem(m.stockId);
+    return `<tr><td>Materiales</td><td>${item?item.nombre:'—'} (de stock, x${m.cantidad})</td><td>—</td><td class="num">${fmt(m.monto)}</td><td class="num">$ 0</td><td class="mono">${m.fecha}</td><td><span class="estado-dot good"></span>No aplica</td><td></td></tr>`;
+  });
+  const rows = [...pagoRows, ...stockRows];
+  if(!rows.length) return `<tr class="empty-row"><td colspan="8">Todavía no hay compras registradas en esta obra</td></tr>`;
+  return rows.join('');
+}
+function iniciarObra(id){ getObra(id).estado='en curso'; renderAll(); }
+function finalizarObra(id){ getObra(id).estado='finalizada'; renderAll(); }
+
+/* ======================= PRESUPUESTO BUILDER ======================= */
+let buildState = null;
+function freshBuildState(){
+  return {
+    editingObraId:null,
+    mpItems:[{detalle:'',cantidad:0,unitario:0}],
+    logItems:[{detalle:'Combustible (Lts)',cantidad:0,unitario:0},{detalle:'Peajes',cantidad:0,unitario:0}],
+    estItems:[{detalle:'Almuerzo',cantidad:0,unitario:0},{detalle:'Cena',cantidad:0,unitario:0},{detalle:'Hospedaje (noche*habitación)',cantidad:0,unitario:0}],
+    moRoles:[{puesto:'Trazador',salario:0,cantidad:0},{puesto:'Montador',salario:0,cantidad:0},{puesto:'Lanero',salario:0,cantidad:0},{puesto:'931 x persona',salario:0,cantidad:0}],
+    importedReal:null,
+  };
+}
+function openPresupuestoBuilder(obraId){
+  buildState = freshBuildState();
+  document.getElementById('pb-code').value=''; document.getElementById('pb-cliente').value=''; document.getElementById('pb-encargado').value='';
+  document.getElementById('pb-fecha').value=today(); document.getElementById('pb-fecha-factura').value=today(); document.getElementById('pb-cotizacion').value=1450;
+  document.getElementById('pb-benef').value=1.08; document.getElementById('pb-debcred').value=0.6; document.getElementById('pb-iva').value=21; document.getElementById('pb-descuento').value=0;
+  document.getElementById('pb-dias').value=0;
+  document.getElementById('pb-vendedor-pct').value=8; document.getElementById('pb-socio1-nombre').value='AL'; document.getElementById('pb-socio1-pct').value=10;
+  document.getElementById('pb-socio2-nombre').value='JL'; document.getElementById('pb-socio2-pct').value=30;
+  document.getElementById('pb-title').textContent = 'Presupuestar obra';
+  if(obraId){
+    const o = getObra(obraId);
+    buildState.editingObraId = obraId;
+    document.getElementById('pb-code').value = o.code;
+    document.getElementById('pb-cliente').value = o.cliente||'';
+    document.getElementById('pb-encargado').value = o.encargado;
+    document.getElementById('pb-fecha').value = o.fechaInicio;
+    document.getElementById('pb-fecha-factura').value = (o.facturasVenta&&o.facturasVenta[0]) ? o.facturasVenta[0].fecha : o.fechaInicio;
+    document.getElementById('pb-title').textContent = 'Editar presupuesto — ' + o.code;
+    if(o.presupuestoDetalle){
+      const d = o.presupuestoDetalle;
+      buildState.mpItems = d.mpItems.map(i=>({...i})); buildState.logItems = d.logItems.map(i=>({...i})); buildState.estItems = d.estItems.map(i=>({...i})); buildState.moRoles = d.moRoles.map(i=>({...i}));
+      document.getElementById('pb-cotizacion').value = d.cotizacion; document.getElementById('pb-benef').value = d.factor; document.getElementById('pb-debcred').value = d.debCredPct; document.getElementById('pb-iva').value = d.ivaPct; document.getElementById('pb-descuento').value = d.descuentoPct; document.getElementById('pb-dias').value = d.dias;
+      document.getElementById('pb-vendedor-pct').value = d.vendedorPct??8; document.getElementById('pb-socio1-nombre').value = d.socio1Nombre||'AL'; document.getElementById('pb-socio1-pct').value = d.socio1Pct??10;
+      document.getElementById('pb-socio2-nombre').value = d.socio2Nombre||'JL'; document.getElementById('pb-socio2-pct').value = d.socio2Pct??30;
+    }
+  }
+  renderItemsTable('mp'); renderItemsTable('log'); renderItemsTable('est'); renderMoRoles();
+  showView('presupuesto');
+  recomputeBuildTotals();
+}
+function renderItemsTable(type){
+  const items = buildState[type+'Items'];
+  document.getElementById(type+'-items-body').innerHTML = items.map((it,i)=>`
+    <tr>
+      <td><input class="cell-input" value="${it.detalle}" oninput="updateItem('${type}',${i},'detalle',this.value)"></td>
+      <td><input class="cell-input mono-in" type="number" value="${it.cantidad}" oninput="updateItem('${type}',${i},'cantidad',this.value)"></td>
+      <td><input class="cell-input mono-in" type="number" value="${it.unitario}" oninput="updateItem('${type}',${i},'unitario',this.value)"></td>
+      <td class="num" id="${type}-total-${i}">${fmt(it.cantidad*it.unitario)}</td>
+      <td><span class="link-btn danger" onclick="removeItem('${type}',${i})">✕</span></td>
+    </tr>`).join('');
+}
+function updateItem(type,i,field,value){
+  buildState[type+'Items'][i][field] = (field==='detalle')? value : (+value||0);
+  const cell = document.getElementById(type+'-total-'+i);
+  if(cell) cell.textContent = fmt(buildState[type+'Items'][i].cantidad*buildState[type+'Items'][i].unitario);
+  recomputeBuildTotals();
+}
+function addItem(type){ buildState[type+'Items'].push({detalle:'',cantidad:0,unitario:0}); renderItemsTable(type); recomputeBuildTotals(); }
+function removeItem(type,i){ buildState[type+'Items'].splice(i,1); renderItemsTable(type); recomputeBuildTotals(); }
+function renderMoRoles(){
+  document.getElementById('mo-roles-body').innerHTML = buildState.moRoles.map((r,i)=>`
+    <tr><td>${r.puesto}</td>
+      <td><input class="cell-input mono-in" type="number" value="${r.salario}" oninput="updateMoRole(${i},'salario',this.value)"></td>
+      <td><input class="cell-input mono-in" type="number" value="${r.cantidad}" oninput="updateMoRole(${i},'cantidad',this.value)"></td>
+      <td class="num" id="mo-total-${i}">${fmt(r.salario*r.cantidad)}</td></tr>`).join('');
+}
+function updateMoRole(i,field,value){
+  buildState.moRoles[i][field] = +value||0;
+  const cell = document.getElementById('mo-total-'+i);
+  if(cell) cell.textContent = fmt(buildState.moRoles[i].salario*buildState.moRoles[i].cantidad);
+  recomputeBuildTotals();
+}
+function sumItems(items){ return items.reduce((a,it)=>a+it.cantidad*it.unitario,0); }
+function recomputeBuildTotals(){
+  const mpTotal = sumItems(buildState.mpItems), logTotal = sumItems(buildState.logItems), estTotal = sumItems(buildState.estItems);
+  document.getElementById('mp-subtotal').textContent = fmt(mpTotal);
+  document.getElementById('log-subtotal').textContent = fmt(logTotal);
+  document.getElementById('est-subtotal').textContent = fmt(estTotal);
+  const materialesARS = mpTotal+logTotal+estTotal;
+  const moSubtotalDia = buildState.moRoles.reduce((a,r)=>a+r.salario*r.cantidad,0);
+  document.getElementById('mo-subtotal').textContent = fmt(moSubtotalDia) + ' / día';
+  const dias = +document.getElementById('pb-dias').value||0;
+  const manoObraARS = moSubtotalDia*dias;
+  const costosARS = materialesARS+manoObraARS;
+  const factor = +document.getElementById('pb-benef').value||0;
+  const beneficioARS = costosARS*factor;
+  const baseImp = costosARS+beneficioARS;
+  const ivaPct = (+document.getElementById('pb-iva').value||0)/100;
+  const debCredPct = (+document.getElementById('pb-debcred').value||0)/100;
+  const impDebCred = baseImp*(1+ivaPct)*debCredPct;
+  const iibbPct = +document.getElementById('pb-provincia').value||0;
+  const impIIBB = baseImp*iibbPct;
+  const impuestosARS = impDebCred+impIIBB;
+  const subtotalPresupuesto = costosARS+beneficioARS+impuestosARS;
+  const descPct = (+document.getElementById('pb-descuento').value||0)/100;
+  const descuentoARS = subtotalPresupuesto*descPct;
+  const totalPresupuesto = subtotalPresupuesto-descuentoARS;
+  const ivaARS = totalPresupuesto*ivaPct;
+  const totalConIva = totalPresupuesto+ivaARS;
+  const vendedorPct = +document.getElementById('pb-vendedor-pct').value||0;
+  const comisionVendedor = (vendedorPct>=100) ? 0 : totalPresupuesto*(vendedorPct/100)/(1-(vendedorPct/100));
+  const gananciaNeta = beneficioARS - descuentoARS - comisionVendedor;
+  const socio1Nombre = document.getElementById('pb-socio1-nombre').value.trim()||'Socio 1';
+  const socio2Nombre = document.getElementById('pb-socio2-nombre').value.trim()||'Socio 2';
+  const socio1Pct = +document.getElementById('pb-socio1-pct').value||0;
+  const socio2Pct = +document.getElementById('pb-socio2-pct').value||0;
+  const socio1Monto = gananciaNeta*socio1Pct/100;
+  const socio2Monto = gananciaNeta*socio2Pct/100;
+  const aqMonto = gananciaNeta - socio1Monto - socio2Monto;
+  buildState.computed = {materialesARS, manoObraARS, costosARS, beneficioARS, impuestosARS, subtotalPresupuesto, descuentoARS, totalPresupuesto, ivaARS, totalConIva, moSubtotalDia, mpTotal, logTotal, estTotal, comisionVendedor, gananciaNeta, socio1Monto, socio2Monto, aqMonto};
+  document.getElementById('pb-summary').innerHTML = `
+    <div class="summary-line"><span>Materiales (materia prima + logística + estadía)</span><span class="mono">${fmt(materialesARS)}</span></div>
+    <div class="summary-line"><span>Mano de obra (subtotal/día × días)</span><span class="mono">${fmt(manoObraARS)}</span></div>
+    <div class="summary-line divider total"><span>Costos</span><span class="mono">${fmt(costosARS)}</span></div>
+    <div class="summary-line"><span>+ Beneficio (factor ${factor})</span><span class="mono">${fmt(beneficioARS)}</span></div>
+    <div class="summary-line sub"><span>Débito/crédito</span><span class="mono">${fmt(impDebCred)}</span></div>
+    <div class="summary-line sub"><span>IIBB</span><span class="mono">${fmt(impIIBB)}</span></div>
+    <div class="summary-line"><span>+ Impuestos</span><span class="mono">${fmt(impuestosARS)}</span></div>
+    <div class="summary-line divider total"><span>Subtotal presupuesto</span><span class="mono">${fmt(subtotalPresupuesto)}</span></div>
+    <div class="summary-line sub"><span>− Descuento</span><span class="mono">${fmt(descuentoARS)}</span></div>
+    <div class="summary-line total"><span>Total presupuesto</span><span class="mono">${fmt(totalPresupuesto)}</span></div>
+    <div class="summary-line sub"><span>+ IVA</span><span class="mono">${fmt(ivaARS)}</span></div>
+    <div class="summary-line grand"><span>Total + IVA — lo que se factura</span><span class="mono">${fmt(totalConIva)}</span></div>
+    <div class="summary-line divider" style="margin-top:16px;"><span>Comisión vendedor (${vendedorPct}% s/ total presupuesto)</span><span class="mono">${fmt(comisionVendedor)}</span></div>
+    <div class="summary-line total"><span>Ganancia neta a repartir</span><span class="mono">${fmt(gananciaNeta)}</span></div>
+    <div class="summary-line sub"><span>${socio1Nombre} (${socio1Pct}%)</span><span class="mono">${fmt(socio1Monto)}</span></div>
+    <div class="summary-line sub"><span>${socio2Nombre} (${socio2Pct}%)</span><span class="mono">${fmt(socio2Monto)}</span></div>
+    <div class="summary-line sub"><span>AQ — empresa (resto)</span><span class="mono">${fmt(aqMonto)}</span></div>
+  `;
+}
+function savePresupuesto(){
+  recomputeBuildTotals();
+  const c = buildState.computed;
+  const code = document.getElementById('pb-code').value.trim() || 'S/CÓDIGO';
+  const cliente = document.getElementById('pb-cliente').value.trim();
+  const encargado = document.getElementById('pb-encargado').value.trim() || 'Sin asignar';
+  const fecha = document.getElementById('pb-fecha').value || today();
+  const fechaFactura = document.getElementById('pb-fecha-factura').value || fecha;
+  const detalle = {
+    mpItems: buildState.mpItems.map(i=>({...i})), logItems: buildState.logItems.map(i=>({...i})), estItems: buildState.estItems.map(i=>({...i})), moRoles: buildState.moRoles.map(i=>({...i})),
+    dias: +document.getElementById('pb-dias').value||0, cotizacion: +document.getElementById('pb-cotizacion').value||1450,
+    factor: +document.getElementById('pb-benef').value||0, iibbPct: +document.getElementById('pb-provincia').value||0,
+    debCredPct: +document.getElementById('pb-debcred').value||0, ivaPct: +document.getElementById('pb-iva').value||0, descuentoPct: +document.getElementById('pb-descuento').value||0,
+    vendedorPct: +document.getElementById('pb-vendedor-pct').value||0, socio1Nombre: document.getElementById('pb-socio1-nombre').value.trim()||'Socio 1', socio1Pct: +document.getElementById('pb-socio1-pct').value||0,
+    socio2Nombre: document.getElementById('pb-socio2-nombre').value.trim()||'Socio 2', socio2Pct: +document.getElementById('pb-socio2-pct').value||0,
+  };
+  const presupuesto = { materiaPrima: c.mpTotal, manoObra: c.manoObraARS, logistica: c.logTotal, estadia: c.estTotal };
+  const presupuestoResumen = { costos:c.costosARS, beneficio:c.beneficioARS, impuestos:c.impuestosARS, subtotalPresupuesto:c.subtotalPresupuesto, descuento:c.descuentoARS, totalPresupuesto:c.totalPresupuesto, iva:c.ivaARS, totalConIva:c.totalConIva,
+    comisionVendedor:c.comisionVendedor, gananciaNeta:c.gananciaNeta, socio1Monto:c.socio1Monto, socio2Monto:c.socio2Monto, aqMonto:c.aqMonto };
+
+  if(buildState.editingObraId){
+    const o = getObra(buildState.editingObraId);
+    o.code=code; o.cliente=cliente; o.encargado=encargado; o.fechaInicio=fecha;
+    o.presupuestoDetalle=detalle; o.presupuesto=presupuesto; o.presupuestoResumen=presupuestoResumen;
+    o.ingresos.facturado = c.totalConIva;
+    o.facturasVenta = [{id:newId('fv'), fecha:fechaFactura, montoSinIva:c.totalPresupuesto, iva:c.ivaARS, monto:c.totalConIva}];
+    state.selectedObraId = o.id;
+  } else {
+    const id = newId('o');
+    const ir = buildState.importedReal;
+    const real = ir ? { materiaPrima:ir.materialesReal, manoObra:ir.manoObraReal, logistica:ir.logisticaReal, estadia:ir.estadiaReal, otros:ir.extrasReal } : {materiaPrima:0, manoObra:0, logistica:0, estadia:0, otros:0};
+    const ingresosList = ir ? ir.ingresosList : [];
+    const cobrado = ir ? (ir.cobradoTotal || ingresosList.reduce((a,i)=>a+i.monto,0)) : 0;
+    const estadoInicial = ir && (ir.materialesReal>0 || ir.manoObraReal>0 || cobrado>0) ? 'en curso' : 'borrador';
+    const facturasVenta = [{id:newId('fv'), fecha:fechaFactura, montoSinIva:c.totalPresupuesto, iva:c.ivaARS, monto:c.totalConIva}];
+    state.obras.push({ id, code, cliente, encargado, fechaInicio:fecha, estado:estadoInicial,
+      presupuestoDetalle:detalle, presupuesto, presupuestoResumen,
+      real, ingresos:{facturado:c.totalConIva, cobrado}, ingresosList, facturasVenta });
+    if(ir){
+      ['materiaPrima','logistica','estadia','otros'].forEach(cat=>{
+        const monto = real[cat];
+        if(monto>0) state.pagos.push({id:newId('p'), tipo:'obra', obraId:id, categoria:cat, concepto:'Importado desde Excel (total incurrido a la fecha)', cantidad:1, unitario:monto, ivaAplica:false, monto, proveedorId:null, numeroFactura:null, fechaFactura:fecha, formaPago:'Transferencia', fechaPago:fecha, pagosRealizados:[{fecha, monto, fondo:null, formaPago:'Transferencia'}]});
+      });
+    }
+    state.selectedObraId = id;
+  }
+  renderAll();
+  goToObra(state.selectedObraId);
+}
+
+/* ======================= IMPORTAR EXCEL ======================= */
+function handleImportExcel(evt){
+  const file = evt.target.files[0]; if(!file) return;
+  const reader = new FileReader();
+  reader.onload = (e)=>{
+    try{
+      const wb = XLSX.read(new Uint8Array(e.target.result), {type:'array', cellDates:true});
+      const ps = wb.Sheets['PRESUPUESTO']; const hr = wb.Sheets['HOJA RESUMEN'];
+      const cell = (sheet,addr)=> (sheet && sheet[addr]) ? sheet[addr].v : undefined;
+      openPresupuestoBuilder(null);
+      const code = cell(ps,'E1') || '';
+      document.getElementById('pb-code').value = code;
+      const encargado = cell(hr,'C11') || '';
+      document.getElementById('pb-encargado').value = encargado;
+      const fecha = cell(hr,'C10');
+      if(fecha instanceof Date) { document.getElementById('pb-fecha').value = fecha.toISOString().slice(0,10); document.getElementById('pb-fecha-factura').value = fecha.toISOString().slice(0,10); }
+      const cotizacion = cell(ps,'H74'); if(cotizacion) document.getElementById('pb-cotizacion').value = cotizacion;
+
+      buildState.mpItems = [];
+      for(let r=23;r<=41;r++){ const d=cell(ps,'A'+r), q=cell(ps,'D'+r), u=cell(ps,'E'+r); if(d) buildState.mpItems.push({detalle:d, cantidad:q||0, unitario:u||0}); }
+      if(!buildState.mpItems.length) buildState.mpItems.push({detalle:'',cantidad:0,unitario:0});
+
+      buildState.logItems = [];
+      const l47d=cell(ps,'A47'), l47q=cell(ps,'D47'), l47u=cell(ps,'E47'); if(l47d) buildState.logItems.push({detalle:l47d, cantidad:l47q||0, unitario:l47u||0});
+      const l48d=cell(ps,'A48'), l48q=cell(ps,'D48'), l48u=cell(ps,'E48'); if(l48d) buildState.logItems.push({detalle:l48d, cantidad:l48q||0, unitario:l48u||0});
+      if(!buildState.logItems.length) buildState.logItems = freshBuildState().logItems;
+
+      buildState.estItems = [];
+      [54,55,56].forEach(r=>{ const d=cell(ps,'A'+r), q=cell(ps,'D'+r), u=cell(ps,'E'+r); if(d) buildState.estItems.push({detalle:d, cantidad:q||0, unitario:u||0}); });
+      if(!buildState.estItems.length) buildState.estItems = freshBuildState().estItems;
+
+      const roles = ['Trazador','Montador','Lanero','931 x persona'];
+      buildState.moRoles = [65,66,67,68].map((r,idx)=>({ puesto: cell(ps,'A'+r)||roles[idx], salario: cell(ps,'B'+r)||0, cantidad: cell(ps,'E'+r)||0 }));
+
+      const dias = cell(ps,'F70'); if(dias) document.getElementById('pb-dias').value = dias;
+      const factor = cell(ps,'C86'); if(factor) document.getElementById('pb-benef').value = factor;
+      const debCred = cell(ps,'H79'); if(debCred) document.getElementById('pb-debcred').value = debCred*100;
+      const ivaPct = cell(ps,'H82'); if(ivaPct) document.getElementById('pb-iva').value = ivaPct*100;
+      const iibb = cell(ps,'H85'); if(iibb){ const sel=document.getElementById('pb-provincia'); for(const opt of sel.options){ if(Math.abs(+opt.value-iibb)<0.001){ sel.value=opt.value; break; } } }
+      const descuento = cell(ps,'C96'); if(descuento) document.getElementById('pb-descuento').value = descuento*100;
+
+      // Gastos reales incurridos y cobros — desde el "BALANCE DE OBRA" de HOJA RESUMEN
+      const materialesReal = cell(hr,'H92')||0;
+      const extrasReal = cell(hr,'H93')||0;
+      const logisticaReal = cell(hr,'H94')||0;
+      const estadiaReal = cell(hr,'H95')||0;
+      const manoObraReal = cell(hr,'H96')||0;
+      const cobradoTotal = cell(hr,'F54')||0;
+      let ingresosList = [];
+      for(let r=62;r<=90;r++){
+        const fechaCobro = cell(hr,'A'+r), montoCobro = cell(hr,'C'+r), medioCobro = cell(hr,'B'+r);
+        if(fechaCobro && montoCobro){ ingresosList.push({fecha:(fechaCobro instanceof Date)?fechaCobro.toISOString().slice(0,10):today(), monto:montoCobro, medioPago:medioCobro||'Transferencia'}); }
+      }
+      buildState.importedReal = { materialesReal, extrasReal, logisticaReal, estadiaReal, manoObraReal, cobradoTotal, ingresosList };
+
+      renderItemsTable('mp'); renderItemsTable('log'); renderItemsTable('est'); renderMoRoles();
+      recomputeBuildTotals();
+      const totalRealDetectado = materialesReal+extrasReal+logisticaReal+estadiaReal+manoObraReal;
+      document.getElementById('pb-title').textContent = 'Obra importada — revisá y confirmá: ' + (code||'');
+      if(totalRealDetectado>0 || cobradoTotal>0){
+        alert(`También se detectaron gastos reales y cobros en esta obra:\n· Gastos incurridos: ${fmt(totalRealDetectado)}\n· Cobrado: ${fmt(cobradoTotal)}\n\nSe van a cargar al guardar el presupuesto.`);
+      }
+    } catch(err){
+      alert('No pude leer ese Excel con el formato esperado. Detalle: '+err.message);
+    }
+  };
+  reader.readAsArrayBuffer(file);
+  evt.target.value = '';
+}
+
+/* ======================= JORNALES ======================= */
+const CURRENT_WEEK = '2026-07-27';
+let viewedWeek = CURRENT_WEEK;
+function addDays(iso,n){ const d=new Date(iso+'T00:00:00'); d.setDate(d.getDate()+n); return d.toISOString().slice(0,10); }
+function weekLabel(startIso){
+  const start = new Date(startIso+'T00:00:00'); const end = new Date(start); end.setDate(end.getDate()+6);
+  const fmtD = (d)=> String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0');
+  return 'Semana del '+fmtD(start)+' al '+fmtD(end)+' · '+start.getFullYear();
+}
+function jornalTotal(j){ return j.dias.reduce((a,b)=>a+b,0)*j.jornal + j.extra; }
+function changeWeek(delta){ viewedWeek = addDays(viewedWeek, delta*7); renderJornales(); }
+function goToCurrentWeek(){ viewedWeek = CURRENT_WEEK; renderJornales(); }
+function renderJornales(){
+  document.getElementById('current-week-label').textContent = weekLabel(viewedWeek);
+  const rows = state.jornales.filter(j=>j.semanaInicio===viewedWeek);
+  let totalSemana = 0;
+  document.getElementById('jornales-body').innerHTML = rows.map(p=>{
+    const diasTrab = p.dias.reduce((a,b)=>a+b,0); const total = jornalTotal(p); totalSemana+=total;
+    const obra = getObra(p.obraId);
+    const dayCells = p.dias.map(d=>`<td><div class="day-box ${d?'on':'off'}"></div></td>`).join('');
+    return `<tr><td style="font-weight:600;">${p.nombre}</td><td>${obra?`<span class="obra-code">${obra.code}</span>`:'—'}</td><td>${p.puesto}</td>${dayCells}<td class="num">${diasTrab}</td><td class="num">${fmt(p.jornal)}</td><td class="num">${fmt(p.extra)}</td><td class="num" style="font-weight:600;">${fmt(total)}</td><td><span class="tag ${p.pagado?'good':'warn'}">${p.pagado?'Pagado':'A pagar'}</span></td><td>${p.pagado?'':`<span class="link-btn" onclick="openModalJornal('${p.id}')">Editar</span>`}</td></tr>`;
+  }).join('') || `<tr class="empty-row"><td colspan="16">Sin jornales cargados esta semana</td></tr>`;
+  document.getElementById('jornales-total-tag').textContent = 'Total semana: '+fmt(totalSemana);
+  populateJornalesFiltros();
+  renderJornalesHistorial();
+}
+function populateJornalesFiltros(){
+  const personaSel = document.getElementById('jh-persona');
+  if(!personaSel) return;
+  const personas = [...new Set(state.jornales.map(j=>j.nombre))].sort();
+  const curPersona = personaSel.value;
+  personaSel.innerHTML = `<option value="todos">Todos</option>` + personas.map(p=>`<option value="${p}">${p}</option>`).join('');
+  if(personas.includes(curPersona)) personaSel.value = curPersona;
+  const desdeEl = document.getElementById('jh-desde'), hastaEl = document.getElementById('jh-hasta');
+  if(desdeEl && !desdeEl.value && state.jornales.length){ desdeEl.value = [...state.jornales].map(j=>j.semanaInicio).sort()[0]; }
+  if(hastaEl && !hastaEl.value){ hastaEl.value = today(); }
+}
+function renderJornalesHistorial(){
+  const desde = document.getElementById('jh-desde')?.value||'';
+  const hasta = document.getElementById('jh-hasta')?.value||'';
+  const persona = document.getElementById('jh-persona')?.value||'todos';
+  let rows = [...state.jornales];
+  if(desde) rows = rows.filter(j=>j.semanaInicio>=desde);
+  if(hasta) rows = rows.filter(j=>j.semanaInicio<=hasta);
+  if(persona!=='todos') rows = rows.filter(j=>j.nombre===persona);
+
+  const porPersona = {};
+  rows.forEach(j=>{
+    if(!porPersona[j.nombre]) porPersona[j.nombre] = {semanas:0, dias:0, extras:0, total:0};
+    const dt = j.dias.reduce((a,b)=>a+b,0);
+    porPersona[j.nombre].semanas += 1;
+    porPersona[j.nombre].dias += dt;
+    porPersona[j.nombre].extras += j.extra;
+    porPersona[j.nombre].total += jornalTotal(j);
+  });
+  const nombres = Object.keys(porPersona).sort();
+  const body = document.getElementById('jornales-historial-body');
+  if(!nombres.length){ body.innerHTML = `<tr class="empty-row"><td colspan="5">No hay registros para este período</td></tr>`; return; }
+  let granSemanas=0, granDias=0, granExtras=0, granTotal=0;
+  body.innerHTML = nombres.map(n=>{
+    const s = porPersona[n]; granSemanas+=s.semanas; granDias+=s.dias; granExtras+=s.extras; granTotal+=s.total;
+    return `<tr><td style="font-weight:600;">${n}</td><td class="num">${s.semanas}</td><td class="num">${s.dias}</td><td class="num">${fmt(s.extras)}</td><td class="num" style="font-weight:600;">${fmt(s.total)}</td></tr>`;
+  }).join('') + `<tr class="subtotal-row"><td>Total general</td><td class="num">${granSemanas}</td><td class="num">${granDias}</td><td class="num">${fmt(granExtras)}</td><td class="num">${fmt(granTotal)}</td></tr>`;
+}
+function pagarSemana(){
+  const pendientes = state.jornales.filter(j=>!j.pagado && j.semanaInicio===viewedWeek);
+  if(!pendientes.length){ alert('No hay jornales pendientes de pago en esta semana.'); return; }
+  let totalAPagar=0; const porObra={};
+  pendientes.forEach(p=>{ const total=jornalTotal(p); totalAPagar+=total; porObra[p.obraId]=(porObra[p.obraId]||0)+total; p.pagado=true; });
+  state.fondos.jornales -= totalAPagar;
+  Object.entries(porObra).forEach(([obraId,monto])=>{ const o=getObra(obraId); if(o) o.real.manoObra+=monto; });
+  state.movimientosFima.push({fecha:today(), fondo:'jornales', obraId:null, concepto:'Pago jornales de la semana', tipo:'out', monto:totalAPagar});
+  renderAll();
+}
+
+/* ======================= FIMA ======================= */
+function renderFima(){
+  const meta = {jornales:{color:'var(--teal)', note:'cubre jornales próximos'}, costosFijos:{color:'var(--copper)', note:'alquiler, seguros, sueldos admin.'}, emergencias:{color:'var(--warn)', note:'objetivo mínimo $5.000.000'}, inversiones:{color:'var(--good)', note:'plazo fijo + FCI'}};
+  document.getElementById('fund-grid').innerHTML = Object.entries(state.fondos).map(([k,v])=>`<div class="card fund-card"><div class="fund-bar" style="background:${meta[k].color};"></div><div class="fund-name">${fondoLabel[k]}</div><div class="fund-value">${fmt(v)}</div><div class="fund-target">${meta[k].note}</div></div>`).join('');
+  const rows = [...state.movimientosFima].sort((a,b)=>b.fecha.localeCompare(a.fecha));
+  document.getElementById('movimientos-fima-body').innerHTML = rows.length ? rows.map(m=>`<tr><td class="mono">${m.fecha}</td><td>${fondoLabel[m.fondo]}</td><td>${m.obraId?`<span class="obra-code">${getObra(m.obraId)?.code||''}</span>`:'—'}</td><td>${m.concepto}</td><td><span class="badge-inout ${m.tipo}">${m.tipo==='in'?'Ingreso':'Egreso'}</span></td><td class="num">${fmt(m.monto)}</td></tr>`).join('') : `<tr class="empty-row"><td colspan="6">Sin movimientos</td></tr>`;
+}
+
+/* ======================= STOCK ======================= */
+const getStockItem = (id)=> state.stock.find(s=>s.id===id);
+function renderStock(){
+  const q = (document.getElementById('stock-filter-q')?.value||'').toLowerCase();
+  const items = state.stock.filter(s=>!q || s.nombre.toLowerCase().includes(q));
+  document.getElementById('stock-body').innerHTML = items.length ? items.map(s=>`
+    <tr><td style="font-weight:600;">${s.nombre}</td><td>${s.unidad}</td><td class="num">${s.cantidad}</td><td class="num">${fmt(s.costoUnitario)}</td><td class="num">${fmt(s.cantidad*s.costoUnitario)}</td></tr>
+  `).join('') : `<tr class="empty-row"><td colspan="5">Ningún material coincide con la búsqueda</td></tr>`;
+  document.getElementById('stock-valor-total').textContent = fmt(items.reduce((a,s)=>a+s.cantidad*s.costoUnitario,0));
+
+  const movSel = document.getElementById('stock-mov-material');
+  if(movSel){
+    const cur = movSel.value;
+    movSel.innerHTML = `<option value="todos">Todos los materiales</option>` + state.stock.map(s=>`<option value="${s.id}">${s.nombre}</option>`).join('');
+    if([...movSel.options].some(o=>o.value===cur)) movSel.value = cur;
+  }
+  const movFiltro = movSel?movSel.value:'todos';
+  let rows = [...state.stockMovimientos];
+  if(movFiltro!=='todos') rows = rows.filter(m=>m.stockId===movFiltro);
+  rows.sort((a,b)=>b.fecha.localeCompare(a.fecha));
+  document.getElementById('stock-mov-body').innerHTML = rows.length ? rows.map(m=>{
+    const item = getStockItem(m.stockId); const obra = m.obraId? getObra(m.obraId):null;
+    return `<tr><td class="mono">${m.fecha}</td><td><span class="tag ${m.tipo==='compra'?'good':'warn'}">${m.tipo==='compra'?'Compra':'Consumo'}</span></td><td>${item?item.nombre:'—'}</td><td class="num">${m.tipo==='compra'?'+':'−'}${m.cantidad}</td><td>${obra?`<span class="obra-code">${obra.code}</span>`:'—'}</td><td class="num">${fmt(m.monto)}</td></tr>`;
+  }).join('') : `<tr class="empty-row"><td colspan="6">Sin movimientos de stock para este filtro</td></tr>`;
+}
+function openModalStockItem(){
+  modalEl.innerHTML = `<h3>Agregar material a stock</h3><div class="modal-sub">Carga inicial del catálogo</div>
+    <div class="form-grid">
+      <div class="field span2"><label>Material</label><input id="f-nombre" placeholder="Ej: Lana de vidrio 50mm"></div>
+      <div class="field"><label>Unidad</label><input id="f-unidad" placeholder="m2, rollo, caja…"></div>
+      <div class="field"><label>Cantidad inicial</label><input id="f-cantidad" class="mono-in" type="number" value="0"></div>
+      <div class="field span2"><label>Costo unitario ($)</label><input id="f-costo" class="mono-in" type="number" value="0"></div>
+    </div>
+    <div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" onclick="submitStockItem()">Agregar</button></div>`;
+  overlay.classList.add('open');
+}
+function submitStockItem(){
+  const nombre = document.getElementById('f-nombre').value.trim()||'Sin nombre';
+  const unidad = document.getElementById('f-unidad').value.trim()||'un.';
+  const cantidad = +document.getElementById('f-cantidad').value||0;
+  const costoUnitario = +document.getElementById('f-costo').value||0;
+  state.stock.push({id:newId('s'), nombre, unidad, cantidad, costoUnitario});
+  closeModal(); renderAll();
+}
+function openModalStockCompra(){
+  const opciones = state.stock.map(s=>`<option value="${s.id}">${s.nombre} (${s.unidad})</option>`).join('');
+  modalEl.innerHTML = `<h3>Registrar compra de stock</h3><div class="modal-sub">Repone cantidad y genera un pago</div>
+    <div class="form-grid">
+      <div class="field span2"><label>Material</label><select id="f-material">${opciones||'<option disabled>Agregá un material primero</option>'}</select></div>
+      <div class="field"><label>Proveedor</label><select id="f-proveedor" onchange="onProveedorSelectChange(this)">${proveedorOptionsHTML()}</select></div>
+      <div class="field"><label>Nº remito / factura</label><input id="f-factura" placeholder="Ej: 0001-00004521"></div>
+      <div class="field span2 hidden" id="wrap-proveedor-nuevo"><label>Nombre del nuevo proveedor</label><input id="f-proveedor-nuevo" placeholder="Nombre"></div>
+      <div class="field"><label>Cantidad</label><input id="f-cantidad" class="mono-in" type="number" value="1"></div>
+      <div class="field"><label>Precio unitario ($, sin IVA)</label><input id="f-costo" class="mono-in" type="number" value="0"></div>
+      <div class="field checkbox span2"><input type="checkbox" id="f-iva" checked><label>Aplica IVA (21%)</label></div>
+      <div class="field"><label>Fecha de factura (para IVA)</label><input id="f-fecha-factura" type="date" value="${today()}"></div>
+      <div class="field"><label>Medio de pago</label><select id="f-forma"><option>A definir</option><option>Transferencia</option><option>Efectivo</option><option>eCheq</option><option>FIMA</option></select></div>
+      <div class="field checkbox"><input type="checkbox" id="f-sinfecha" checked onchange="document.getElementById('wrap-fecha').classList.toggle('hidden', this.checked)"><label>Sin fecha de pago todavía</label></div>
+      <div class="field hidden" id="wrap-fecha"><label>Fecha de pago</label><input id="f-fechapago" type="date"></div>
+    </div>
+    <div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" onclick="submitStockCompra()">Registrar</button></div>`;
+  overlay.classList.add('open');
+}
+function submitStockCompra(){
+  const stockId = document.getElementById('f-material').value;
+  const item = getStockItem(stockId); if(!item) return;
+  const cantidad = +document.getElementById('f-cantidad').value||0;
+  const costoUnitario = +document.getElementById('f-costo').value||0;
+  const ivaAplica = document.getElementById('f-iva').checked;
+  const monto = cantidad*costoUnitario*(ivaAplica?1.21:1);
+  const proveedorId = resolveProveedorId();
+  const numeroFactura = document.getElementById('f-factura').value.trim() || null;
+  const fechaFactura = document.getElementById('f-fecha-factura').value || today();
+  const formaPago = document.getElementById('f-forma').value;
+  const sinFecha = document.getElementById('f-sinfecha').checked;
+  const fechaPago = sinFecha? null : (document.getElementById('f-fechapago').value || today());
+  item.cantidad += cantidad;
+  if(costoUnitario>0) item.costoUnitario = costoUnitario;
+  state.stockMovimientos.push({id:newId('sm'), fecha: fechaPago||today(), tipo:'compra', stockId, cantidad, obraId:null, monto});
+  state.pagos.push({id:newId('p'), tipo:'stock', obraId:null, categoria:'stock', concepto:'Reposición de stock — '+item.nombre, cantidad, unitario:costoUnitario, ivaAplica, monto, proveedorId, numeroFactura, fechaFactura, formaPago, fechaPago, pagosRealizados:[]});
+  closeModal(); renderAll();
+}
+
+/* ======================= ÓRDENES DE COMPRA ======================= */
+function nextOcNumero(){
+  const n = state.ordenesCompra.length + 1;
+  return 'OC-' + String(n).padStart(4,'0');
+}
+function getOrden(id){ return state.ordenesCompra.find(o=>o.id===id); }
+function setOrdenesFilter(f){ state.ordenesFilter=f; document.querySelectorAll('#view-ordenes .filter-tab').forEach(t=>t.classList.toggle('active', t.dataset.filter===f)); renderOrdenes(); }
+function ordenDestinoTxt(o){
+  if(o.tipo==='obra') return getObra(o.obraId)?.code || '—';
+  if(o.tipo==='stock') return 'Stock — '+(o.stockNombre||'');
+  return 'Negocio general';
+}
+function renderOrdenes(){
+  let rows = state.ordenesCompra;
+  if(state.ordenesFilter!=='todas') rows = rows.filter(o=>o.estado===state.ordenesFilter);
+  rows = [...rows].sort((a,b)=>b.fecha.localeCompare(a.fecha));
+  document.getElementById('ordenes-body').innerHTML = rows.length ? rows.map(o=>{
+    const prov = getProveedor(o.proveedorId);
+    const estadoDot = o.estado==='autorizada'?'good':(o.estado==='comprada'?'good':(o.estado==='rechazada'?'bad':'warn'));
+    const estadoTxt = {pendiente:'Pendiente', autorizada:'Autorizada', comprada:'Comprada', rechazada:'Rechazada'}[o.estado];
+    let acciones = '';
+    if(o.estado==='pendiente') acciones = `<span class="link-btn" onclick="openModalOrdenCompra('${o.id}')">Editar</span> · <span class="link-btn" onclick="openModalAutorizarOrden('${o.id}')">Autorizar</span> · <span class="link-btn danger" onclick="openModalRechazarOrden('${o.id}')">Rechazar</span>`;
+    if(o.estado==='autorizada') acciones = `<span class="link-btn" onclick="openModalEfectivizarOrden('${o.id}')">Marcar como comprada →</span>`;
+    if(o.estado==='comprada') acciones = `<span class="tag good">Ver en Pagos</span>`;
+    if(o.estado==='rechazada') acciones = o.comentarioDueno ? `<span class="hint">Motivo: ${o.comentarioDueno}</span>` : '';
+    return `<tr><td class="mono">${o.numero}</td><td class="mono">${o.fecha}</td><td>${o.solicitante}</td><td>${ordenDestinoTxt(o)}</td><td>${prov?prov.nombre:'—'}</td><td class="num">${fmt(o.monto)}</td><td><span class="estado-dot ${estadoDot}"></span>${estadoTxt}</td><td>${acciones}</td></tr>`;
+  }).join('') : `<tr class="empty-row"><td colspan="8">No hay órdenes de compra en este filtro</td></tr>`;
+}
+function openModalOrdenCompra(id){
+  const existing = id ? getOrden(id) : null;
+  const obraOptions = state.obras.map(o=>`<option value="${o.id}" ${existing&&existing.obraId===o.id?'selected':''}>${o.code}</option>`).join('');
+  const tipo = existing?existing.tipo:'obra';
+  modalEl.innerHTML = `<h3>${existing?'Editar orden de compra':'Nueva orden de compra'}</h3><div class="modal-sub">${existing?existing.numero:'Se genera un número al guardar'}</div>
+    <div class="form-grid">
+      <div class="field"><label>Tipo</label><select id="f-tipo" onchange="onOcTipoChange()">
+        <option value="obra" ${tipo==='obra'?'selected':''}>Gasto de obra</option>
+        <option value="fijo" ${tipo==='fijo'?'selected':''}>Gasto fijo</option>
+        <option value="stock" ${tipo==='stock'?'selected':''}>Stock</option>
+      </select></div>
+      <div class="field" id="wrap-oc-obra"><label>Obra</label><select id="f-obra">${obraOptions}</select></div>
+      <div class="field" id="wrap-oc-cat"><label>Categoría</label><select id="f-cat"><option value="materiaPrima" ${existing&&existing.categoria==='materiaPrima'?'selected':''}>Materiales</option><option value="logistica" ${existing&&existing.categoria==='logistica'?'selected':''}>Logística</option><option value="estadia" ${existing&&existing.categoria==='estadia'?'selected':''}>Estadía de obra</option><option value="otros" ${existing&&existing.categoria==='otros'?'selected':''}>Otros no previstos</option></select></div>
+      <div class="field span2" id="wrap-oc-stock"><label>Material</label><input id="f-stock-nombre" placeholder="Nombre del material" value="${existing&&existing.stockNombre?existing.stockNombre:''}"></div>
+      <div class="field"><label>Proveedor</label><select id="f-proveedor" onchange="onProveedorSelectChange(this)">${proveedorOptionsHTML(existing?existing.proveedorId:null)}</select></div>
+      <div class="field hidden span2" id="wrap-proveedor-nuevo"><label>Nombre del nuevo proveedor</label><input id="f-proveedor-nuevo" placeholder="Nombre"></div>
+      <div class="field span2"><label>Detalle</label><input id="f-concepto" placeholder="Ej: Fijaciones y flejes" value="${existing?existing.concepto:''}"></div>
+      <div class="field"><label>Cantidad</label><input id="f-cantidad" class="mono-in" type="number" value="${existing?existing.cantidad:1}" oninput="previewOcMonto()"></div>
+      <div class="field"><label>Precio unitario estimado ($)</label><input id="f-unitario" class="mono-in" type="number" value="${existing?existing.unitario:0}" oninput="previewOcMonto()"></div>
+      <div class="field"><label>Solicitante</label><input id="f-solicitante" placeholder="Nombre" value="${existing?existing.solicitante:''}"></div>
+      <div class="field"><label>Fecha</label><input id="f-fecha" type="date" value="${existing?existing.fecha:today()}"></div>
+    </div>
+    <div class="modal-preview" style="background:var(--teal-soft);border-radius:10px;padding:12px 14px;margin-top:12px;font-size:13px;color:var(--teal-deep);font-family:'Montserrat',sans-serif;" id="oc-preview">Monto estimado: $ 0</div>
+    <div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" onclick="submitOrdenCompra('${id||''}')">${existing?'Guardar cambios':'Enviar a autorización'}</button></div>`;
+  overlay.classList.add('open');
+  onOcTipoChange(); previewOcMonto();
+}
+function onOcTipoChange(){
+  const tipo = document.getElementById('f-tipo').value;
+  document.getElementById('wrap-oc-obra').classList.toggle('hidden', tipo!=='obra');
+  document.getElementById('wrap-oc-cat').classList.toggle('hidden', tipo!=='obra');
+  document.getElementById('wrap-oc-stock').classList.toggle('hidden', tipo!=='stock');
+}
+function previewOcMonto(){
+  const cant=+document.getElementById('f-cantidad').value||0, uni=+document.getElementById('f-unitario').value||0;
+  document.getElementById('oc-preview').textContent = 'Monto estimado: ' + fmt(cant*uni);
+}
+function submitOrdenCompra(id){
+  const tipo = document.getElementById('f-tipo').value;
+  const obraId = tipo==='obra' ? document.getElementById('f-obra').value : null;
+  const categoria = tipo==='obra' ? document.getElementById('f-cat').value : (tipo==='fijo'?'costosFijos':null);
+  const stockNombre = tipo==='stock' ? document.getElementById('f-stock-nombre').value.trim() : null;
+  const proveedorId = resolveProveedorId();
+  const concepto = document.getElementById('f-concepto').value.trim() || 'Sin detalle';
+  const cantidad = +document.getElementById('f-cantidad').value||0;
+  const unitario = +document.getElementById('f-unitario').value||0;
+  const monto = cantidad*unitario;
+  const solicitante = document.getElementById('f-solicitante').value.trim() || 'Sin especificar';
+  const fecha = document.getElementById('f-fecha').value || today();
+  if(id){
+    const o = getOrden(id);
+    Object.assign(o, {tipo, obraId, categoria, stockNombre, proveedorId, concepto, cantidad, unitario, monto, solicitante, fecha});
+  } else {
+    state.ordenesCompra.push({id:newId('oc'), numero: nextOcNumero(), fecha, solicitante, tipo, obraId, categoria, stockNombre, concepto, cantidad, unitario, monto, proveedorId, estado:'pendiente', comentarioDueno:null, pagoId:null});
+  }
+  closeModal(); renderAll();
+}
+function openModalAutorizarOrden(id){
+  const o = getOrden(id); const prov = getProveedor(o.proveedorId);
+  modalEl.innerHTML = `<h3>Confirmar autorización</h3><div class="modal-sub">Verificá los datos antes de confirmar</div>
+    <div class="modal-preview" style="background:var(--teal-soft);border-radius:10px;padding:14px 16px;font-size:13px;color:var(--teal-deep);">
+      <div class="summary-line"><span>Orden</span><span>${o.numero}</span></div>
+      <div class="summary-line"><span>Destino</span><span>${ordenDestinoTxt(o)}</span></div>
+      <div class="summary-line"><span>Proveedor</span><span>${prov?prov.nombre:'—'}</span></div>
+      <div class="summary-line"><span>Detalle</span><span>${o.concepto}</span></div>
+      <div class="summary-line total"><span>Monto estimado</span><span>${fmt(o.monto)}</span></div>
+    </div>
+    <div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" onclick="submitAutorizarOrden('${id}')">Confirmar autorización</button></div>`;
+  overlay.classList.add('open');
+}
+function submitAutorizarOrden(id){ const o=getOrden(id); o.estado='autorizada'; closeModal(); renderAll(); }
+function openModalRechazarOrden(id){
+  modalEl.innerHTML = `<h3>Rechazar orden de compra</h3><div class="modal-sub">${getOrden(id).numero}</div>
+    <div class="form-grid"><div class="field span2"><label>Motivo (opcional)</label><input id="f-motivo" placeholder="Ej: no es prioritario este mes"></div></div>
+    <div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" onclick="submitRechazarOrden('${id}')">Confirmar rechazo</button></div>`;
+  overlay.classList.add('open');
+}
+function submitRechazarOrden(id){ const o=getOrden(id); o.estado='rechazada'; o.comentarioDueno=document.getElementById('f-motivo').value.trim()||null; closeModal(); renderAll(); }
+function openModalEfectivizarOrden(id){
+  const o = getOrden(id);
+  modalEl.innerHTML = `<h3>Marcar como comprada</h3><div class="modal-sub">${o.numero} · genera el pago real y suma al gasto</div>
+    <div class="form-grid">
+      <div class="field span2"><label>Nº remito / factura</label><input id="f-factura" placeholder="Ej: 0001-00004521"></div>
+      <div class="field"><label>Monto final ($, con IVA si aplica)</label><input id="f-monto" class="mono-in" type="number" value="${o.monto}"></div>
+      <div class="field checkbox"><input type="checkbox" id="f-iva" checked><label>El monto incluye IVA (21%)</label></div>
+      <div class="field"><label>Fecha de factura (para IVA)</label><input id="f-fecha-factura" type="date" value="${today()}"></div>
+      <div class="field"><label>Medio de pago</label><select id="f-forma"><option>A definir</option><option>Transferencia</option><option>Efectivo</option><option>eCheq</option><option>FIMA</option></select></div>
+      <div class="field checkbox"><input type="checkbox" id="f-sinfecha" checked onchange="document.getElementById('wrap-fecha').classList.toggle('hidden', this.checked)"><label>Sin fecha de pago todavía</label></div>
+      <div class="field hidden" id="wrap-fecha"><label>Fecha de pago</label><input id="f-fechapago" type="date"></div>
+    </div>
+    <div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" onclick="submitEfectivizarOrden('${id}')">Confirmar compra</button></div>`;
+  overlay.classList.add('open');
+}
+function submitEfectivizarOrden(id){
+  const o = getOrden(id);
+  const numeroFactura = document.getElementById('f-factura').value.trim() || null;
+  const monto = +document.getElementById('f-monto').value || o.monto;
+  const ivaAplica = document.getElementById('f-iva').checked;
+  const fechaFactura = document.getElementById('f-fecha-factura').value || today();
+  const formaPago = document.getElementById('f-forma').value;
+  const sinFecha = document.getElementById('f-sinfecha').checked;
+  const fechaPago = sinFecha ? null : (document.getElementById('f-fechapago').value || today());
+  const montoNeto = ivaAplica ? monto/1.21 : monto;
+
+  if(o.tipo==='stock'){
+    let item = state.stock.find(s=>s.nombre.toLowerCase()===(o.stockNombre||'').toLowerCase());
+    if(!item){ item = {id:newId('s'), nombre:o.stockNombre||o.concepto, unidad:'un.', cantidad:0, costoUnitario:0}; state.stock.push(item); }
+    item.cantidad += o.cantidad;
+    if(o.cantidad>0) item.costoUnitario = montoNeto/o.cantidad;
+    state.stockMovimientos.push({id:newId('sm'), fecha: fechaPago||today(), tipo:'compra', stockId:item.id, cantidad:o.cantidad, obraId:null, monto});
+  }
+  const pago = {id:newId('p'), tipo:o.tipo, obraId:o.obraId, categoria:o.categoria||'costosFijos', concepto:o.concepto+' (OC '+o.numero+')', cantidad:o.cantidad, unitario:o.cantidad?montoNeto/o.cantidad:montoNeto, ivaAplica, monto, proveedorId:o.proveedorId, numeroFactura, fechaFactura, formaPago, fechaPago, pagosRealizados:[]};
+  state.pagos.push(pago);
+  if(o.tipo==='obra'){ const obra=getObra(o.obraId); if(obra) obra.real[o.categoria]+=monto; }
+  o.estado='comprada'; o.pagoId=pago.id;
+  closeModal(); renderAll();
+}
+
+/* ======================= PAGOS ======================= */
+function setPagosFilter(f){
+  state.pagosFilter=f;
+  document.querySelectorAll('.filter-tab').forEach(t=>t.classList.toggle('active', t.dataset.filter===f));
+  state.selectedProveedorId = null;
+  renderPagos();
+}
+function renderPagos(){
+  document.getElementById('pagos-table-egresos').classList.toggle('hidden', state.pagosFilter==='fima'||state.pagosFilter==='proveedores');
+  document.getElementById('pagos-table-fima').classList.toggle('hidden', state.pagosFilter!=='fima');
+  document.getElementById('pagos-table-proveedores').classList.toggle('hidden', !(state.pagosFilter==='proveedores' && !state.selectedProveedorId));
+  document.getElementById('pagos-table-proveedor-detalle').classList.toggle('hidden', !(state.pagosFilter==='proveedores' && state.selectedProveedorId));
+
+  if(state.pagosFilter==='fima'){
+    const ingresos = state.movimientosFima.filter(m=>m.tipo==='in').sort((a,b)=>b.fecha.localeCompare(a.fecha));
+    document.getElementById('pagos-fima-body').innerHTML = ingresos.length ? ingresos.map(m=>`<tr><td class="mono">${m.fecha}</td><td>${fondoLabel[m.fondo]}</td><td>${m.concepto}</td><td class="num">${fmt(m.monto)}</td></tr>`).join('') : `<tr class="empty-row"><td colspan="4">Todavía no se registraron ingresos a FIMA</td></tr>`;
+    return;
+  }
+  if(state.pagosFilter==='proveedores'){
+    if(state.selectedProveedorId) renderProveedorDetalle(state.selectedProveedorId);
+    else renderProveedoresLista();
+    return;
+  }
+  let rows = state.pagos; if(state.pagosFilter!=='todos') rows = rows.filter(p=>p.tipo===state.pagosFilter);
+  rows = [...rows].sort((a,b)=>(b.fechaPago||'').localeCompare(a.fechaPago||''));
+  document.getElementById('pagos-body').innerHTML = rows.length ? rows.map(p=>{
+    const est = pagoEstado(p);
+    const estadoDot = est==='pagado'?'good':'warn';
+    const estadoTxt = est==='pagado'?'Pagado':(est==='parcial'?'Parcial':(est==='sin_fecha'?'Sin fecha':'Pendiente'));
+    const action = est!=='pagado' ? `<span class="link-btn" onclick="openModalFinalizarPago('${p.id}')">Registrar pago →</span>` : '';
+    const destino = p.obraId ? `<span class="link-btn" onclick="goToObra('${p.obraId}')"><span class="obra-code">${getObra(p.obraId)?.code||''}</span></span>` : (p.tipo==='stock' ? 'Stock' : 'Negocio general');
+    const prov = getProveedor(p.proveedorId);
+    const provTxt = prov ? `${prov.nombre}${p.numeroFactura?' · '+p.numeroFactura:''}` : '—';
+    return `<tr><td>${destino}</td><td>${p.concepto}</td><td>${provTxt}</td><td class="num">${fmt(p.monto)}</td><td class="num">${fmt(pagoSaldo(p))}</td><td class="mono">${p.fechaPago||'—'}</td><td><span class="estado-dot ${estadoDot}"></span>${estadoTxt}</td><td>${action}</td></tr>`;
+  }).join('') : `<tr class="empty-row"><td colspan="8">No hay pagos registrados</td></tr>`;
+}
+function proveedorDeuda(provId){ return state.pagos.filter(p=>p.proveedorId===provId).reduce((a,p)=>a+pagoSaldo(p),0); }
+function renderProveedoresLista(){
+  document.getElementById('proveedores-body').innerHTML = state.proveedores.length ? state.proveedores.map(pr=>{
+    const facturas = state.pagos.filter(p=>p.proveedorId===pr.id && pagoEstado(p)!=='pagado');
+    const deuda = facturas.reduce((a,p)=>a+pagoSaldo(p),0);
+    return `<tr><td style="font-weight:600;">${pr.nombre}</td><td class="num">${facturas.length}</td><td class="num">${fmt(deuda)}</td><td><span class="link-btn" onclick="openProveedorDetalle('${pr.id}')">Ver detalle →</span></td></tr>`;
+  }).join('') : `<tr class="empty-row"><td colspan="4">Todavía no hay proveedores cargados</td></tr>`;
+}
+function openProveedorDetalle(id){ state.selectedProveedorId = id; renderPagos(); }
+function renderProveedorDetalle(id){
+  const pr = getProveedor(id); if(!pr) return;
+  document.getElementById('proveedor-detalle-nombre').textContent = pr.nombre;
+  document.getElementById('proveedor-detalle-deuda').textContent = fmt(proveedorDeuda(id));
+  const facturas = state.pagos.filter(p=>p.proveedorId===id).sort((a,b)=>(a.fechaPago||'').localeCompare(b.fechaPago||''));
+  document.getElementById('proveedor-detalle-body').innerHTML = facturas.length ? facturas.map(p=>{
+    const est = pagoEstado(p);
+    const estadoDot = est==='pagado'?'good':'warn';
+    const estadoTxt = est==='pagado'?'Pagado':(est==='parcial'?'Parcial':(est==='sin_fecha'?'Sin fecha':'Pendiente'));
+    const destino = p.obraId ? `<span class="obra-code">${getObra(p.obraId)?.code||''}</span>` : (p.tipo==='stock'?'Stock':'Negocio general');
+    return `<tr><td>${p.numeroFactura||'—'}</td><td>${p.concepto}</td><td>${destino}</td><td class="num">${fmt(p.monto)}</td><td class="num">${fmt(pagoMontoPagado(p))}</td><td class="num">${fmt(pagoSaldo(p))}</td><td><span class="estado-dot ${estadoDot}"></span>${estadoTxt}</td></tr>`;
+  }).join('') : `<tr class="empty-row"><td colspan="7">Este proveedor todavía no tiene facturas registradas</td></tr>`;
+}
+
+/* ======================= MODALS ======================= */
+const overlay = document.getElementById('overlay'); const modalEl = document.getElementById('modal-content');
+function closeModal(){ overlay.classList.remove('open'); modalEl.innerHTML=''; }
+overlay.addEventListener('click', e=>{ if(e.target===overlay) closeModal(); });
+
+function proveedorOptionsHTML(selectedId){
+  return `<option value="">— Sin proveedor —</option>` + state.proveedores.map(p=>`<option value="${p.id}" ${p.id===selectedId?'selected':''}>${p.nombre}</option>`).join('') + `<option value="__nuevo__">+ Nuevo proveedor…</option>`;
+}
+function onProveedorSelectChange(sel){
+  document.getElementById('wrap-proveedor-nuevo').classList.toggle('hidden', sel.value!=='__nuevo__');
+}
+function resolveProveedorId(){
+  const sel = document.getElementById('f-proveedor');
+  if(!sel) return null;
+  if(sel.value==='__nuevo__'){
+    const nombre = document.getElementById('f-proveedor-nuevo').value.trim();
+    if(!nombre) return null;
+    const id = newId('pr');
+    state.proveedores.push({id, nombre});
+    return id;
+  }
+  return sel.value || null;
+}
+function openModalPagoProveedor(){
+  const pr = getProveedor(state.selectedProveedorId); if(!pr) return;
+  const deuda = proveedorDeuda(pr.id);
+  modalEl.innerHTML = `<h3>Registrar pago — ${pr.nombre}</h3><div class="modal-sub">Se aplica a las facturas más antiguas primero. Deuda total: ${fmt(deuda)}</div>
+    <div class="form-grid">
+      <div class="field span2"><label>Monto a pagar ($)</label><input id="f-monto" class="mono-in" type="number" value="${deuda}"></div>
+      <div class="field"><label>Medio de pago</label><select id="f-forma" onchange="onMedioPagoChange()"><option>Transferencia</option><option>Efectivo</option><option>eCheq</option><option>FIMA</option></select></div>
+      <div class="field hidden" id="wrap-fondo"><label>Fondo que paga</label><select id="f-fondo"><option value="costosFijos">Costos Fijos</option><option value="jornales">Fondo Jornales</option><option value="emergencias">Emergencias</option><option value="inversiones">Inversiones</option></select></div>
+      <div class="field span2"><label>Fecha</label><input id="f-fecha" type="date" value="${today()}"></div>
+    </div>
+    <div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" onclick="submitPagoProveedor('${pr.id}')">Registrar</button></div>`;
+  overlay.classList.add('open');
+  onMedioPagoChange();
+}
+function onMedioPagoChange(){
+  const sel = document.getElementById('f-forma'); if(!sel) return;
+  const wrap = document.getElementById('wrap-fondo'); if(!wrap) return;
+  wrap.classList.toggle('hidden', sel.value!=='FIMA');
+}
+function submitPagoProveedor(provId){
+  let monto = +document.getElementById('f-monto').value||0;
+  const formaPago = document.getElementById('f-forma').value;
+  const fondo = formaPago==='FIMA' ? document.getElementById('f-fondo').value : null;
+  const fecha = document.getElementById('f-fecha').value || today();
+  if(monto<=0){ closeModal(); return; }
+  const facturas = state.pagos.filter(p=>p.proveedorId===provId && pagoEstado(p)!=='pagado').sort((a,b)=>(a.fechaPago||'9999').localeCompare(b.fechaPago||'9999'));
+  let restante = monto;
+  facturas.forEach(p=>{
+    if(restante<=0) return;
+    const saldo = pagoSaldo(p);
+    const aplicar = Math.min(saldo, restante);
+    if(aplicar<=0) return;
+    p.pagosRealizados = p.pagosRealizados||[];
+    p.pagosRealizados.push({fecha, monto:aplicar, fondo, formaPago});
+    restante -= aplicar;
+  });
+  const aplicadoTotal = monto - restante;
+  if(aplicadoTotal>0){
+    if(fondo){
+      state.fondos[fondo] -= aplicadoTotal;
+      state.movimientosFima.push({fecha, fondo, obraId:null, concepto:'Pago a proveedor — '+getProveedor(provId).nombre, tipo:'out', monto:aplicadoTotal});
+    } else {
+      state.caja -= aplicadoTotal;
+    }
+  }
+  closeModal(); renderAll();
+  if(restante>0) alert(`Se aplicaron ${fmt(aplicadoTotal)} contra las facturas pendientes. Los ${fmt(restante)} restantes no se aplicaron porque no hay más deuda con este proveedor.`);
+}
+
+function openModalIngreso(obraId){
+  modalEl.innerHTML = `<h3>Registrar cobro</h3><div class="modal-sub">Obra: <b>${getObra(obraId).code}</b></div>
+    <div class="form-grid">
+      <div class="field"><label>Monto cobrado ($)</label><input id="f-monto" class="mono-in" type="number" value="0"></div>
+      <div class="field"><label>Medio de pago</label><select id="f-medio"><option>Transferencia</option><option>Efectivo</option><option>Cheque</option><option>Otro</option></select></div>
+      <div class="field span2"><label>Fecha</label><input id="f-fecha" type="date" value="${today()}"></div>
+    </div>
+    <div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" onclick="submitIngreso('${obraId}')">Registrar</button></div>`;
+  overlay.classList.add('open');
+}
+function submitIngreso(obraId){
+  const monto = +document.getElementById('f-monto').value||0;
+  const medioPago = document.getElementById('f-medio').value;
+  const fecha = document.getElementById('f-fecha').value || today();
+  const o = getObra(obraId);
+  o.ingresosList = o.ingresosList || [];
+  o.ingresosList.push({fecha, monto, medioPago});
+  o.ingresos.cobrado = o.ingresosList.reduce((a,i)=>a+i.monto,0);
+  state.caja += monto;
+  closeModal(); renderAll();
+}
+
+function openModalCompra(preselectObraId){
+  const obraOptions = state.obras.map(o=>`<option value="${o.id}" ${o.id===preselectObraId?'selected':''}>${o.code}</option>`).join('');
+  const stockOptions = state.stock.map(s=>`<option value="${s.id}">${s.nombre} (${s.unidad}) — stock: ${s.cantidad}</option>`).join('');
+  const isObra = !!preselectObraId;
+  modalEl.innerHTML = `
+    <h3>Registrar compra / gasto</h3><div class="modal-sub">Gasto fijo del negocio o vinculado a una obra</div>
+    <div class="form-grid">
+      <div class="field"><label>Tipo</label><select id="f-tipo" onchange="onTipoPagoChange()"><option value="obra" ${isObra?'selected':''}>Gasto de obra</option><option value="fijo" ${!isObra?'selected':''}>Gasto fijo</option></select></div>
+      <div class="field" id="wrap-obra"><label>Obra</label><select id="f-obra">${obraOptions}</select></div>
+      <div class="field" id="wrap-cat"><label>Categoría</label><select id="f-cat" onchange="onCategoriaChange()"><option value="materiaPrima">Materiales</option><option value="logistica">Logística</option><option value="estadia">Estadía de obra</option><option value="otros">Otros no previstos</option></select></div>
+      <div class="field checkbox span2 hidden" id="wrap-usostock"><input type="checkbox" id="f-usostock" onchange="onUsoStockChange()"><label>Utilizado de stock (no genera un pago nuevo)</label></div>
+      <div class="field span2 hidden" id="wrap-stock-material"><label>Material (de stock)</label><select id="f-stock-material" onchange="onStockMaterialChange()">${stockOptions||'<option disabled>No hay materiales en stock</option>'}</select></div>
+      <div class="field span2" id="wrap-detalle"><label>Detalle</label><input id="f-concepto" placeholder="Ej: Lana de vidrio 50mm"></div>
+      <div class="field" id="wrap-proveedor"><label>Proveedor</label><select id="f-proveedor" onchange="onProveedorSelectChange(this)">${proveedorOptionsHTML()}</select></div>
+      <div class="field" id="wrap-factura"><label>Nº remito / factura</label><input id="f-factura" placeholder="Ej: 0001-00004521"></div>
+      <div class="field" id="wrap-fecha-factura"><label>Fecha de factura (para IVA)</label><input id="f-fecha-factura" type="date" value="${today()}"></div>
+      <div class="field span2 hidden" id="wrap-proveedor-nuevo"><label>Nombre del nuevo proveedor</label><input id="f-proveedor-nuevo" placeholder="Nombre"></div>
+      <div class="field"><label>Cantidad</label><input id="f-cantidad" class="mono-in" type="number" value="1" oninput="previewCompraMonto()"></div>
+      <div class="field" id="wrap-unitario"><label>Precio unitario ($)</label><input id="f-unitario" class="mono-in" type="number" value="0" oninput="previewCompraMonto()"></div>
+      <div class="field checkbox span2" id="wrap-iva"><input type="checkbox" id="f-iva" onchange="previewCompraMonto()"><label>Aplica IVA (21%)</label></div>
+      <div class="field" id="wrap-forma"><label>Medio de pago</label><select id="f-forma"><option>A definir</option><option>Transferencia</option><option>Efectivo</option><option>eCheq</option><option>FIMA</option></select></div>
+      <div class="field checkbox" id="wrap-sinfecha"><input type="checkbox" id="f-sinfecha" checked onchange="toggleFechaPago()"><label>Sin fecha de pago todavía</label></div>
+      <div class="field hidden" id="wrap-fecha"><label>Fecha de pago</label><input id="f-fechapago" type="date"></div>
+    </div>
+    <div class="modal-preview" style="background:var(--teal-soft);border-radius:10px;padding:12px 14px;margin-top:12px;font-size:13px;color:var(--teal-deep);font-family:'Montserrat',sans-serif;" id="compra-preview">Monto: $ 0</div>
+    <div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" onclick="submitCompra()">Registrar</button></div>`;
+  overlay.classList.add('open');
+  onTipoPagoChange(); onCategoriaChange(); previewCompraMonto();
+}
+function onTipoPagoChange(){
+  const isObra = document.getElementById('f-tipo').value==='obra';
+  document.getElementById('wrap-obra').classList.toggle('hidden', !isObra);
+  document.getElementById('wrap-cat').classList.toggle('hidden', !isObra);
+  if(!isObra){ document.getElementById('f-usostock').checked=false; }
+  onCategoriaChange();
+}
+function onCategoriaChange(){
+  const isObra = document.getElementById('f-tipo').value==='obra';
+  const esMateriales = document.getElementById('f-cat').value==='materiaPrima';
+  document.getElementById('wrap-usostock').classList.toggle('hidden', !(isObra && esMateriales));
+  if(!(isObra && esMateriales)){ document.getElementById('f-usostock').checked=false; onUsoStockChange(); }
+}
+function onUsoStockChange(){
+  const usoStock = document.getElementById('f-usostock').checked;
+  ['wrap-unitario','wrap-iva','wrap-forma','wrap-sinfecha','wrap-proveedor','wrap-factura','wrap-fecha-factura'].forEach(id=>document.getElementById(id).classList.toggle('hidden', usoStock));
+  document.getElementById('wrap-fecha').classList.toggle('hidden', usoStock || document.getElementById('f-sinfecha').checked);
+  document.getElementById('wrap-proveedor-nuevo').classList.toggle('hidden', usoStock || document.getElementById('f-proveedor').value!=='__nuevo__');
+  document.getElementById('wrap-stock-material').classList.toggle('hidden', !usoStock);
+  document.getElementById('wrap-detalle').classList.toggle('hidden', usoStock);
+  if(usoStock) onStockMaterialChange();
+  previewCompraMonto();
+}
+function onStockMaterialChange(){
+  const item = getStockItem(document.getElementById('f-stock-material').value);
+  if(item) document.getElementById('f-concepto').value = item.nombre;
+  previewCompraMonto();
+}
+function toggleFechaPago(){ document.getElementById('wrap-fecha').classList.toggle('hidden', document.getElementById('f-sinfecha').checked); }
+function previewCompraMonto(){
+  const usoStock = document.getElementById('f-usostock')?.checked;
+  const cant=+document.getElementById('f-cantidad').value||0;
+  if(usoStock){
+    const item = getStockItem(document.getElementById('f-stock-material').value);
+    const costo = item?item.costoUnitario:0;
+    document.getElementById('compra-preview').textContent = `Se descuentan ${cant} ${item?item.unidad:''} del stock  ·  Costo: ${fmt(cant*costo)}  ·  No genera un pago nuevo`;
+    return;
+  }
+  const uni=+document.getElementById('f-unitario').value||0;
+  const base=cant*uni; const iva = document.getElementById('f-iva').checked? base*0.21:0;
+  document.getElementById('compra-preview').textContent = `Subtotal: ${fmt(base)}  +  IVA: ${fmt(iva)}  =  Total: ${fmt(base+iva)}`;
+}
+function submitCompra(){
+  const tipo = document.getElementById('f-tipo').value;
+  const obraId = tipo==='obra' ? document.getElementById('f-obra').value : null;
+  const categoria = tipo==='obra' ? document.getElementById('f-cat').value : 'costosFijos';
+  const usoStock = tipo==='obra' && categoria==='materiaPrima' && document.getElementById('f-usostock').checked;
+  const cantidad = +document.getElementById('f-cantidad').value||0;
+
+  if(usoStock){
+    const stockId = document.getElementById('f-stock-material').value;
+    const item = getStockItem(stockId);
+    if(!item){ alert('No hay material de stock seleccionado.'); return; }
+    if(cantidad>item.cantidad){ if(!confirm(`Solo hay ${item.cantidad} ${item.unidad} en stock. ¿Registrar igual (quedaría en negativo)?`)) return; }
+    const monto = cantidad*item.costoUnitario;
+    item.cantidad -= cantidad;
+    const o = getObra(obraId); if(o) o.real.materiaPrima += monto;
+    state.stockMovimientos.push({id:newId('sm'), fecha: today(), tipo:'consumo', stockId, cantidad, obraId, monto});
+    closeModal(); renderAll();
+    return;
+  }
+
+  const concepto = document.getElementById('f-concepto').value.trim() || 'Sin detalle';
+  const unitario=+document.getElementById('f-unitario').value||0;
+  const ivaAplica = document.getElementById('f-iva').checked;
+  const monto = cantidad*unitario*(ivaAplica?1.21:1);
+  const proveedorId = resolveProveedorId();
+  const numeroFactura = document.getElementById('f-factura').value.trim() || null;
+  const fechaFactura = document.getElementById('f-fecha-factura').value || today();
+  const formaPago = document.getElementById('f-forma').value;
+  const sinFecha = document.getElementById('f-sinfecha').checked;
+  const fechaPago = sinFecha? null : (document.getElementById('f-fechapago').value || today());
+  state.pagos.push({id:newId('p'), tipo, obraId, categoria, concepto, cantidad, unitario, ivaAplica, monto, proveedorId, numeroFactura, fechaFactura, formaPago, fechaPago, pagosRealizados:[]});
+  if(tipo==='obra'){ const o=getObra(obraId); if(o) o.real[categoria]+=monto; }
+  closeModal(); renderAll();
+}
+
+function openModalFinalizarPago(pagoId){
+  const p = state.pagos.find(x=>x.id===pagoId);
+  const saldo = pagoSaldo(p);
+  const medioActual = ['Transferencia','Efectivo','eCheq','FIMA'].includes(p.formaPago) ? p.formaPago : 'Transferencia';
+  modalEl.innerHTML = `<h3>Registrar pago</h3><div class="modal-sub">${p.concepto} · Total ${fmt(p.monto)} · Saldo pendiente ${fmt(saldo)}</div>
+    <div class="form-grid">
+      <div class="field span2"><label>Monto a pagar ($)</label><input id="f-monto" class="mono-in" type="number" value="${saldo}"></div>
+      <div class="field"><label>Medio de pago</label><select id="f-forma" onchange="onMedioPagoChange()">
+        <option ${medioActual==='Transferencia'?'selected':''}>Transferencia</option>
+        <option ${medioActual==='Efectivo'?'selected':''}>Efectivo</option>
+        <option ${medioActual==='eCheq'?'selected':''}>eCheq</option>
+        <option ${medioActual==='FIMA'?'selected':''}>FIMA</option>
+      </select></div>
+      <div class="field"><label>Fecha de pago</label><input id="f-fecha" type="date" value="${p.fechaPago||today()}"></div>
+      <div class="field span2 hidden" id="wrap-fondo"><label>Fondo que paga</label><select id="f-fondo"><option value="costosFijos">Costos Fijos</option><option value="jornales">Fondo Jornales</option><option value="emergencias">Emergencias</option><option value="inversiones">Inversiones</option></select></div>
+    </div>
+    <div class="foot-note" style="margin-top:12px;">Si el monto es menor al saldo, la factura queda "parcial" y podés registrar otro pago más adelante. El fondo solo se pide si el medio de pago es FIMA.</div>
+    <div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" onclick="submitFinalizarPago('${pagoId}')">Registrar pago</button></div>`;
+  overlay.classList.add('open');
+  onMedioPagoChange();
+}
+function submitFinalizarPago(pagoId){
+  const p = state.pagos.find(x=>x.id===pagoId);
+  const saldo = pagoSaldo(p);
+  let monto = +document.getElementById('f-monto').value||0;
+  if(monto<=0) { closeModal(); return; }
+  if(monto>saldo) monto = saldo;
+  const formaPago = document.getElementById('f-forma').value;
+  const fecha = document.getElementById('f-fecha').value || today();
+  const fondo = formaPago==='FIMA' ? document.getElementById('f-fondo').value : null;
+  p.formaPago = formaPago;
+  p.fechaPago = fecha;
+  p.pagosRealizados = p.pagosRealizados||[];
+  p.pagosRealizados.push({fecha, monto, fondo, formaPago});
+  if(fondo){
+    state.fondos[fondo] -= monto;
+    state.movimientosFima.push({fecha, fondo, obraId:p.obraId, concepto:p.concepto, tipo:'out', monto});
+  } else {
+    state.caja -= monto;
+  }
+  closeModal(); renderAll();
+}
+
+let editingJornalId = null;
+function openModalJornal(id){
+  editingJornalId = id || null;
+  const existing = id ? state.jornales.find(j=>j.id===id) : null;
+  const obraOptions = state.obras.map(o=>`<option value="${o.id}" ${existing&&existing.obraId===o.id?'selected':''}>${o.code}</option>`).join('');
+  const puestos = ['Trazador','Montador','Lanero','931 x persona'];
+  const puestoOptions = puestos.map(p=>`<option ${existing&&existing.puesto===p?'selected':''}>${p}</option>`).join('');
+  const dias = existing ? existing.dias : [1,1,1,1,1,0,0];
+  modalEl.innerHTML = `<h3>${existing?'Editar jornal — '+existing.nombre:'Agregar jornal'}</h3><div class="modal-sub">${existing?'Podés sumar/restar días o cambiar horas extra':'Elegí la semana (lunes) a la que corresponde'}</div>
+    <div class="form-grid">
+      <div class="field"><label>Personal</label><input id="f-nombre" placeholder="Nombre" value="${existing?existing.nombre:''}"></div>
+      <div class="field"><label>Semana (lunes)</label><input id="f-semana" type="date" value="${existing?existing.semanaInicio:viewedWeek}"></div>
+      <div class="field"><label>Obra</label><select id="f-obra">${obraOptions}</select></div>
+      <div class="field"><label>Puesto</label><select id="f-puesto">${puestoOptions}</select></div>
+      <div class="field"><label>Valor jornal ($)</label><input id="f-jornal" class="mono-in" type="number" value="${existing?existing.jornal:34000}"></div>
+      <div class="field span2"><label>Días trabajados</label><div class="day-toggle-row" id="day-toggles">${['L','M','M','J','V','S','D'].map((d,i)=>`<div class="day-toggle ${dias[i]?'on':''}" onclick="this.classList.toggle('on')">${d}</div>`).join('')}</div></div>
+      <div class="field span2"><label>Extras ($)</label><input id="f-extra" class="mono-in" type="number" value="${existing?existing.extra:0}"></div>
+    </div>
+    <div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" onclick="submitJornal()">${existing?'Guardar cambios':'Agregar'}</button></div>`;
+  overlay.classList.add('open');
+}
+function submitJornal(){
+  const nombre = document.getElementById('f-nombre').value.trim()||'Sin nombre';
+  const semanaInicio = document.getElementById('f-semana').value || viewedWeek;
+  const obraId = document.getElementById('f-obra').value; const puesto = document.getElementById('f-puesto').value;
+  const jornal = +document.getElementById('f-jornal').value||0; const extra = +document.getElementById('f-extra').value||0;
+  const dias = Array.from(document.querySelectorAll('#day-toggles .day-toggle')).map(el=>el.classList.contains('on')?1:0);
+  if(editingJornalId){
+    const j = state.jornales.find(x=>x.id===editingJornalId);
+    Object.assign(j, {nombre, obraId, puesto, semanaInicio, dias, jornal, extra});
+  } else {
+    state.jornales.push({id:newId('j'), nombre, obraId, puesto, semanaInicio, dias, jornal, extra, pagado:false});
+  }
+  editingJornalId = null;
+  closeModal(); renderAll();
+}
+
+function openModalMovimientoFima(){
+  modalEl.innerHTML = `<h3>Registrar movimiento FIMA</h3><div class="modal-sub">Ingreso o egreso directo de un fondo</div>
+    <div class="form-grid">
+      <div class="field"><label>Fondo</label><select id="f-fondo"><option value="jornales">Fondo Jornales</option><option value="costosFijos">Costos Fijos</option><option value="emergencias">Emergencias</option><option value="inversiones">Inversiones</option></select></div>
+      <div class="field"><label>Tipo</label><select id="f-tipo2"><option value="in">Ingreso</option><option value="out">Egreso</option></select></div>
+      <div class="field span2"><label>Concepto</label><input id="f-concepto" placeholder="Ej: Transferencia desde caja"></div>
+      <div class="field"><label>Monto ($)</label><input id="f-monto" class="mono-in" type="number" value="0"></div>
+      <div class="field"><label>Fecha</label><input id="f-fecha" type="date" value="${today()}"></div>
+    </div>
+    <div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" onclick="submitMovimientoFima()">Registrar</button></div>`;
+  overlay.classList.add('open');
+}
+function submitMovimientoFima(){
+  const fondo = document.getElementById('f-fondo').value; const tipo = document.getElementById('f-tipo2').value;
+  const concepto = document.getElementById('f-concepto').value.trim()||'Sin detalle'; const monto = +document.getElementById('f-monto').value||0;
+  const fecha = document.getElementById('f-fecha').value || today();
+  state.fondos[fondo] += (tipo==='in'? monto:-monto);
+  state.movimientosFima.push({fecha, fondo, obraId:null, concepto, tipo, monto});
+  closeModal(); renderAll();
+}
+
+/* ======================= INIT ======================= */
+/* ======================= RESULTADOS (mayor mensual) ======================= */
+const mesNombres = {'01':'Enero','02':'Febrero','03':'Marzo','04':'Abril','05':'Mayo','06':'Junio','07':'Julio','08':'Agosto','09':'Septiembre','10':'Octubre','11':'Noviembre','12':'Diciembre'};
+function prevMonthStr(m){ const [y,mo]=m.split('-').map(Number); const d=new Date(y,mo-2,1); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'); }
+function allPagoEventos(){
+  const out=[];
+  state.pagos.forEach(p=>(p.pagosRealizados||[]).forEach(ev=>out.push({...ev, pago:p})));
+  return out;
+}
+function allIngresosList(){ const out=[]; state.obras.forEach(o=>(o.ingresosList||[]).forEach(i=>out.push({...i, obraId:o.id}))); return out; }
+function jornalesFimaEgresos(){ return state.movimientosFima.filter(m=>m.tipo==='out' && m.fondo==='jornales'); }
+function fimaAportes(){ return state.movimientosFima.filter(m=>m.tipo==='in'); }
+function computeMesResultado(mes){
+  const ingresos = allIngresosList().filter(i=>i.fecha.slice(0,7)===mes);
+  const egresosPagos = allPagoEventos().filter(ev=>ev.fecha.slice(0,7)===mes);
+  const egresosJornales = jornalesFimaEgresos().filter(m=>m.fecha.slice(0,7)===mes);
+  const totalIngresos = ingresos.reduce((a,i)=>a+i.monto,0);
+  const totalEgresos = egresosPagos.reduce((a,ev)=>a+ev.monto,0) + egresosJornales.reduce((a,m)=>a+m.monto,0);
+  return { ingresos, egresosPagos, egresosJornales, totalIngresos, totalEgresos, resultado: totalIngresos-totalEgresos };
+}
+function populateResultadosMes(){
+  const sel = document.getElementById('res-mes'); if(!sel) return;
+  const fechas = [
+    ...allIngresosList().map(i=>i.fecha),
+    ...allPagoEventos().map(ev=>ev.fecha),
+    ...jornalesFimaEgresos().map(m=>m.fecha),
+    ...fimaAportes().map(m=>m.fecha),
+    today(),
+  ];
+  const meses = [...new Set(fechas.map(f=>f.slice(0,7)))].sort().reverse();
+  const cur = sel.value;
+  sel.innerHTML = meses.map(m=>`<option value="${m}">${mesNombres[m.slice(5,7)]} ${m.slice(0,4)}</option>`).join('');
+  if(meses.includes(cur)) sel.value = cur; else sel.value = meses[0];
+}
+function renderResultados(){
+  populateResultadosMes();
+  const mes = document.getElementById('res-mes').value;
+  const r = computeMesResultado(mes);
+  const rPrev = computeMesResultado(prevMonthStr(mes));
+  const delta = r.resultado - rPrev.resultado;
+  const aportes = fimaAportes().filter(m=>m.fecha.slice(0,7)===mes);
+  const totalAportes = aportes.reduce((a,m)=>a+m.monto,0);
+  const pendientes = state.pagos.filter(p=>pagoEstado(p)!=='pagado' && p.fechaPago && p.fechaPago.slice(0,7)===mes);
+
+  document.getElementById('res-kpi-row').innerHTML = `
+    <div class="card kpi"><div class="kpi-label">Ingresos del mes</div><div class="kpi-value">${fmt(r.totalIngresos)}</div><div class="kpi-note">${r.ingresos.length} cobro(s)</div></div>
+    <div class="card kpi"><div class="kpi-label">Egresos del mes</div><div class="kpi-value">${fmt(r.totalEgresos)}</div><div class="kpi-note">${r.egresosPagos.length} pago(s) + ${r.egresosJornales.length} semana(s) de jornales</div></div>
+    <div class="card kpi"><div class="kpi-label">Resultado del mes</div><div class="kpi-value" style="color:${r.resultado>=0?'var(--good)':'var(--bad)'};">${fmt(r.resultado)}</div><div class="kpi-note">${delta>=0?'+':''}${fmt(delta)} vs. mes anterior</div></div>
+    <div class="card kpi"><div class="kpi-label">Aportes a FIMA</div><div class="kpi-value">${fmt(totalAportes)}</div><div class="kpi-note">No afecta el resultado (inversión)</div></div>
+  `;
+
+  document.getElementById('res-ingresos-body').innerHTML = r.ingresos.length ? r.ingresos.map(i=>`<tr><td class="mono">${i.fecha}</td><td><span class="obra-code">${getObra(i.obraId)?.code||''}</span></td><td>${i.medioPago}</td><td class="num">${fmt(i.monto)}</td></tr>`).join('') : `<tr class="empty-row"><td colspan="4">Sin cobros este mes</td></tr>`;
+
+  const egresoRows = [
+    ...r.egresosPagos.map(ev=>{ const p=ev.pago; const prov=getProveedor(p.proveedorId);
+      return {fecha:ev.fecha, categoria: p.tipo==='obra'?catLabel[p.categoria]:(p.tipo==='stock'?'Reposición de stock':'Costo fijo'), destino: p.obraId?getObra(p.obraId)?.code:(p.tipo==='stock'?'Stock':'Negocio general'), concepto:p.concepto+(prov?' ('+prov.nombre+')':''), monto:ev.monto}; }),
+    ...r.egresosJornales.map(m=>({fecha:m.fecha, categoria:'Mano de obra (jornales)', destino:'—', concepto:m.concepto, monto:m.monto})),
+  ].sort((a,b)=>a.fecha.localeCompare(b.fecha));
+  document.getElementById('res-egresos-body').innerHTML = egresoRows.length ? egresoRows.map(e=>`<tr><td class="mono">${e.fecha}</td><td>${e.categoria}</td><td>${e.destino}</td><td>${e.concepto}</td><td class="num">${fmt(e.monto)}</td></tr>`).join('') : `<tr class="empty-row"><td colspan="5">Sin egresos pagados este mes</td></tr>`;
+
+  const catColors = {'Materiales':'var(--teal)','Reposición de stock':'var(--copper)','Mano de obra (jornales)':'var(--copper)','Logística':'var(--good)','Estadía de obra':'var(--warn)','Otros no previstos':'var(--bad)','Costo fijo':'var(--ink)'};
+  const catTotales = {};
+  egresoRows.forEach(e=>{ catTotales[e.categoria] = (catTotales[e.categoria]||0) + e.monto; });
+  const catList = Object.entries(catTotales).sort((a,b)=>b[1]-a[1]);
+  const maxCat = catList.length ? catList[0][1] : 0;
+  document.getElementById('res-chart-egresos').innerHTML = catList.length ? catList.map(([cat,monto])=>`
+    <div class="chart-row">
+      <div class="chart-label"><span class="chart-dot" style="background:${catColors[cat]||'var(--muted)'};"></span>${cat}</div>
+      <div class="chart-track"><div class="chart-fill" style="width:${maxCat>0?Math.round(monto/maxCat*100):0}%;background:${catColors[cat]||'var(--muted)'};"></div></div>
+      <div class="chart-value">${fmt(monto)}</div>
+    </div>`).join('') : `<div class="foot-note" style="margin:0;">Sin egresos este mes para graficar.</div>`;
+
+  document.getElementById('res-fima-body').innerHTML = aportes.length ? aportes.map(m=>`<tr><td class="mono">${m.fecha}</td><td>${fondoLabel[m.fondo]}</td><td>${m.concepto}</td><td class="num">${fmt(m.monto)}</td></tr>`).join('') : `<tr class="empty-row"><td colspan="4">Sin aportes a FIMA este mes</td></tr>`;
+
+  document.getElementById('res-pendientes-body').innerHTML = pendientes.length ? pendientes.map(p=>`<tr><td class="mono">${p.fechaPago}</td><td>${p.obraId?getObra(p.obraId)?.code:'Negocio general'}</td><td>${p.concepto}${pagoEstado(p)==='parcial'?' (parcial)':''}</td><td class="num">${fmt(pagoSaldo(p))}</td></tr>`).join('') : `<tr class="empty-row"><td colspan="4">Sin pendientes con vencimiento este mes</td></tr>`;
+
+  const obrasConSaldo = state.obras.filter(o=>(o.ingresos.facturado-o.ingresos.cobrado)>0.01);
+  document.getElementById('res-cobros-pendientes-body').innerHTML = obrasConSaldo.length ? obrasConSaldo.map(o=>`<tr><td><span class="obra-code">${o.code}</span></td><td class="num">${fmt(o.ingresos.facturado)}</td><td class="num">${fmt(o.ingresos.cobrado)}</td><td class="num">${fmt(o.ingresos.facturado-o.ingresos.cobrado)}</td></tr>`).join('') : `<tr class="empty-row"><td colspan="4">No hay saldos pendientes de cobro</td></tr>`;
+
+  renderIvaReporte(mes);
+}
+
+/* ======================= REPORTE DE IVA ======================= */
+function allFacturasVenta(){
+  const out=[];
+  state.obras.forEach(o=>(o.facturasVenta||[]).forEach(fv=>out.push({...fv, obraId:o.id})));
+  return out;
+}
+function pagoIvaMonto(p){ return p.ivaAplica ? p.monto - (p.monto/1.21) : 0; }
+function renderIvaReporte(mes){
+  const debitoRows = allFacturasVenta().filter(fv=>fv.fecha.slice(0,7)===mes).sort((a,b)=>a.fecha.localeCompare(b.fecha));
+  const creditoRows = state.pagos.filter(p=>p.fechaFactura && p.fechaFactura.slice(0,7)===mes && p.ivaAplica).sort((a,b)=>a.fechaFactura.localeCompare(b.fechaFactura));
+
+  const totalDebito = debitoRows.reduce((a,fv)=>a+fv.iva,0);
+  const totalCredito = creditoRows.reduce((a,p)=>a+pagoIvaMonto(p),0);
+  const saldo = totalDebito - totalCredito;
+
+  document.getElementById('iva-kpi-row').innerHTML = `
+    <div class="card kpi"><div class="kpi-label">IVA débito fiscal</div><div class="kpi-value">${fmt(totalDebito)}</div><div class="kpi-note">${debitoRows.length} factura(s) de venta</div></div>
+    <div class="card kpi"><div class="kpi-label">IVA crédito fiscal</div><div class="kpi-value">${fmt(totalCredito)}</div><div class="kpi-note">${creditoRows.length} factura(s) de compra</div></div>
+    <div class="card kpi"><div class="kpi-label">Saldo del mes</div><div class="kpi-value" style="color:${saldo>=0?'var(--bad)':'var(--good)'};">${fmt(Math.abs(saldo))}</div><div class="kpi-note">${saldo>=0?'A pagar':'A favor'}</div></div>
+  `;
+  document.getElementById('iva-debito-body').innerHTML = debitoRows.length ? debitoRows.map(fv=>`<tr><td class="mono">${fv.fecha}</td><td><span class="obra-code">${getObra(fv.obraId)?.code||''}</span></td><td class="num">${fmt(fv.montoSinIva)}</td><td class="num">${fmt(fv.iva)}</td><td class="num">${fmt(fv.monto)}</td></tr>`).join('') : `<tr class="empty-row"><td colspan="5">Sin facturas de venta este mes</td></tr>`;
+  document.getElementById('iva-credito-body').innerHTML = creditoRows.length ? creditoRows.map(p=>{ const prov=getProveedor(p.proveedorId); const ivaM=pagoIvaMonto(p);
+    return `<tr><td class="mono">${p.fechaFactura}</td><td>${prov?prov.nombre:'—'}</td><td>${p.concepto}</td><td class="num">${fmt(p.monto-ivaM)}</td><td class="num">${fmt(ivaM)}</td><td class="num">${fmt(p.monto)}</td></tr>`;
+  }).join('') : `<tr class="empty-row"><td colspan="6">Sin facturas de compra este mes</td></tr>`;
+}
+
+function renderAll(){ renderDashboard(); renderObraLista(); if(!document.getElementById('obra-sub-detalle').classList.contains('hidden')) renderObraDetail(); renderJornales(); renderOrdenes(); renderFima(); renderStock(); renderPagos(); renderResultados(); }
+showObraSubview('lista');
+renderAll();
+</script>
+</body>
+</html>
