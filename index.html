@@ -549,7 +549,7 @@
 
     <div class="section-title"><h2>Ingresos del mes</h2><span class="hint">Cobros registrados en obras</span></div>
     <div class="card card-table"><table>
-      <thead><tr><th>Fecha</th><th>Obra</th><th>Medio de pago</th><th class="num">Monto</th></tr></thead>
+      <thead><tr><th>Fecha</th><th>Obra</th><th>Medio de pago</th><th>Nº factura</th><th>Nº cobranza</th><th class="num">Monto</th></tr></thead>
       <tbody id="res-ingresos-body"></tbody>
     </table></div>
 
@@ -622,7 +622,7 @@ let state = {
         comisionVendedor:1325053, gananciaNeta:450947, socio1Monto:45095, socio2Monto:135284, aqMonto:270568},
       real:{materiaPrima:12800000, manoObra:6700000, logistica:600000, estadia:380000, otros:540000},
       ingresos:{facturado:30462960, cobrado:19900000}, ingresosList:[{fecha:'2026-07-10', monto:19900000, medioPago:'Transferencia'}],
-      facturasVenta:[{id:'fv1', fecha:'2026-06-02', montoSinIva:25176000, iva:5286960, monto:30462960}] },
+      facturasVenta:[{id:'fv1', fecha:'2026-06-02', montoSinIva:25176000, iva:5286960, monto:30462960}], carpetaDriveUrl:'', documentos:[] },
     { id:'o2', code:'TGS', cliente:'TGS Gasoducto Sur', encargado:'Pablo', fechaInicio:'2026-05-10', estado:'en curso',
       presupuesto:{materiaPrima:9000000, manoObra:5200000, logistica:600000, estadia:300000},
       presupuestoDetalle:{ivaPct:21, vendedorPct:5, socio1Nombre:'AL', socio1Pct:10, socio2Nombre:'JL', socio2Pct:30},
@@ -630,7 +630,7 @@ let state = {
         comisionVendedor:901474, gananciaNeta:306526, socio1Monto:30653, socio2Monto:91958, aqMonto:183915},
       real:{materiaPrima:6200000, manoObra:4300000, logistica:400000, estadia:200000, otros:0},
       ingresos:{facturado:20724880, cobrado:9000000}, ingresosList:[{fecha:'2026-06-15', monto:9000000, medioPago:'Transferencia'}],
-      facturasVenta:[{id:'fv2', fecha:'2026-05-10', montoSinIva:17128000, iva:3596880, monto:20724880}] },
+      facturasVenta:[{id:'fv2', fecha:'2026-05-10', montoSinIva:17128000, iva:3596880, monto:20724880}], carpetaDriveUrl:'', documentos:[] },
     { id:'o3', code:'AQ-104', cliente:'Refinería Dock Sud', encargado:'Rulo', fechaInicio:'2026-04-20', estado:'en curso',
       presupuesto:{materiaPrima:7000000, manoObra:3800000, logistica:500000, estadia:200000},
       presupuestoDetalle:{ivaPct:21, vendedorPct:5, socio1Nombre:'AL', socio1Pct:10, socio2Nombre:'JL', socio2Pct:30},
@@ -638,7 +638,7 @@ let state = {
         comisionVendedor:685790, gananciaNeta:234210, socio1Monto:23421, socio2Monto:70263, aqMonto:140526},
       real:{materiaPrima:8100000, manoObra:4600000, logistica:600000, estadia:300000, otros:300000},
       ingresos:{facturado:15766300, cobrado:13800000}, ingresosList:[{fecha:'2026-07-20', monto:13800000, medioPago:'Transferencia'}],
-      facturasVenta:[{id:'fv3', fecha:'2026-04-20', montoSinIva:13030000, iva:2736300, monto:15766300}] },
+      facturasVenta:[{id:'fv3', fecha:'2026-04-20', montoSinIva:13030000, iva:2736300, monto:15766300}], carpetaDriveUrl:'', documentos:[] },
   ],
   jornales: [
     {id:'j1', nombre:'Juan', obraId:'o1', puesto:'Trazador', semanaInicio:'2026-07-27', dias:[1,1,1,1,1,0,0], jornal:38000, extra:0, pagado:false},
@@ -864,8 +864,15 @@ function renderObraDetail(){
       <div class="layerbar-wrap"><div class="layerbar"><div class="fill good" style="width:${Math.min(cobradoPct,100)}%;"></div></div><div class="layerbar-labels"><span>${cobradoPct}% cobrado</span><span>${fmt(o.ingresos.cobrado)} / ${fmt(o.ingresos.facturado)}</span></div></div>
     </div>
     <div class="card card-table" style="margin-top:10px;"><table>
-      <thead><tr><th>Fecha</th><th>Medio de pago</th><th class="num">Monto</th></tr></thead>
-      <tbody>${(o.ingresosList&&o.ingresosList.length) ? o.ingresosList.map(i=>`<tr><td class="mono">${i.fecha}</td><td>${i.medioPago}</td><td class="num">${fmt(i.monto)}</td></tr>`).join('') : `<tr class="empty-row"><td colspan="3">Sin cobros registrados</td></tr>`}</tbody>
+      <thead><tr><th>Fecha</th><th>Medio de pago</th><th>Nº factura</th><th>Nº cobranza</th><th class="num">Monto</th></tr></thead>
+      <tbody>${(o.ingresosList&&o.ingresosList.length) ? o.ingresosList.map(i=>`<tr><td class="mono">${i.fecha}</td><td>${i.medioPago}</td><td>${i.numeroFactura||'—'}</td><td>${i.numeroCobranza||'—'}</td><td class="num">${fmt(i.monto)}</td></tr>`).join('') : `<tr class="empty-row"><td colspan="5">Sin cobros registrados</td></tr>`}</tbody>
+    </table></div>
+
+    <div class="section-title"><h2>Documentos</h2><div class="st-actions"><button class="btn btn-ghost btn-sm" onclick="openModalCarpetaDrive('${o.id}')">${o.carpetaDriveUrl?'📁 Editar carpeta de Drive':'📁 Vincular carpeta de Drive'}</button><button class="btn btn-ghost btn-sm" onclick="openModalDocumentoObra('${o.id}')">+ Agregar documento</button></div></div>
+    ${o.carpetaDriveUrl ? `<div class="foot-note" style="margin-top:0;">📁 Todos los archivos de esta obra (facturas, remitos, OC firmadas) se guardan en <a href="${o.carpetaDriveUrl}" target="_blank" rel="noopener">esta carpeta de Google Drive →</a>. Subilos ahí para que los vea todo el equipo.</div>` : `<div class="foot-note" style="margin-top:0;">Todavía no hay una carpeta de Drive vinculada a esta obra. Creá una carpeta compartida en Google Drive y pegá el link con "📁 Vincular carpeta de Drive" — ahí es donde se suben los PDF (facturas, OC, remitos) para que los vea todo el equipo.</div>`}
+    <div class="card card-table" style="margin-top:12px;"><table>
+      <thead><tr><th>Nombre</th><th>Tipo</th><th>Fecha</th><th></th><th></th></tr></thead>
+      <tbody>${obraDocumentosRows(o.id)}</tbody>
     </table></div>
 
     <div class="section-title"><h2>Presupuestado vs. real — detalle</h2><span class="hint">Para ver en qué categoría no coincide</span></div>
@@ -906,6 +913,53 @@ function obraPagosRows(obraId){
   const rows = [...pagoRows, ...stockRows];
   if(!rows.length) return `<tr class="empty-row"><td colspan="9">Todavía no hay compras registradas en esta obra</td></tr>`;
   return rows.join('');
+}
+const tipoDocLabel = {facturaEmitida:'Factura emitida', facturaRecibida:'Factura recibida', ordenCompra:'Orden de compra', remito:'Remito', otro:'Otro'};
+function obraDocumentosRows(obraId){
+  const docs = getObra(obraId).documentos || [];
+  if(!docs.length) return `<tr class="empty-row"><td colspan="5">Todavía no hay documentos cargados</td></tr>`;
+  return [...docs].sort((a,b)=>(b.fecha||'').localeCompare(a.fecha||'')).map(d=>`<tr><td>${d.nombre}</td><td>${tipoDocLabel[d.tipo]||d.tipo}</td><td class="mono">${d.fecha||'—'}</td><td><a class="link-btn" href="${d.url}" target="_blank" rel="noopener">Abrir →</a></td><td><span class="link-btn danger" onclick="eliminarDocumentoObra('${obraId}','${d.id}')">Quitar</span></td></tr>`).join('');
+}
+function openModalDocumentoObra(obraId){
+  modalEl.innerHTML = `<h3>Agregar documento</h3><div class="modal-sub">Obra: <b>${getObra(obraId).code}</b> — pegá el link para compartir de Google Drive</div>
+    <div class="form-grid">
+      <div class="field span2"><label>Nombre</label><input id="f-doc-nombre" placeholder="Ej: Factura 0001-00004521"></div>
+      <div class="field"><label>Tipo</label><select id="f-doc-tipo">${Object.entries(tipoDocLabel).map(([v,l])=>`<option value="${v}">${l}</option>`).join('')}</select></div>
+      <div class="field"><label>Fecha</label><input id="f-doc-fecha" type="date" value="${today()}"></div>
+      <div class="field span2"><label>Link de Google Drive</label><input id="f-doc-url" type="url" placeholder="https://drive.google.com/..."></div>
+    </div>
+    <div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" onclick="submitDocumentoObra('${obraId}')">Agregar</button></div>`;
+  overlay.classList.add('open');
+}
+function submitDocumentoObra(obraId){
+  const nombre = document.getElementById('f-doc-nombre').value.trim();
+  const url = document.getElementById('f-doc-url').value.trim();
+  if(!nombre || !url){ alert('Cargá al menos el nombre y el link del documento.'); return; }
+  const tipo = document.getElementById('f-doc-tipo').value;
+  const fecha = document.getElementById('f-doc-fecha').value || today();
+  const o = getObra(obraId);
+  o.documentos = o.documentos || [];
+  o.documentos.push({id:newId('doc'), nombre, tipo, fecha, url});
+  closeModal(); renderAll();
+}
+function eliminarDocumentoObra(obraId, docId){
+  const o = getObra(obraId);
+  o.documentos = (o.documentos||[]).filter(d=>d.id!==docId);
+  renderAll();
+}
+function openModalCarpetaDrive(obraId){
+  const o = getObra(obraId);
+  modalEl.innerHTML = `<h3>Carpeta de Google Drive de la obra</h3><div class="modal-sub">Todo lo que suban ahí lo va a ver todo el equipo con acceso a esa carpeta</div>
+    <div class="form-grid">
+      <div class="field span2"><label>Link de la carpeta compartida</label><input id="f-carpeta-url" type="url" placeholder="https://drive.google.com/drive/folders/..." value="${o.carpetaDriveUrl||''}"></div>
+    </div>
+    <div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" onclick="submitCarpetaDrive('${obraId}')">Guardar</button></div>`;
+  overlay.classList.add('open');
+}
+function submitCarpetaDrive(obraId){
+  const o = getObra(obraId);
+  o.carpetaDriveUrl = document.getElementById('f-carpeta-url').value.trim();
+  closeModal(); renderAll();
 }
 function iniciarObra(id){ getObra(id).estado='en curso'; renderAll(); }
 function finalizarObra(id){ getObra(id).estado='finalizada'; renderAll(); }
@@ -1079,7 +1133,7 @@ function savePresupuesto(){
     const facturasVenta = [{id:newId('fv'), fecha:fechaFactura, montoSinIva:c.totalPresupuesto, iva:c.ivaARS, monto:c.totalConIva}];
     state.obras.push({ id, code, cliente, encargado, fechaInicio:fecha, estado:estadoInicial,
       presupuestoDetalle:detalle, presupuesto, presupuestoResumen,
-      real, ingresos:{facturado:c.totalConIva, cobrado}, ingresosList, facturasVenta });
+      real, ingresos:{facturado:c.totalConIva, cobrado}, ingresosList, facturasVenta, carpetaDriveUrl:'', documentos:[] });
     if(ir){
       ['materiaPrima','logistica','estadia','otros'].forEach(cat=>{
         const monto = real[cat];
@@ -1766,6 +1820,8 @@ function openModalIngreso(obraId){
     <div class="form-grid">
       <div class="field"><label>Monto cobrado ($)</label><input id="f-monto" class="mono-in" type="number" value="0"></div>
       <div class="field"><label>Medio de pago</label><select id="f-medio"><option>Transferencia</option><option>Efectivo</option><option>Cheque</option><option>Otro</option></select></div>
+      <div class="field"><label>Nº de factura</label><input id="f-nro-factura" placeholder="Ej: 0001-00004521"></div>
+      <div class="field"><label>Nº de cobranza / recibo</label><input id="f-nro-cobranza" placeholder="Ej: RC-0032"></div>
       <div class="field span2"><label>Fecha</label><input id="f-fecha" type="date" value="${today()}"></div>
     </div>
     <div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" onclick="submitIngreso('${obraId}')">Registrar</button></div>`;
@@ -1775,9 +1831,11 @@ function submitIngreso(obraId){
   const monto = +document.getElementById('f-monto').value||0;
   const medioPago = document.getElementById('f-medio').value;
   const fecha = document.getElementById('f-fecha').value || today();
+  const numeroFactura = document.getElementById('f-nro-factura').value.trim();
+  const numeroCobranza = document.getElementById('f-nro-cobranza').value.trim();
   const o = getObra(obraId);
   o.ingresosList = o.ingresosList || [];
-  o.ingresosList.push({fecha, monto, medioPago});
+  o.ingresosList.push({fecha, monto, medioPago, numeroFactura, numeroCobranza});
   o.ingresos.cobrado = o.ingresosList.reduce((a,i)=>a+i.monto,0);
   state.caja += monto;
   closeModal(); renderAll();
@@ -2041,7 +2099,7 @@ function renderResultados(){
     <div class="card kpi"><div class="kpi-label">Aportes a FIMA</div><div class="kpi-value">${fmt(totalAportes)}</div><div class="kpi-note">No afecta el resultado (inversión)</div></div>
   `;
 
-  document.getElementById('res-ingresos-body').innerHTML = r.ingresos.length ? r.ingresos.map(i=>`<tr><td class="mono">${i.fecha}</td><td><span class="obra-code">${getObra(i.obraId)?.code||''}</span></td><td>${i.medioPago}</td><td class="num">${fmt(i.monto)}</td></tr>`).join('') : `<tr class="empty-row"><td colspan="4">Sin cobros este mes</td></tr>`;
+  document.getElementById('res-ingresos-body').innerHTML = r.ingresos.length ? r.ingresos.map(i=>`<tr><td class="mono">${i.fecha}</td><td><span class="obra-code">${getObra(i.obraId)?.code||''}</span></td><td>${i.medioPago}</td><td>${i.numeroFactura||'—'}</td><td>${i.numeroCobranza||'—'}</td><td class="num">${fmt(i.monto)}</td></tr>`).join('') : `<tr class="empty-row"><td colspan="6">Sin cobros este mes</td></tr>`;
 
   const egresoRows = [
     ...r.egresosPagos.map(ev=>{ const p=ev.pago; const prov=getProveedor(p.proveedorId);
