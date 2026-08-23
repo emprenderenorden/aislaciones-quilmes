@@ -276,6 +276,7 @@
       <div class="topbar">
         <div><h1>Obras</h1><div class="sub">Listado de obras — filtrá por estado, fecha o buscá por nombre</div></div>
         <div class="topbar-actions">
+          <button class="btn btn-ghost" onclick="window.open(state.carpetaMadreDriveUrl,'_blank')">📁 Carpeta general de obras (Drive)</button>
           <input type="file" id="import-excel-input" accept=".xlsx" style="display:none" onchange="handleImportExcel(event)">
           <button class="btn btn-ghost" onclick="document.getElementById('import-excel-input').click()">⇧ Importar Excel de obra</button>
           <button class="btn btn-primary" onclick="openPresupuestoBuilder(null)">+ Nueva obra</button>
@@ -622,7 +623,7 @@ let state = {
         comisionVendedor:1325053, gananciaNeta:450947, socio1Monto:45095, socio2Monto:135284, aqMonto:270568},
       real:{materiaPrima:12800000, manoObra:6700000, logistica:600000, estadia:380000, otros:540000},
       ingresos:{facturado:30462960, cobrado:19900000}, ingresosList:[{fecha:'2026-07-10', monto:19900000, medioPago:'Transferencia'}],
-      facturasVenta:[{id:'fv1', fecha:'2026-06-02', montoSinIva:25176000, iva:5286960, monto:30462960}], carpetaDriveUrl:'', documentos:[] },
+      facturasVenta:[{id:'fv1', fecha:'2026-06-02', montoSinIva:25176000, iva:5286960, monto:30462960}], carpetaDriveUrl:'https://drive.google.com/drive/folders/1V19ue8-2t87PWhbPcMMYCURlhm61Vwdj', documentos:[] },
     { id:'o2', code:'TGS', cliente:'TGS Gasoducto Sur', encargado:'Pablo', fechaInicio:'2026-05-10', estado:'en curso',
       presupuesto:{materiaPrima:9000000, manoObra:5200000, logistica:600000, estadia:300000},
       presupuestoDetalle:{ivaPct:21, vendedorPct:5, socio1Nombre:'AL', socio1Pct:10, socio2Nombre:'JL', socio2Pct:30},
@@ -630,7 +631,7 @@ let state = {
         comisionVendedor:901474, gananciaNeta:306526, socio1Monto:30653, socio2Monto:91958, aqMonto:183915},
       real:{materiaPrima:6200000, manoObra:4300000, logistica:400000, estadia:200000, otros:0},
       ingresos:{facturado:20724880, cobrado:9000000}, ingresosList:[{fecha:'2026-06-15', monto:9000000, medioPago:'Transferencia'}],
-      facturasVenta:[{id:'fv2', fecha:'2026-05-10', montoSinIva:17128000, iva:3596880, monto:20724880}], carpetaDriveUrl:'', documentos:[] },
+      facturasVenta:[{id:'fv2', fecha:'2026-05-10', montoSinIva:17128000, iva:3596880, monto:20724880}], carpetaDriveUrl:'https://drive.google.com/drive/folders/1LfmmTBO_MdLwhATfqZEp7O6LrBhzCWb7', documentos:[] },
     { id:'o3', code:'AQ-104', cliente:'Refinería Dock Sud', encargado:'Rulo', fechaInicio:'2026-04-20', estado:'en curso',
       presupuesto:{materiaPrima:7000000, manoObra:3800000, logistica:500000, estadia:200000},
       presupuestoDetalle:{ivaPct:21, vendedorPct:5, socio1Nombre:'AL', socio1Pct:10, socio2Nombre:'JL', socio2Pct:30},
@@ -638,7 +639,7 @@ let state = {
         comisionVendedor:685790, gananciaNeta:234210, socio1Monto:23421, socio2Monto:70263, aqMonto:140526},
       real:{materiaPrima:8100000, manoObra:4600000, logistica:600000, estadia:300000, otros:300000},
       ingresos:{facturado:15766300, cobrado:13800000}, ingresosList:[{fecha:'2026-07-20', monto:13800000, medioPago:'Transferencia'}],
-      facturasVenta:[{id:'fv3', fecha:'2026-04-20', montoSinIva:13030000, iva:2736300, monto:15766300}], carpetaDriveUrl:'', documentos:[] },
+      facturasVenta:[{id:'fv3', fecha:'2026-04-20', montoSinIva:13030000, iva:2736300, monto:15766300}], carpetaDriveUrl:'https://drive.google.com/drive/folders/18IPYqPkzsiigKcFYgidEeO2FAKdR9JEx', documentos:[] },
   ],
   jornales: [
     {id:'j1', nombre:'Juan', obraId:'o1', puesto:'Trazador', semanaInicio:'2026-07-27', dias:[1,1,1,1,1,0,0], jornal:38000, extra:0, pagado:false},
@@ -695,6 +696,7 @@ let state = {
   ordenesFilter:'pendiente',
   selectedProveedorId:null,
   pagosFilter:'todos',
+  carpetaMadreDriveUrl: 'https://drive.google.com/drive/folders/1ufrXSSoEzAitD_t3Z4Qa7tScXEdpBtux',
   datosEmpresa: {
     nombre: 'Aislaciones Quilmes S.R.L.',
     cuit: '',
@@ -869,7 +871,7 @@ function renderObraDetail(){
     </table></div>
 
     <div class="section-title"><h2>Documentos</h2><div class="st-actions"><button class="btn btn-ghost btn-sm" onclick="openModalCarpetaDrive('${o.id}')">${o.carpetaDriveUrl?'📁 Editar carpeta de Drive':'📁 Vincular carpeta de Drive'}</button><button class="btn btn-ghost btn-sm" onclick="openModalDocumentoObra('${o.id}')">+ Agregar documento</button></div></div>
-    ${o.carpetaDriveUrl ? `<div class="foot-note" style="margin-top:0;">📁 Todos los archivos de esta obra (facturas, remitos, OC firmadas) se guardan en <a href="${o.carpetaDriveUrl}" target="_blank" rel="noopener">esta carpeta de Google Drive →</a>. Subilos ahí para que los vea todo el equipo.</div>` : `<div class="foot-note" style="margin-top:0;">Todavía no hay una carpeta de Drive vinculada a esta obra. Creá una carpeta compartida en Google Drive y pegá el link con "📁 Vincular carpeta de Drive" — ahí es donde se suben los PDF (facturas, OC, remitos) para que los vea todo el equipo.</div>`}
+    ${o.carpetaDriveUrl ? `<div class="foot-note" style="margin-top:0;">📁 Todos los archivos de esta obra (facturas, remitos, OC firmadas) se guardan en <a href="${o.carpetaDriveUrl}" target="_blank" rel="noopener">esta carpeta de Google Drive →</a>. Subilos ahí para que los vea todo el equipo.</div>` : `<div class="foot-note" style="margin-top:0;">Todavía no hay una carpeta de Drive vinculada a esta obra. Creá una subcarpeta para esta obra dentro de la <a href="${state.carpetaMadreDriveUrl}" target="_blank" rel="noopener">carpeta general de obras →</a> y pegá su link con "📁 Vincular carpeta de Drive" — ahí es donde se suben los PDF (facturas, OC, remitos) para que los vea todo el equipo.</div>`}
     <div class="card card-table" style="margin-top:12px;"><table>
       <thead><tr><th>Nombre</th><th>Tipo</th><th>Fecha</th><th></th><th></th></tr></thead>
       <tbody>${obraDocumentosRows(o.id)}</tbody>
