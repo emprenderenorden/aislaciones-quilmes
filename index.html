@@ -208,6 +208,12 @@
 </head>
 <body>
 
+<div id="loading-overlay" style="position:fixed;inset:0;z-index:10000;background:#FAFBFB;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;font-family:'Montserrat',sans-serif;transition:opacity .3s;">
+  <div style="width:34px;height:34px;border:3px solid #DCE3E1;border-top-color:#14181C;border-radius:50%;animation:spin 0.8s linear infinite;"></div>
+  <div style="color:#6B7573;font-size:13px;">Cargando datos…</div>
+</div>
+<style>@keyframes spin{to{transform:rotate(360deg);}}</style>
+
 <aside class="sidebar" id="sidebar">
   <div class="brand">
     <div class="brand-text"><div class="l1">Aislaciones Quilmes</div><div class="l2">Gestión Financiera</div></div>
@@ -691,8 +697,9 @@ function avisarActualizacion(){
   document.body.appendChild(b);
   setTimeout(()=>{ b.style.transition='opacity .4s'; b.style.opacity='0'; setTimeout(()=>b.remove(), 400); }, 6000);
 }
+let bootCompleto = false;
 function scheduleSave(){
-  if(!isBackendConfigured()) return;
+  if(!isBackendConfigured() || !bootCompleto) return;
   clearTimeout(saveTimer);
   saveTimer = setTimeout(saveState, 900);
 }
@@ -2292,6 +2299,13 @@ function renderAll(){ renderDashboard(); renderObraLista(); if(!document.getElem
   await loadState();
   showObraSubview('lista');
   renderAll();
+  // La primera vez que se renderiza es lo que se acaba de leer del Sheet:
+  // no hace falta re-guardarlo. Recién de acá en adelante los guardados
+  // reflejan ediciones reales — así abrir la app en varios dispositivos a
+  // la vez no genera avisos de "conflicto" sin que nadie haya cambiado nada.
+  bootCompleto = true;
+  const overlay = document.getElementById('loading-overlay');
+  if(overlay){ overlay.style.opacity='0'; setTimeout(()=>overlay.remove(), 300); }
   const initialView = location.hash.slice(1);
   if(VALID_VIEWS.includes(initialView)) applyView(initialView);
   else location.hash = 'dashboard';
