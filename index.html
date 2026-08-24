@@ -1766,10 +1766,11 @@ function renderPagos(){
     const estadoDot = est==='pagado'?'good':'warn';
     const estadoTxt = est==='pagado'?'Pagado':(est==='parcial'?'Parcial':(est==='sin_fecha'?'Sin fecha':'Pendiente'));
     const action = est!=='pagado' ? `<span class="link-btn" onclick="openModalFinalizarPago('${p.id}')">Registrar pago →</span>` : '';
-    const destino = p.obraId ? `<span class="link-btn" onclick="goToObra('${p.obraId}')"><span class="obra-code">${getObra(p.obraId)?.code||''}</span></span>` : (p.tipo==='stock' ? 'Stock' : (p.origenFondo ? `Fondo FIMA: ${fondoLabel[p.origenFondo]}` : 'Negocio general'));
+    const destino = p.obraId ? `<span class="link-btn" onclick="goToObra('${p.obraId}')"><span class="obra-code">${getObra(p.obraId)?.code||''}</span></span>` : (p.tipo==='stock' ? 'Stock' : 'Negocio general');
     const prov = getProveedor(p.proveedorId);
     const provTxt = prov ? `${prov.nombre}${p.numeroFactura?' · '+p.numeroFactura:''}` : '—';
-    return `<tr><td>${destino}</td><td>${p.concepto}</td><td>${ocBadge(p.numeroOC)}</td><td>${provTxt}</td><td class="num">${fmt(p.monto)}</td><td class="num">${fmt(pagoSaldo(p))}</td><td class="mono">${p.fechaPago||'—'}</td><td><span class="estado-dot ${estadoDot}"></span>${estadoTxt}</td><td>${action}</td></tr>`;
+    const conceptoTxt = p.concepto + (p.origenFondo ? `<div class="sub" style="font-size:11px;color:var(--muted);margin-top:2px;">Origen: Fondo FIMA — ${fondoLabel[p.origenFondo]}</div>` : '');
+    return `<tr><td>${destino}</td><td>${conceptoTxt}</td><td>${ocBadge(p.numeroOC)}</td><td>${provTxt}</td><td class="num">${fmt(p.monto)}</td><td class="num">${fmt(pagoSaldo(p))}</td><td class="mono">${p.fechaPago||'—'}</td><td><span class="estado-dot ${estadoDot}"></span>${estadoTxt}</td><td>${action}</td></tr>`;
   }).join('') : `<tr class="empty-row"><td colspan="9">No hay pagos registrados</td></tr>`;
 }
 function proveedorDeuda(provId){ return state.pagos.filter(p=>p.proveedorId===provId).reduce((a,p)=>a+pagoSaldo(p),0); }
