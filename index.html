@@ -128,9 +128,10 @@
   .week-nav .week-label{font-weight:600;font-family:'Montserrat',sans-serif;font-size:14.5px;}
   .nav-arrow{border:1px solid var(--line);background:var(--surface);border-radius:8px;width:30px;height:30px;cursor:pointer;font-size:15px;color:var(--muted);}
   .nav-arrow:hover{background:var(--teal-soft);color:var(--teal-deep);border-color:var(--teal);}
-  .day-box{width:20px;height:20px;border-radius:5px;border:1.5px solid var(--line);}
-  .day-box.on{background:var(--good);border-color:var(--good);}
-  .day-box.off{background:transparent;}
+  .day-box{width:20px;height:20px;border-radius:5px;border:1.5px solid var(--line);cursor:pointer;}
+  .day-box.trabajado{background:var(--good);border-color:var(--good);}
+  .day-box.ausente{background:var(--bad);border-color:var(--bad);}
+  .day-box.sin_obra{background:var(--muted-2);border-color:var(--muted-2);opacity:.4;}
 
   .fund-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:8px;}
   .fund-card{position:relative;overflow:hidden;}
@@ -170,9 +171,6 @@
   .field input.mono-in{font-family:'Montserrat',sans-serif;}
   .field.checkbox{flex-direction:row;align-items:center;gap:8px;}
   .field.checkbox label{text-transform:none;font-size:12.5px;color:var(--ink);}
-  .day-toggle-row{display:flex;gap:6px;}
-  .day-toggle{width:34px;height:34px;border-radius:8px;border:1px solid var(--line);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;cursor:pointer;color:var(--muted);}
-  .day-toggle.on{background:var(--good);border-color:var(--good);color:#fff;}
   .modal-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:20px;}
   .hidden{display:none !important;}
 
@@ -392,24 +390,22 @@
   <!-- ============ JORNALES ============ -->
   <div class="view" id="view-jornales">
     <div class="topbar">
-      <div><h1>Jornales</h1><div class="sub">Asistencia semanal y pago de mano de obra por obra</div></div>
-      <div class="topbar-actions"><button class="btn btn-primary" onclick="openModalJornal()">+ Agregar jornal</button></div>
+      <div><h1>Jornales</h1><div class="sub">Control de asistencia del personal — la mano de obra ahora se maneja como costo fijo, acá no se cargan montos</div></div>
+      <div class="topbar-actions"><button class="btn btn-primary" onclick="openModalTrabajador(null)">+ Agregar trabajador</button></div>
     </div>
     <div class="week-nav">
       <button class="nav-arrow" onclick="changeWeek(-1)">‹</button>
       <span class="week-label" id="current-week-label">Semana actual</span>
       <button class="nav-arrow" onclick="changeWeek(1)">›</button>
       <span class="link-btn" style="margin-left:6px;" onclick="goToCurrentWeek()">Ir a hoy</span>
-      <span style="margin-left:auto;" class="tag good" id="jornales-total-tag">Total semana: $ 0</span>
-      <button class="btn btn-dark btn-sm" onclick="pagarSemana()">Pagar jornales de la semana</button>
     </div>
     <div class="card card-table"><table>
-      <thead><tr><th>Personal</th><th>Obra</th><th>Puesto</th><th>L</th><th>M</th><th>M</th><th>J</th><th>V</th><th>S</th><th>D</th><th class="num">Días</th><th class="num">Jornal</th><th class="num">Extras</th><th class="num">Total</th><th>Estado</th><th></th></tr></thead>
+      <thead><tr><th>Personal</th><th>Puesto</th><th>Obra</th><th>L</th><th>M</th><th>M</th><th>J</th><th>V</th><th>S</th><th>D</th><th class="num">Trabajados</th><th class="num">Ausentes</th><th class="num">Sin obra</th></tr></thead>
       <tbody id="jornales-body"></tbody>
     </table></div>
-    <div class="foot-note"><b>Automatización propuesta:</b> al pagar la semana, el total se descuenta del Fondo Jornales (FIMA) y se suma a "Mano de obra" de cada obra correspondiente.</div>
+    <div class="foot-note"><span class="estado-dot good"></span> <b>Trabajado</b> &nbsp; <span class="estado-dot bad"></span> <b>Ausente</b> &nbsp; <span class="day-box sin_obra" style="display:inline-block;width:12px;height:12px;vertical-align:middle;"></span> <b>Sin obra asignada</b> — hacé click en cada cuadrado del día para ir cambiando el estado.</div>
 
-    <div class="section-title"><h2>Resumen por persona</h2><span class="hint">Sumado por período — desde/hasta</span></div>
+    <div class="section-title"><h2>Personal</h2><span class="hint">Resumen por período — desde/hasta</span></div>
     <div class="card" style="margin-bottom:16px;">
       <div class="form-grid">
         <div class="field"><label>Desde</label><input id="jh-desde" type="date" onchange="renderJornalesHistorial()"></div>
@@ -419,7 +415,7 @@
       </div>
     </div>
     <div class="card card-table"><table>
-      <thead><tr><th>Personal</th><th class="num">Jornales trabajados</th><th class="num">Días totales</th><th class="num">Extras</th><th class="num">Total</th></tr></thead>
+      <thead><tr><th>Personal</th><th>Puesto</th><th class="num">Días trabajados</th><th class="num">Días ausentes</th><th class="num">Días sin obra</th><th></th></tr></thead>
       <tbody id="jornales-historial-body"></tbody>
     </table></div>
   </div>
@@ -641,24 +637,31 @@ let state = {
       ingresos:{facturado:15766300, cobrado:13800000}, ingresosList:[{fecha:'2026-07-20', monto:13800000, medioPago:'Transferencia'}],
       facturasVenta:[{id:'fv3', fecha:'2026-04-20', montoSinIva:13030000, iva:2736300, monto:15766300}], carpetaDriveUrl:'https://drive.google.com/drive/folders/18IPYqPkzsiigKcFYgidEeO2FAKdR9JEx', documentos:[] },
   ],
+  trabajadores: [
+    {id:'t1', nombre:'Juan', puesto:'Trazador'},
+    {id:'t2', nombre:'Axel', puesto:'Montador'},
+    {id:'t3', nombre:'Rulo', puesto:'Lanero'},
+    {id:'t4', nombre:'Roberto', puesto:'Montador'},
+    {id:'t5', nombre:'Pablo', puesto:'Montador'},
+  ],
   jornales: [
-    {id:'j1', nombre:'Juan', obraId:'o1', puesto:'Trazador', semanaInicio:'2026-07-27', dias:[1,1,1,1,1,0,0], jornal:38000, extra:0, pagado:false},
-    {id:'j2', nombre:'Axel', obraId:'o1', puesto:'Montador', semanaInicio:'2026-07-27', dias:[1,1,1,1,1,0,0], jornal:34000, extra:6000, pagado:false},
-    {id:'j3', nombre:'Rulo', obraId:'o3', puesto:'Lanero', semanaInicio:'2026-07-27', dias:[1,1,0,1,1,0,0], jornal:30000, extra:0, pagado:false},
-    {id:'j4', nombre:'Roberto', obraId:'o2', puesto:'Montador', semanaInicio:'2026-07-27', dias:[1,1,1,1,1,1,0], jornal:34000, extra:0, pagado:false},
-    {id:'j5', nombre:'Juan', obraId:'o1', puesto:'Trazador', semanaInicio:'2026-07-20', dias:[1,1,1,1,1,0,0], jornal:38000, extra:0, pagado:true},
-    {id:'j6', nombre:'Juan', obraId:'o1', puesto:'Trazador', semanaInicio:'2026-07-13', dias:[1,1,1,1,0,0,0], jornal:38000, extra:15000, pagado:true},
-    {id:'j7', nombre:'Juan', obraId:'o2', puesto:'Trazador', semanaInicio:'2026-07-06', dias:[1,1,1,1,1,0,0], jornal:38000, extra:0, pagado:true},
-    {id:'j8', nombre:'Juan', obraId:'o1', puesto:'Trazador', semanaInicio:'2026-06-29', dias:[1,1,1,0,1,0,0], jornal:38000, extra:0, pagado:true},
-    {id:'j9', nombre:'Axel', obraId:'o1', puesto:'Montador', semanaInicio:'2026-07-20', dias:[1,1,1,1,1,0,0], jornal:34000, extra:0, pagado:true},
-    {id:'j10', nombre:'Axel', obraId:'o2', puesto:'Montador', semanaInicio:'2026-07-13', dias:[1,1,1,1,1,0,0], jornal:34000, extra:8000, pagado:true},
-    {id:'j11', nombre:'Axel', obraId:'o1', puesto:'Montador', semanaInicio:'2026-07-06', dias:[1,1,0,1,1,0,0], jornal:34000, extra:0, pagado:true},
-    {id:'j12', nombre:'Rulo', obraId:'o3', puesto:'Lanero', semanaInicio:'2026-07-20', dias:[1,1,1,1,1,0,0], jornal:30000, extra:0, pagado:true},
-    {id:'j13', nombre:'Rulo', obraId:'o3', puesto:'Lanero', semanaInicio:'2026-07-13', dias:[1,0,1,1,1,0,0], jornal:30000, extra:5000, pagado:true},
-    {id:'j14', nombre:'Roberto', obraId:'o2', puesto:'Montador', semanaInicio:'2026-07-20', dias:[1,1,1,1,1,0,0], jornal:34000, extra:0, pagado:true},
-    {id:'j15', nombre:'Roberto', obraId:'o2', puesto:'Montador', semanaInicio:'2026-07-13', dias:[1,1,1,1,1,1,0], jornal:34000, extra:12000, pagado:true},
-    {id:'j16', nombre:'Pablo', obraId:'o2', puesto:'Montador', semanaInicio:'2026-07-13', dias:[1,1,1,1,0,0,0], jornal:32000, extra:0, pagado:true},
-    {id:'j17', nombre:'Pablo', obraId:'o2', puesto:'Montador', semanaInicio:'2026-06-29', dias:[1,1,1,1,1,0,0], jornal:32000, extra:0, pagado:true},
+    {id:'j1', trabajadorId:'t1', obraId:'o1', semanaInicio:'2026-07-27', dias:['trabajado','trabajado','trabajado','trabajado','trabajado','sin_obra','sin_obra']},
+    {id:'j2', trabajadorId:'t2', obraId:'o1', semanaInicio:'2026-07-27', dias:['trabajado','trabajado','trabajado','trabajado','trabajado','sin_obra','sin_obra']},
+    {id:'j3', trabajadorId:'t3', obraId:'o3', semanaInicio:'2026-07-27', dias:['trabajado','trabajado','sin_obra','trabajado','trabajado','sin_obra','sin_obra']},
+    {id:'j4', trabajadorId:'t4', obraId:'o2', semanaInicio:'2026-07-27', dias:['trabajado','trabajado','trabajado','trabajado','trabajado','trabajado','sin_obra']},
+    {id:'j5', trabajadorId:'t1', obraId:'o1', semanaInicio:'2026-07-20', dias:['trabajado','trabajado','trabajado','trabajado','trabajado','sin_obra','sin_obra']},
+    {id:'j6', trabajadorId:'t1', obraId:'o1', semanaInicio:'2026-07-13', dias:['trabajado','trabajado','trabajado','trabajado','sin_obra','sin_obra','sin_obra']},
+    {id:'j7', trabajadorId:'t1', obraId:'o2', semanaInicio:'2026-07-06', dias:['trabajado','trabajado','trabajado','trabajado','trabajado','sin_obra','sin_obra']},
+    {id:'j8', trabajadorId:'t1', obraId:'o1', semanaInicio:'2026-06-29', dias:['trabajado','trabajado','trabajado','sin_obra','trabajado','sin_obra','sin_obra']},
+    {id:'j9', trabajadorId:'t2', obraId:'o1', semanaInicio:'2026-07-20', dias:['trabajado','trabajado','trabajado','trabajado','trabajado','sin_obra','sin_obra']},
+    {id:'j10', trabajadorId:'t2', obraId:'o2', semanaInicio:'2026-07-13', dias:['trabajado','trabajado','trabajado','trabajado','trabajado','sin_obra','sin_obra']},
+    {id:'j11', trabajadorId:'t2', obraId:'o1', semanaInicio:'2026-07-06', dias:['trabajado','trabajado','sin_obra','trabajado','trabajado','sin_obra','sin_obra']},
+    {id:'j12', trabajadorId:'t3', obraId:'o3', semanaInicio:'2026-07-20', dias:['trabajado','trabajado','trabajado','trabajado','trabajado','sin_obra','sin_obra']},
+    {id:'j13', trabajadorId:'t3', obraId:'o3', semanaInicio:'2026-07-13', dias:['trabajado','sin_obra','trabajado','trabajado','trabajado','sin_obra','sin_obra']},
+    {id:'j14', trabajadorId:'t4', obraId:'o2', semanaInicio:'2026-07-20', dias:['trabajado','trabajado','trabajado','trabajado','trabajado','sin_obra','sin_obra']},
+    {id:'j15', trabajadorId:'t4', obraId:'o2', semanaInicio:'2026-07-13', dias:['trabajado','trabajado','trabajado','trabajado','trabajado','trabajado','sin_obra']},
+    {id:'j16', trabajadorId:'t5', obraId:'o2', semanaInicio:'2026-07-13', dias:['trabajado','trabajado','trabajado','trabajado','sin_obra','sin_obra','sin_obra']},
+    {id:'j17', trabajadorId:'t5', obraId:'o2', semanaInicio:'2026-06-29', dias:['trabajado','trabajado','trabajado','trabajado','trabajado','sin_obra','sin_obra']},
   ],
   movimientosFima: [
     {fecha:'2026-04-24', fondo:'jornales', obraId:'o1', concepto:'Mark IVA', tipo:'in', monto:200000},
@@ -1228,30 +1231,46 @@ function weekLabel(startIso){
   const fmtD = (d)=> String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0');
   return 'Semana del '+fmtD(start)+' al '+fmtD(end)+' · '+start.getFullYear();
 }
-function jornalTotal(j){ return j.dias.reduce((a,b)=>a+b,0)*j.jornal + j.extra; }
+const getTrabajador = (id)=> state.trabajadores.find(t=>t.id===id);
+const DIA_ORDEN = ['sin_obra','trabajado','ausente'];
+const diaEstadoLabel = {trabajado:'Trabajado', sin_obra:'Sin obra asignada', ausente:'Ausente'};
 function changeWeek(delta){ viewedWeek = addDays(viewedWeek, delta*7); renderJornales(); }
 function goToCurrentWeek(){ viewedWeek = CURRENT_WEEK; renderJornales(); }
+function ensureJornalRow(trabajadorId, semanaInicio){
+  let row = state.jornales.find(j=>j.trabajadorId===trabajadorId && j.semanaInicio===semanaInicio);
+  if(!row){ row = {id:newId('j'), trabajadorId, obraId:null, semanaInicio, dias:Array(7).fill('sin_obra')}; state.jornales.push(row); }
+  return row;
+}
+function cycleDia(trabajadorId, semanaInicio, dayIdx){
+  const row = ensureJornalRow(trabajadorId, semanaInicio);
+  const cur = DIA_ORDEN.indexOf(row.dias[dayIdx]);
+  row.dias[dayIdx] = DIA_ORDEN[(cur+1)%DIA_ORDEN.length];
+  renderJornales();
+}
+function setJornalObra(trabajadorId, semanaInicio, obraId){
+  ensureJornalRow(trabajadorId, semanaInicio).obraId = obraId || null;
+  renderJornales();
+}
+function contarDias(dias, estado){ return dias.filter(d=>d===estado).length; }
 function renderJornales(){
   document.getElementById('current-week-label').textContent = weekLabel(viewedWeek);
-  const rows = state.jornales.filter(j=>j.semanaInicio===viewedWeek);
-  let totalSemana = 0;
-  document.getElementById('jornales-body').innerHTML = rows.map(p=>{
-    const diasTrab = p.dias.reduce((a,b)=>a+b,0); const total = jornalTotal(p); totalSemana+=total;
-    const obra = getObra(p.obraId);
-    const dayCells = p.dias.map(d=>`<td><div class="day-box ${d?'on':'off'}"></div></td>`).join('');
-    return `<tr><td style="font-weight:600;">${p.nombre}</td><td>${obra?`<span class="obra-code">${obra.code}</span>`:'—'}</td><td>${p.puesto}</td>${dayCells}<td class="num">${diasTrab}</td><td class="num">${fmt(p.jornal)}</td><td class="num">${fmt(p.extra)}</td><td class="num" style="font-weight:600;">${fmt(total)}</td><td><span class="tag ${p.pagado?'good':'warn'}">${p.pagado?'Pagado':'A pagar'}</span></td><td>${p.pagado?'':`<span class="link-btn" onclick="openModalJornal('${p.id}')">Editar</span>`}</td></tr>`;
-  }).join('') || `<tr class="empty-row"><td colspan="16">Sin jornales cargados esta semana</td></tr>`;
-  document.getElementById('jornales-total-tag').textContent = 'Total semana: '+fmt(totalSemana);
+  document.getElementById('jornales-body').innerHTML = state.trabajadores.length ? state.trabajadores.map(t=>{
+    const row = state.jornales.find(j=>j.trabajadorId===t.id && j.semanaInicio===viewedWeek);
+    const dias = row ? row.dias : Array(7).fill('sin_obra');
+    const obraId = row ? row.obraId : null;
+    const obraOptions = `<option value="">— Sin obra —</option>` + state.obras.map(o=>`<option value="${o.id}" ${obraId===o.id?'selected':''}>${o.code}</option>`).join('');
+    const dayCells = dias.map((d,i)=>`<td><div class="day-box ${d}" title="${diaEstadoLabel[d]}" onclick="cycleDia('${t.id}','${viewedWeek}',${i})"></div></td>`).join('');
+    return `<tr><td style="font-weight:600;">${t.nombre}</td><td>${t.puesto}</td><td><select class="cell-input" onchange="setJornalObra('${t.id}','${viewedWeek}',this.value)">${obraOptions}</select></td>${dayCells}<td class="num">${contarDias(dias,'trabajado')}</td><td class="num">${contarDias(dias,'ausente')}</td><td class="num">${contarDias(dias,'sin_obra')}</td></tr>`;
+  }).join('') : `<tr class="empty-row"><td colspan="13">Todavía no hay personal cargado — usá "+ Agregar trabajador"</td></tr>`;
   populateJornalesFiltros();
   renderJornalesHistorial();
 }
 function populateJornalesFiltros(){
   const personaSel = document.getElementById('jh-persona');
   if(!personaSel) return;
-  const personas = [...new Set(state.jornales.map(j=>j.nombre))].sort();
   const curPersona = personaSel.value;
-  personaSel.innerHTML = `<option value="todos">Todos</option>` + personas.map(p=>`<option value="${p}">${p}</option>`).join('');
-  if(personas.includes(curPersona)) personaSel.value = curPersona;
+  personaSel.innerHTML = `<option value="todos">Todos</option>` + state.trabajadores.map(t=>`<option value="${t.id}">${t.nombre}</option>`).join('');
+  if([...personaSel.options].some(o=>o.value===curPersona)) personaSel.value = curPersona;
   const desdeEl = document.getElementById('jh-desde'), hastaEl = document.getElementById('jh-hasta');
   if(desdeEl && !desdeEl.value && state.jornales.length){ desdeEl.value = [...state.jornales].map(j=>j.semanaInicio).sort()[0]; }
   if(hastaEl && !hastaEl.value){ hastaEl.value = today(); }
@@ -1259,39 +1278,47 @@ function populateJornalesFiltros(){
 function renderJornalesHistorial(){
   const desde = document.getElementById('jh-desde')?.value||'';
   const hasta = document.getElementById('jh-hasta')?.value||'';
-  const persona = document.getElementById('jh-persona')?.value||'todos';
+  const personaId = document.getElementById('jh-persona')?.value||'todos';
   let rows = [...state.jornales];
   if(desde) rows = rows.filter(j=>j.semanaInicio>=desde);
   if(hasta) rows = rows.filter(j=>j.semanaInicio<=hasta);
-  if(persona!=='todos') rows = rows.filter(j=>j.nombre===persona);
+  if(personaId!=='todos') rows = rows.filter(j=>j.trabajadorId===personaId);
 
-  const porPersona = {};
-  rows.forEach(j=>{
-    if(!porPersona[j.nombre]) porPersona[j.nombre] = {semanas:0, dias:0, extras:0, total:0};
-    const dt = j.dias.reduce((a,b)=>a+b,0);
-    porPersona[j.nombre].semanas += 1;
-    porPersona[j.nombre].dias += dt;
-    porPersona[j.nombre].extras += j.extra;
-    porPersona[j.nombre].total += jornalTotal(j);
-  });
-  const nombres = Object.keys(porPersona).sort();
+  const porTrabajador = {};
+  state.trabajadores.forEach(t=>{ porTrabajador[t.id] = {trabajado:0, ausente:0, sin_obra:0}; });
+  rows.forEach(j=>{ j.dias.forEach(d=>{ if(porTrabajador[j.trabajadorId]) porTrabajador[j.trabajadorId][d]++; }); });
+
+  let ids = Object.keys(porTrabajador);
+  if(personaId!=='todos') ids = ids.filter(id=>id===personaId);
+  ids.sort((a,b)=> getTrabajador(a).nombre.localeCompare(getTrabajador(b).nombre));
+
   const body = document.getElementById('jornales-historial-body');
-  if(!nombres.length){ body.innerHTML = `<tr class="empty-row"><td colspan="5">No hay registros para este período</td></tr>`; return; }
-  let granSemanas=0, granDias=0, granExtras=0, granTotal=0;
-  body.innerHTML = nombres.map(n=>{
-    const s = porPersona[n]; granSemanas+=s.semanas; granDias+=s.dias; granExtras+=s.extras; granTotal+=s.total;
-    return `<tr><td style="font-weight:600;">${n}</td><td class="num">${s.semanas}</td><td class="num">${s.dias}</td><td class="num">${fmt(s.extras)}</td><td class="num" style="font-weight:600;">${fmt(s.total)}</td></tr>`;
-  }).join('') + `<tr class="subtotal-row"><td>Total general</td><td class="num">${granSemanas}</td><td class="num">${granDias}</td><td class="num">${fmt(granExtras)}</td><td class="num">${fmt(granTotal)}</td></tr>`;
+  if(!ids.length){ body.innerHTML = `<tr class="empty-row"><td colspan="6">No hay personal cargado</td></tr>`; return; }
+  let granT=0, granA=0, granS=0;
+  body.innerHTML = ids.map(id=>{
+    const t = getTrabajador(id), s = porTrabajador[id];
+    granT+=s.trabajado; granA+=s.ausente; granS+=s.sin_obra;
+    return `<tr><td style="font-weight:600;">${t.nombre}</td><td>${t.puesto}</td><td class="num">${s.trabajado}</td><td class="num">${s.ausente}</td><td class="num">${s.sin_obra}</td><td><span class="link-btn" onclick="openModalTrabajador('${id}')">Editar</span></td></tr>`;
+  }).join('') + `<tr class="subtotal-row"><td colspan="2">Total general</td><td class="num">${granT}</td><td class="num">${granA}</td><td class="num">${granS}</td><td></td></tr>`;
 }
-function pagarSemana(){
-  const pendientes = state.jornales.filter(j=>!j.pagado && j.semanaInicio===viewedWeek);
-  if(!pendientes.length){ alert('No hay jornales pendientes de pago en esta semana.'); return; }
-  let totalAPagar=0; const porObra={};
-  pendientes.forEach(p=>{ const total=jornalTotal(p); totalAPagar+=total; porObra[p.obraId]=(porObra[p.obraId]||0)+total; p.pagado=true; });
-  state.fondos.jornales -= totalAPagar;
-  Object.entries(porObra).forEach(([obraId,monto])=>{ const o=getObra(obraId); if(o) o.real.manoObra+=monto; });
-  state.movimientosFima.push({fecha:today(), fondo:'jornales', obraId:null, concepto:'Pago jornales de la semana', tipo:'out', monto:totalAPagar});
-  renderAll();
+function openModalTrabajador(id){
+  const existing = id ? getTrabajador(id) : null;
+  const puestos = ['Trazador','Montador','Lanero','931 x persona'];
+  modalEl.innerHTML = `<h3>${existing?'Editar trabajador':'Agregar trabajador'}</h3>
+    <div class="form-grid">
+      <div class="field span2"><label>Nombre</label><input id="f-trab-nombre" placeholder="Nombre y apellido" value="${existing?existing.nombre:''}"></div>
+      <div class="field span2"><label>Puesto</label><select id="f-trab-puesto">${puestos.map(p=>`<option ${existing&&existing.puesto===p?'selected':''}>${p}</option>`).join('')}</select></div>
+    </div>
+    <div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" onclick="submitTrabajador('${id||''}')">${existing?'Guardar cambios':'Agregar'}</button></div>`;
+  overlay.classList.add('open');
+}
+function submitTrabajador(id){
+  const nombre = document.getElementById('f-trab-nombre').value.trim();
+  if(!nombre){ alert('Ingresá el nombre del trabajador.'); return; }
+  const puesto = document.getElementById('f-trab-puesto').value;
+  if(id){ Object.assign(getTrabajador(id), {nombre, puesto}); }
+  else { state.trabajadores.push({id:newId('t'), nombre, puesto}); }
+  closeModal(); renderAll();
 }
 
 /* ======================= FIMA ======================= */
@@ -2031,43 +2058,6 @@ function submitFinalizarPago(pagoId){
   } else {
     state.caja -= monto;
   }
-  closeModal(); renderAll();
-}
-
-let editingJornalId = null;
-function openModalJornal(id){
-  editingJornalId = id || null;
-  const existing = id ? state.jornales.find(j=>j.id===id) : null;
-  const obraOptions = state.obras.map(o=>`<option value="${o.id}" ${existing&&existing.obraId===o.id?'selected':''}>${o.code}</option>`).join('');
-  const puestos = ['Trazador','Montador','Lanero','931 x persona'];
-  const puestoOptions = puestos.map(p=>`<option ${existing&&existing.puesto===p?'selected':''}>${p}</option>`).join('');
-  const dias = existing ? existing.dias : [1,1,1,1,1,0,0];
-  modalEl.innerHTML = `<h3>${existing?'Editar jornal — '+existing.nombre:'Agregar jornal'}</h3><div class="modal-sub">${existing?'Podés sumar/restar días o cambiar horas extra':'Elegí la semana (lunes) a la que corresponde'}</div>
-    <div class="form-grid">
-      <div class="field"><label>Personal</label><input id="f-nombre" placeholder="Nombre" value="${existing?existing.nombre:''}"></div>
-      <div class="field"><label>Semana (lunes)</label><input id="f-semana" type="date" value="${existing?existing.semanaInicio:viewedWeek}"></div>
-      <div class="field"><label>Obra</label><select id="f-obra">${obraOptions}</select></div>
-      <div class="field"><label>Puesto</label><select id="f-puesto">${puestoOptions}</select></div>
-      <div class="field"><label>Valor jornal ($)</label><input id="f-jornal" class="mono-in" type="number" value="${existing?existing.jornal:34000}"></div>
-      <div class="field span2"><label>Días trabajados</label><div class="day-toggle-row" id="day-toggles">${['L','M','M','J','V','S','D'].map((d,i)=>`<div class="day-toggle ${dias[i]?'on':''}" onclick="this.classList.toggle('on')">${d}</div>`).join('')}</div></div>
-      <div class="field span2"><label>Extras ($)</label><input id="f-extra" class="mono-in" type="number" value="${existing?existing.extra:0}"></div>
-    </div>
-    <div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" onclick="submitJornal()">${existing?'Guardar cambios':'Agregar'}</button></div>`;
-  overlay.classList.add('open');
-}
-function submitJornal(){
-  const nombre = document.getElementById('f-nombre').value.trim()||'Sin nombre';
-  const semanaInicio = document.getElementById('f-semana').value || viewedWeek;
-  const obraId = document.getElementById('f-obra').value; const puesto = document.getElementById('f-puesto').value;
-  const jornal = +document.getElementById('f-jornal').value||0; const extra = +document.getElementById('f-extra').value||0;
-  const dias = Array.from(document.querySelectorAll('#day-toggles .day-toggle')).map(el=>el.classList.contains('on')?1:0);
-  if(editingJornalId){
-    const j = state.jornales.find(x=>x.id===editingJornalId);
-    Object.assign(j, {nombre, obraId, puesto, semanaInicio, dias, jornal, extra});
-  } else {
-    state.jornales.push({id:newId('j'), nombre, obraId, puesto, semanaInicio, dias, jornal, extra, pagado:false});
-  }
-  editingJornalId = null;
   closeModal(); renderAll();
 }
 
