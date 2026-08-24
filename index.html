@@ -246,7 +246,6 @@
       <span class="nav-label">Resultados</span>
     </div>
   </nav>
-  <div class="sidebar-foot"><b>Mockup v0.3</b><br>Obras ahora presupuesta como el Excel: materiales, mano de obra por puesto, beneficio, impuestos e IVA — con importación de Excel.</div>
 </aside>
 <div class="sidebar-backdrop" id="sidebar-backdrop" onclick="closeMobileSidebar()"></div>
 
@@ -310,7 +309,7 @@
   <!-- ============ PRESUPUESTO BUILDER ============ -->
   <div class="view" id="view-presupuesto">
     <div class="topbar">
-      <div><h1 id="pb-title">Presupuestar obra</h1><div class="sub">Igual que la planilla: materiales, mano de obra, beneficio e impuestos → presupuesto final + IVA</div></div>
+      <div><h1 id="pb-title">Presupuestar obra</h1><div class="sub">Materiales, mano de obra, beneficio e impuestos → presupuesto final + IVA</div></div>
       <div class="topbar-actions">
         <input type="file" id="import-excel-input-2" accept=".xlsx" style="display:none" onchange="handleImportExcel(event)">
         <button class="btn btn-ghost" onclick="document.getElementById('import-excel-input-2').click()">⇧ Importar Excel</button>
@@ -321,7 +320,7 @@
     <div class="card">
       <div class="form-grid">
         <div class="field"><label>Código de obra</label><input id="pb-code" placeholder="Ej: X-563"></div>
-        <div class="field"><label>Cliente (opcional)</label><input id="pb-cliente" placeholder="Opcional — no está en la planilla actual"></div>
+        <div class="field"><label>Cliente (opcional)</label><input id="pb-cliente" placeholder="Opcional"></div>
         <div class="field"><label>Encargado</label><input id="pb-encargado" placeholder="Nombre"></div>
         <div class="field"><label>Fecha de inicio</label><input id="pb-fecha" type="date"></div>
         <div class="field"><label>Fecha de facturación (para IVA débito)</label><input id="pb-fecha-factura" type="date"></div>
@@ -373,7 +372,6 @@
         <div class="field"><label>Nombre socio 2</label><input id="pb-socio2-nombre" class="cell-input" value="JL" oninput="recomputeBuildTotals()"></div>
         <div class="field"><label>% Socio 2 (s/ ganancia neta)</label><input id="pb-socio2-pct" class="cell-input mono-in" type="number" step="0.5" value="30" oninput="recomputeBuildTotals()"></div>
       </div>
-      <div class="foot-note" style="margin-top:14px;">AQ (la empresa) se queda con el resto de la ganancia neta: 100% − % Socio 1 − % Socio 2.</div>
     </div>
 
     <div class="section-title"><h2>Resultado del presupuesto</h2></div>
@@ -383,7 +381,6 @@
       <button class="btn btn-ghost" onclick="showView('obra'); showObraSubview('lista');">Cancelar</button>
       <button class="btn btn-primary" onclick="savePresupuesto()">Guardar presupuesto (borrador)</button>
     </div>
-    <div class="foot-note"><b>Simplificado a propósito:</b> no incluí todavía la distribución interna de ganancia entre socios/vendedor (comisiones AQ/AL/JL) que vi en tu Excel — si la necesitás en el sistema, la sumamos.</div>
   </div>
 
   <!-- ============ JORNALES ============ -->
@@ -402,7 +399,6 @@
       <thead><tr><th>Personal</th><th>Puesto</th><th>Obra</th><th>L</th><th>M</th><th>M</th><th>J</th><th>V</th><th>S</th><th>D</th><th class="num">Trabajados</th><th class="num">Ausentes</th><th class="num">Sin obra</th></tr></thead>
       <tbody id="jornales-body"></tbody>
     </table></div>
-    <div class="foot-note"><span class="estado-dot good"></span> <b>Trabajado</b> &nbsp; <span class="estado-dot bad"></span> <b>Ausente</b> &nbsp; <span class="day-box sin_obra" style="display:inline-block;width:12px;height:12px;vertical-align:middle;"></span> <b>Sin obra asignada</b> — hacé click en cada cuadrado del día para ir cambiando el estado.</div>
 
     <div class="section-title"><h2>Personal</h2><span class="hint">Resumen por período — desde/hasta</span></div>
     <div class="card" style="margin-bottom:16px;">
@@ -450,7 +446,6 @@
       <thead><tr><th>Nº OC</th><th>Fecha</th><th>Solicitante</th><th>Destino</th><th>Proveedor</th><th class="num">Monto estimado</th><th>Estado</th><th></th></tr></thead>
       <tbody id="ordenes-body"></tbody>
     </table></div>
-    <div class="foot-note"><b>Cómo funciona:</b> una orden autorizada todavía no impacta ningún gasto real — solo habilita a comprar. Recién cuando llega la factura y se marca "Comprada" (con nº de remito/factura real) se genera el pago y se suma al gasto real de la obra o al stock.</div>
   </div>
 
   <!-- ============ PAGOS ============ -->
@@ -531,7 +526,6 @@
       <tbody id="stock-mov-body"></tbody>
     </table></div>
 
-    <div class="foot-note"><b>Cómo funciona:</b> una compra de stock suma cantidad acá y además genera un pago (según se marque pagado o no) que vas a ver reflejado en Pagos. Cuando en una obra se registra un material marcando "Utilizado de stock", se resta la cantidad de acá y se suma el costo a esa obra — pero <b>no</b> se genera un pago nuevo, porque ya se pagó al comprarlo para stock. El costo usado es el del último precio de compra registrado para ese material.</div>
   </div>
 
   <!-- ============ RESULTADOS ============ -->
@@ -576,7 +570,6 @@
       <tbody id="res-cobros-pendientes-body"></tbody>
     </table></div>
 
-    <div class="foot-note"><b>Cómo se arma:</b> los ingresos son los cobros cargados en cada obra. Los egresos incluyen compras/gastos de obra y gastos fijos ya pagados (con fecha de pago dentro del mes), más los jornales pagados esa semana — tomados desde los movimientos de FIMA para no duplicar lo que ya se ve en la hoja de Jornales. Los aportes a FIMA se muestran aparte porque son un movimiento interno de ahorro, no un gasto real del negocio.</div>
 
     <div class="section-title"><h2>Reporte de IVA del mes</h2><span class="hint">Por fecha de factura, no de pago/cobro</span></div>
     <div class="kpi-row" id="iva-kpi-row"></div>
@@ -590,7 +583,6 @@
       <thead><tr><th>Fecha factura</th><th>Proveedor</th><th>Concepto</th><th class="num">Monto sin IVA</th><th class="num">IVA</th><th class="num">Total</th></tr></thead>
       <tbody id="iva-credito-body"></tbody>
     </table></div>
-    <div class="foot-note"><b>Cómo se arma:</b> a diferencia del mayor de arriba, el IVA se calcula por <b>fecha de factura</b> (cuándo se emitió), no por cuándo se cobró o se pagó — así coincide con lo que declararías ante AFIP. Solo entran las compras marcadas "Aplica IVA". Los materiales usados desde stock no se cuentan de nuevo: su IVA ya quedó registrado cuando se compró ese stock.</div>
   </div>
 
 
@@ -616,98 +608,21 @@ let idCounter = 200;
 const newId = (p)=> p+(idCounter++);
 
 let state = {
-  fondos: { costosFijos: 12100000, jornales: 8240000, impuestos: 0, emergencias: 5500000, inversiones: 15440000, obras: 0, otros: 0 },
-  caja: 3440000,
-  obras: [
-    { id:'o1', code:'X-669', cliente:'TGS Cerri', encargado:'Julio', fechaInicio:'2026-06-02', estado:'en curso',
-      presupuesto:{materiaPrima:14600000, manoObra:6000000, logistica:900000, estadia:700000},
-      presupuestoDetalle:{ivaPct:21, vendedorPct:5, socio1Nombre:'AL', socio1Pct:10, socio2Nombre:'JL', socio2Pct:30},
-      presupuestoResumen:{costos:22200000, beneficio:1776000, impuestos:1200000, subtotalPresupuesto:25176000, descuento:0, totalPresupuesto:25176000, iva:5286960, totalConIva:30462960,
-        comisionVendedor:1325053, gananciaNeta:450947, socio1Monto:45095, socio2Monto:135284, aqMonto:270568},
-      real:{materiaPrima:12800000, manoObra:6700000, logistica:600000, estadia:380000, otros:540000},
-      ingresos:{facturado:30462960, cobrado:19900000}, ingresosList:[{fecha:'2026-07-10', monto:19900000, medioPago:'Transferencia'}],
-      facturasVenta:[{id:'fv1', fecha:'2026-06-02', montoSinIva:25176000, iva:5286960, monto:30462960}], documentos:[] },
-    { id:'o2', code:'TGS', cliente:'TGS Gasoducto Sur', encargado:'Pablo', fechaInicio:'2026-05-10', estado:'en curso',
-      presupuesto:{materiaPrima:9000000, manoObra:5200000, logistica:600000, estadia:300000},
-      presupuestoDetalle:{ivaPct:21, vendedorPct:5, socio1Nombre:'AL', socio1Pct:10, socio2Nombre:'JL', socio2Pct:30},
-      presupuestoResumen:{costos:15100000, beneficio:1208000, impuestos:820000, subtotalPresupuesto:17128000, descuento:0, totalPresupuesto:17128000, iva:3596880, totalConIva:20724880,
-        comisionVendedor:901474, gananciaNeta:306526, socio1Monto:30653, socio2Monto:91958, aqMonto:183915},
-      real:{materiaPrima:6200000, manoObra:4300000, logistica:400000, estadia:200000, otros:0},
-      ingresos:{facturado:20724880, cobrado:9000000}, ingresosList:[{fecha:'2026-06-15', monto:9000000, medioPago:'Transferencia'}],
-      facturasVenta:[{id:'fv2', fecha:'2026-05-10', montoSinIva:17128000, iva:3596880, monto:20724880}], documentos:[] },
-    { id:'o3', code:'AQ-104', cliente:'Refinería Dock Sud', encargado:'Rulo', fechaInicio:'2026-04-20', estado:'en curso',
-      presupuesto:{materiaPrima:7000000, manoObra:3800000, logistica:500000, estadia:200000},
-      presupuestoDetalle:{ivaPct:21, vendedorPct:5, socio1Nombre:'AL', socio1Pct:10, socio2Nombre:'JL', socio2Pct:30},
-      presupuestoResumen:{costos:11500000, beneficio:920000, impuestos:610000, subtotalPresupuesto:13030000, descuento:0, totalPresupuesto:13030000, iva:2736300, totalConIva:15766300,
-        comisionVendedor:685790, gananciaNeta:234210, socio1Monto:23421, socio2Monto:70263, aqMonto:140526},
-      real:{materiaPrima:8100000, manoObra:4600000, logistica:600000, estadia:300000, otros:920000},
-      ingresos:{facturado:15766300, cobrado:13800000}, ingresosList:[{fecha:'2026-07-20', monto:13800000, medioPago:'Transferencia'}],
-      facturasVenta:[{id:'fv3', fecha:'2026-04-20', montoSinIva:13030000, iva:2736300, monto:15766300}], documentos:[] },
-  ],
-  trabajadores: [
-    {id:'t1', nombre:'Juan', puesto:'Trazador'},
-    {id:'t2', nombre:'Axel', puesto:'Montador'},
-    {id:'t3', nombre:'Rulo', puesto:'Lanero'},
-    {id:'t4', nombre:'Roberto', puesto:'Montador'},
-    {id:'t5', nombre:'Pablo', puesto:'Montador'},
-  ],
-  jornales: [
-    {id:'j1', trabajadorId:'t1', obraId:'o1', semanaInicio:'2026-07-27', dias:['trabajado','trabajado','trabajado','trabajado','trabajado','sin_obra','sin_obra']},
-    {id:'j2', trabajadorId:'t2', obraId:'o1', semanaInicio:'2026-07-27', dias:['trabajado','trabajado','trabajado','trabajado','trabajado','sin_obra','sin_obra']},
-    {id:'j3', trabajadorId:'t3', obraId:'o3', semanaInicio:'2026-07-27', dias:['trabajado','trabajado','sin_obra','trabajado','trabajado','sin_obra','sin_obra']},
-    {id:'j4', trabajadorId:'t4', obraId:'o2', semanaInicio:'2026-07-27', dias:['trabajado','trabajado','trabajado','trabajado','trabajado','trabajado','sin_obra']},
-    {id:'j5', trabajadorId:'t1', obraId:'o1', semanaInicio:'2026-07-20', dias:['trabajado','trabajado','trabajado','trabajado','trabajado','sin_obra','sin_obra']},
-    {id:'j6', trabajadorId:'t1', obraId:'o1', semanaInicio:'2026-07-13', dias:['trabajado','trabajado','trabajado','trabajado','sin_obra','sin_obra','sin_obra']},
-    {id:'j7', trabajadorId:'t1', obraId:'o2', semanaInicio:'2026-07-06', dias:['trabajado','trabajado','trabajado','trabajado','trabajado','sin_obra','sin_obra']},
-    {id:'j8', trabajadorId:'t1', obraId:'o1', semanaInicio:'2026-06-29', dias:['trabajado','trabajado','trabajado','sin_obra','trabajado','sin_obra','sin_obra']},
-    {id:'j9', trabajadorId:'t2', obraId:'o1', semanaInicio:'2026-07-20', dias:['trabajado','trabajado','trabajado','trabajado','trabajado','sin_obra','sin_obra']},
-    {id:'j10', trabajadorId:'t2', obraId:'o2', semanaInicio:'2026-07-13', dias:['trabajado','trabajado','trabajado','trabajado','trabajado','sin_obra','sin_obra']},
-    {id:'j11', trabajadorId:'t2', obraId:'o1', semanaInicio:'2026-07-06', dias:['trabajado','trabajado','sin_obra','trabajado','trabajado','sin_obra','sin_obra']},
-    {id:'j12', trabajadorId:'t3', obraId:'o3', semanaInicio:'2026-07-20', dias:['trabajado','trabajado','trabajado','trabajado','trabajado','sin_obra','sin_obra']},
-    {id:'j13', trabajadorId:'t3', obraId:'o3', semanaInicio:'2026-07-13', dias:['trabajado','sin_obra','trabajado','trabajado','trabajado','sin_obra','sin_obra']},
-    {id:'j14', trabajadorId:'t4', obraId:'o2', semanaInicio:'2026-07-20', dias:['trabajado','trabajado','trabajado','trabajado','trabajado','sin_obra','sin_obra']},
-    {id:'j15', trabajadorId:'t4', obraId:'o2', semanaInicio:'2026-07-13', dias:['trabajado','trabajado','trabajado','trabajado','trabajado','trabajado','sin_obra']},
-    {id:'j16', trabajadorId:'t5', obraId:'o2', semanaInicio:'2026-07-13', dias:['trabajado','trabajado','trabajado','trabajado','sin_obra','sin_obra','sin_obra']},
-    {id:'j17', trabajadorId:'t5', obraId:'o2', semanaInicio:'2026-06-29', dias:['trabajado','trabajado','trabajado','trabajado','trabajado','sin_obra','sin_obra']},
-  ],
-  movimientosFima: [
-    {fecha:'2026-04-24', fondo:'jornales', obraId:'o1', concepto:'Mark IVA', tipo:'in', monto:200000},
-    {fecha:'2026-06-30', fondo:'costosFijos', obraId:null, concepto:'Alquiler depósito', tipo:'out', monto:1350000},
-    {fecha:'2026-07-08', fondo:'emergencias', obraId:'o3', concepto:'Reparación vehículo', tipo:'out', monto:620000},
-  ],
-  pagos: [
-    {id:'p1', tipo:'obra', obraId:'o1', categoria:'materiaPrima', concepto:'Lana de vidrio 50mm', cantidad:1, unitario:4200000, ivaAplica:true, monto:5082000, proveedorId:'pr1', numeroFactura:'0001-00004521', fechaFactura:'2026-07-24', formaPago:'A definir', fechaPago:null, pagosRealizados:[]},
-    {id:'p2', tipo:'obra', obraId:'o1', categoria:'materiaPrima', concepto:'Chapa lisa galvanizada', cantidad:1, unitario:5100000, ivaAplica:false, monto:5100000, proveedorId:'pr2', numeroFactura:'0002-00001187', fechaFactura:'2026-06-30', formaPago:'Transferencia', fechaPago:'2026-06-30', pagosRealizados:[{fecha:'2026-06-30', monto:5100000, fondo:'costosFijos', formaPago:'Transferencia'}]},
-    {id:'p3', tipo:'fijo', obraId:null, categoria:'costosFijos', concepto:'IIBB (Ingresos Brutos)', cantidad:1, unitario:780000, ivaAplica:false, monto:780000, proveedorId:'pr4', numeroFactura:'AFIP-072026', fechaFactura:'2026-08-01', formaPago:'A definir', fechaPago:'2026-08-15', pagosRealizados:[]},
-    {id:'p4', tipo:'fijo', obraId:null, categoria:'costosFijos', concepto:'Sueldos administración', cantidad:1, unitario:2100000, ivaAplica:false, monto:2100000, proveedorId:'pr5', numeroFactura:'RRHH-08-2026', fechaFactura:'2026-08-01', formaPago:'Transferencia', fechaPago:'2026-08-01', pagosRealizados:[{fecha:'2026-08-01', monto:2100000, fondo:'costosFijos', formaPago:'Transferencia'}]},
-    {id:'p5', tipo:'fijo', obraId:null, categoria:'alquiler', concepto:'Alquiler depósito', origenFondo:'costosFijos', cantidad:1, unitario:1350000, ivaAplica:false, monto:1350000, proveedorId:null, numeroFactura:null, fechaFactura:'2026-06-30', formaPago:'FIMA', fechaPago:'2026-06-30', pagosRealizados:[{fecha:'2026-06-30', monto:1350000, fondo:'costosFijos', formaPago:'FIMA'}]},
-    {id:'p6', tipo:'obra', obraId:'o3', categoria:'otros', concepto:'Reparación vehículo', origenFondo:'emergencias', cantidad:1, unitario:620000, ivaAplica:false, monto:620000, proveedorId:null, numeroFactura:null, fechaFactura:'2026-07-08', formaPago:'FIMA', fechaPago:'2026-07-08', pagosRealizados:[{fecha:'2026-07-08', monto:620000, fondo:'emergencias', formaPago:'FIMA'}]},
-  ],
-  proveedores: [
-    {id:'pr1', nombre:'Isolan SA', cuit:'', telefono:'', email:''},
-    {id:'pr2', nombre:'Metalúrgica Cruz', cuit:'', telefono:'', email:''},
-    {id:'pr3', nombre:'Bulonera Sur', cuit:'', telefono:'', email:''},
-    {id:'pr4', nombre:'AFIP', cuit:'', telefono:'', email:''},
-    {id:'pr5', nombre:'Administración interna', cuit:'', telefono:'', email:''},
-  ],
-  stock: [
-    {id:'s1', nombre:'Lana de vidrio 50mm', unidad:'m2', cantidad:180, costoUnitario:14000},
-    {id:'s2', nombre:'Chapa lisa galvanizada', unidad:'m2', cantidad:60, costoUnitario:17000},
-    {id:'s3', nombre:'Barrera de vapor', unidad:'rollo', cantidad:12, costoUnitario:45000},
-    {id:'s4', nombre:'Fijaciones y flejes', unidad:'caja', cantidad:25, costoUnitario:8500},
-  ],
-  stockMovimientos: [
-    {id:'sm1', fecha:'2026-06-15', tipo:'compra', stockId:'s1', cantidad:200, obraId:null, monto:2800000},
-    {id:'sm2', fecha:'2026-07-05', tipo:'consumo', stockId:'s1', cantidad:20, obraId:'o2', monto:280000},
-  ],
-  selectedObraId:'o1',
-  ordenesCompra: [
-    {id:'oc1', numero:'OC-0001', fecha:'2026-08-01', solicitante:'Julio', tipo:'obra', obraId:'o1', categoria:'materiaPrima', items:[{producto:'Fijaciones y flejes adicionales', cantidad:5, unitario:8500}], monto:42500, proveedorId:'pr3', estado:'pendiente', comentarioDueno:null, pagoId:null, cotizacionUsd:null, notaMaterial:'', notaGeneral:''},
-    {id:'oc2', numero:'OC-0002', fecha:'2026-07-28', solicitante:'Rulo', tipo:'stock', obraId:null, categoria:null, items:[{producto:'Barrera de vapor', cantidad:10, unitario:46000}], monto:460000, proveedorId:'pr1', estado:'autorizada', comentarioDueno:null, pagoId:null, cotizacionUsd:null, notaMaterial:'', notaGeneral:''},
-  ],
-  ordenesFilter:'pendiente',
-  selectedProveedorId:null,
-  pagosFilter:'todos',
+  fondos: { costosFijos: 0, jornales: 0, impuestos: 0, emergencias: 0, inversiones: 0, obras: 0, otros: 0 },
+  caja: 0,
+  obras: [],
+  trabajadores: [],
+  jornales: [],
+  movimientosFima: [],
+  pagos: [],
+  proveedores: [],
+  stock: [],
+  stockMovimientos: [],
+  selectedObraId: null,
+  ordenesCompra: [],
+  ordenesFilter: 'pendiente',
+  selectedProveedorId: null,
+  pagosFilter: 'todos',
   datosEmpresa: {
     nombre: 'Aislaciones Quilmes S.R.L.',
     cuit: '',
@@ -722,40 +637,56 @@ let state = {
 };
 /* ======================= BACKEND (Google Sheet + Drive) ======================= */
 // Completar estos dos valores después de desplegar el Apps Script (ver AppsScript_Code.gs).
-// Mientras queden vacíos, la app funciona igual que antes: en memoria, con los datos de ejemplo.
+// Mientras queden vacíos, la app funciona en memoria y en blanco, sin backend.
 const STATE_API_URL = 'https://script.google.com/macros/s/AKfycbzNUM_FeQ61f4oRQC0AdA_-zG78r7JyyCcICZSDZ1iAc2KrFTt1jeJ2MXsm2jVYY5yx/exec';
 const API_SECRET = 'ramonino22';
 function isBackendConfigured(){ return !!STATE_API_URL; }
-function loadState(){
+function loadState(opts){
   if(!isBackendConfigured()) return Promise.resolve();
+  const esCargaInicial = !(opts && opts.silencioso);
   return fetch(STATE_API_URL+'?secret='+encodeURIComponent(API_SECRET))
     .then(r=>r.json())
     .then(data=>{
       if(data && data.ok && data.state){
-        if(!data.state.sembrado){
-          // El Sheet todavía no fue sembrado (recién creado): mantenemos los
-          // datos de ejemplo que ya están cargados y los guardamos en el
-          // backend, en vez de mostrar la app en blanco. A partir de acá el
-          // Sheet manda, aunque después se borre todo desde la planilla.
-          state.sembrado = true;
-          saveState();
-        } else {
-          Object.assign(state, data.state, {
-            selectedObraId: (data.state.obras&&data.state.obras[0]&&data.state.obras[0].id) || null,
-            ordenesFilter: 'pendiente', selectedProveedorId: null, pagosFilter: 'todos',
-          });
+        // El Sheet siempre manda, tal cual esté (incluso vacío) — nunca se
+        // pisa con datos viejos una vez que hay un backend conectado.
+        Object.assign(state, data.state);
+        if(esCargaInicial){
+          state.selectedObraId = (data.state.obras&&data.state.obras[0]&&data.state.obras[0].id) || null;
+          state.ordenesFilter = 'pendiente'; state.selectedProveedorId = null; state.pagosFilter = 'todos';
         }
       } else if(data && data.error){
-        console.error('Backend respondió con error, uso los datos de ejemplo:', data.error);
+        console.error('Backend respondió con error al cargar:', data.error);
       }
     })
-    .catch(err=>{ console.error('No se pudo cargar el estado remoto, uso los datos de ejemplo.', err); });
+    .catch(err=>{ console.error('No se pudo cargar el estado remoto.', err); });
 }
 let saveTimer = null;
 async function saveState(){
   if(!isBackendConfigured()) return;
-  try{ await fetch(STATE_API_URL, {method:'POST', body:JSON.stringify({secret:API_SECRET, state})}); }
-  catch(err){ console.error('No se pudo guardar en el backend', err); }
+  try{
+    const res = await fetch(STATE_API_URL, {method:'POST', body:JSON.stringify({secret:API_SECRET, state})});
+    const data = await res.json();
+    if(data && data.ok){
+      state.rev = data.rev;
+    } else if(data && data.error==='conflict'){
+      // Alguien más guardó cambios más nuevos desde otra pestaña o dispositivo.
+      // En vez de pisarlos (y perderlos), traemos lo último automáticamente
+      // y avisamos brevemente — sin pedirle a nadie que recargue a mano.
+      await loadState({silencioso:true});
+      renderAll();
+      avisarActualizacion();
+    } else if(data && data.error){
+      console.error('El backend respondió con error al guardar:', data.error);
+    }
+  } catch(err){ console.error('No se pudo guardar en el backend', err); }
+}
+function avisarActualizacion(){
+  const b = document.createElement('div');
+  b.style.cssText = 'position:fixed;top:16px;right:16px;z-index:9999;background:#14181C;color:#fff;padding:12px 16px;border-radius:8px;font-family:Montserrat,sans-serif;font-size:12.5px;max-width:300px;line-height:1.5;box-shadow:0 6px 20px rgba(0,0,0,.25);';
+  b.textContent = 'Se actualizó con cambios que guardó otra persona. Si estabas cargando algo, fijate que haya quedado bien.';
+  document.body.appendChild(b);
+  setTimeout(()=>{ b.style.transition='opacity .4s'; b.style.opacity='0'; setTimeout(()=>b.remove(), 400); }, 6000);
 }
 function scheduleSave(){
   if(!isBackendConfigured()) return;
@@ -923,7 +854,7 @@ function renderObraDetail(){
     <div class="section-title"><h2>Costos por categoría</h2><span class="hint">Presupuestado vs. real</span></div>
     <div class="cat-grid">${catCards}</div>
 
-    <div class="section-title"><h2>Presupuesto → Facturación</h2><span class="hint">Cadena completa, como en la planilla</span></div>
+    <div class="section-title"><h2>Presupuesto → Facturación</h2><span class="hint">Costos, beneficio, impuestos e IVA</span></div>
     <div class="card" style="font-family:'Montserrat',sans-serif;font-size:13px;">
       <div class="summary-line"><span>Costos (materiales + mano de obra)</span><span>${fmt(o.presupuestoResumen.costos)}</span></div>
       <div class="summary-line"><span>+ Beneficio</span><span>${fmt(o.presupuestoResumen.beneficio)}</span></div>
@@ -951,7 +882,6 @@ function renderObraDetail(){
     </table></div>
 
     <div class="section-title"><h2>Documentos</h2><div class="st-actions"><button class="btn btn-ghost btn-sm" onclick="openModalDocumentoObra('${o.id}')">+ Agregar documento</button></div></div>
-    <div class="foot-note" style="margin-top:0;">Los archivos (facturas, remitos, OC firmadas) se suben sueltos a Drive y se listan acá con su link para verlos — no hace falta una carpeta por obra.</div>
     <div class="card card-table" style="margin-top:12px;"><table>
       <thead><tr><th>Nombre</th><th>Tipo</th><th>Fecha</th><th></th><th></th></tr></thead>
       <tbody>${obraDocumentosRows(o.id)}</tbody>
@@ -2177,7 +2107,6 @@ function openModalFinalizarPago(pagoId){
       <div class="field"><label>Fecha de pago</label><input id="f-fecha" type="date" value="${p.fechaPago||today()}"></div>
       <div class="field span2 hidden" id="wrap-fondo"><label>Fondo que paga</label><select id="f-fondo">${fondoOptionsHTML()}</select></div>
     </div>
-    <div class="foot-note" style="margin-top:12px;">Si el monto es menor al saldo, la factura queda "parcial" y podés registrar otro pago más adelante. El fondo solo se pide si el medio de pago es FIMA.</div>
     <div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" onclick="submitFinalizarPago('${pagoId}')">Registrar pago</button></div>`;
   overlay.classList.add('open');
   onMedioPagoChange();

@@ -50,7 +50,7 @@ const SHEET_NAMES = {
 };
 
 const SCHEMAS = {
-  config: ['caja', 'sembrado'],
+  config: ['caja', 'rev'],
   fondos: ['fondo', 'monto'],
   obras: ['id', 'code', 'cliente', 'encargado', 'fechaInicio', 'estado',
     'presupuestoJSON', 'presupuestoDetalleJSON', 'presupuestoResumenJSON',
@@ -127,7 +127,7 @@ function readState_() {
 
   const configRows = sheetToRows_(ss.getSheetByName(SHEET_NAMES.config), SCHEMAS.config);
   const caja = configRows.length ? Number(configRows[0].caja) || 0 : 0;
-  const sembrado = configRows.length ? toBool_(configRows[0].sembrado) : false;
+  const rev = configRows.length ? Number(configRows[0].rev) || 0 : 0;
 
   const fondos = {};
   sheetToRows_(ss.getSheetByName(SHEET_NAMES.fondos), SCHEMAS.fondos).forEach(r => {
@@ -190,7 +190,7 @@ function readState_() {
   const empresaRows = sheetToRows_(ss.getSheetByName(SHEET_NAMES.datosEmpresa), SCHEMAS.datosEmpresa);
   const datosEmpresa = empresaRows.length ? empresaRows[0] : {};
 
-  return { caja, sembrado, fondos, obras, pagos, ordenesCompra, proveedores, stock, stockMovimientos,
+  return { caja, rev, fondos, obras, pagos, ordenesCompra, proveedores, stock, stockMovimientos,
     trabajadores, jornales, movimientosFima, datosEmpresa };
 }
 
@@ -209,7 +209,7 @@ function writeState_(state) {
   Object.keys(SHEET_NAMES).forEach(key => getOrCreateSheet_(ss, SHEET_NAMES[key], SCHEMAS[key]));
 
   writeRows_(ss.getSheetByName(SHEET_NAMES.config), SCHEMAS.config,
-    [{ caja: state.caja || 0, sembrado: state.sembrado ? 'TRUE' : 'FALSE' }], r => [r.caja, r.sembrado]);
+    [{ caja: state.caja || 0, rev: state.rev || 0 }], r => [r.caja, r.rev]);
 
   const fondosRows = Object.keys(state.fondos || {}).map(k => ({ fondo: k, monto: state.fondos[k] }));
   writeRows_(ss.getSheetByName(SHEET_NAMES.fondos), SCHEMAS.fondos, fondosRows, r => [r.fondo, r.monto]);
@@ -297,9 +297,21 @@ function doPost(e) {
       file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
       return jsonOut_({ ok: true, url: file.getUrl(), fileId: file.getId() });
     }
-    // Guardado normal: reescribe todo el estado.
+    // Guardado normal: antes de reescribir, chequeamos que nadie haya guardado
+    // cambios más nuevos desde que este cliente cargó los datos (evita que una
+    // pestaña vieja pise por accidente el trabajo de otra sesión).
+    const ss = getSs_();
+    const configSheet = getOrCreateSheet_(ss, SHEET_NAMES.config, SCHEMAS.config);
+    const configRows = sheetToRows_(configSheet, SCHEMAS.config);
+    const currentRev = configRows.length ? (Number(configRows[0].rev) || 0) : 0;
+    const clientRev = Number(body.state && body.state.rev) || 0;
+    if (clientRev !== currentRev) {
+      return jsonOut_({ error: 'conflict', rev: currentRev });
+    }
+    const newRev = currentRev + 1;
+    body.state.rev = newRev;
     writeState_(body.state);
-    return jsonOut_({ ok: true });
+    return jsonOut_({ ok: true, rev: newRev });
   } catch (err) {
     return jsonOut_({ error: String(err) });
   } finally {
