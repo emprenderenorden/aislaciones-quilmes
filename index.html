@@ -602,14 +602,15 @@
 <script>
 /* ======================= STATE ======================= */
 const catLabel = {materiaPrima:'Materiales', manoObra:'Mano de obra', logistica:'Logística', estadia:'Estadía de obra', otros:'Otros no previstos', stock:'Reposición de stock'};
-const fondoLabel = {jornales:'Fondo Jornales', costosFijos:'Costos Fijos', emergencias:'Emergencias', inversiones:'Inversiones'};
+const fondoLabel = {costosFijos:'Costos Fijos', gastosPersonales:'Gastos Personales', impuestos:'Impuestos', emergencias:'Emergencias', inversiones:'Inversiones', obras:'Obras', otros:'Otros'};
+function fondoOptionsHTML(selected){ return Object.entries(fondoLabel).map(([k,l])=>`<option value="${k}" ${selected===k?'selected':''}>${l}</option>`).join(''); }
 const fmt = (n)=> '$ ' + Math.round(n||0).toLocaleString('es-AR');
 const today = ()=> new Date().toISOString().slice(0,10);
 let idCounter = 200;
 const newId = (p)=> p+(idCounter++);
 
 let state = {
-  fondos: { jornales: 8240000, costosFijos: 12100000, emergencias: 5500000, inversiones: 15440000 },
+  fondos: { costosFijos: 12100000, gastosPersonales: 8240000, impuestos: 0, emergencias: 5500000, inversiones: 15440000, obras: 0, otros: 0 },
   caja: 3440000,
   obras: [
     { id:'o1', code:'X-669', cliente:'TGS Cerri', encargado:'Julio', fechaInicio:'2026-06-02', estado:'en curso',
@@ -664,7 +665,7 @@ let state = {
     {id:'j17', trabajadorId:'t5', obraId:'o2', semanaInicio:'2026-06-29', dias:['trabajado','trabajado','trabajado','trabajado','trabajado','sin_obra','sin_obra']},
   ],
   movimientosFima: [
-    {fecha:'2026-04-24', fondo:'jornales', obraId:'o1', concepto:'Mark IVA', tipo:'in', monto:200000},
+    {fecha:'2026-04-24', fondo:'gastosPersonales', obraId:'o1', concepto:'Mark IVA', tipo:'in', monto:200000},
     {fecha:'2026-06-30', fondo:'costosFijos', obraId:null, concepto:'Alquiler depósito', tipo:'out', monto:1350000},
     {fecha:'2026-07-08', fondo:'emergencias', obraId:'o3', concepto:'Reparación vehículo', tipo:'out', monto:620000},
   ],
@@ -1323,7 +1324,15 @@ function submitTrabajador(id){
 
 /* ======================= FIMA ======================= */
 function renderFima(){
-  const meta = {jornales:{color:'var(--teal)', note:'cubre jornales próximos'}, costosFijos:{color:'var(--copper)', note:'alquiler, seguros, sueldos admin.'}, emergencias:{color:'var(--warn)', note:'objetivo mínimo $5.000.000'}, inversiones:{color:'var(--good)', note:'plazo fijo + FCI'}};
+  const meta = {
+    costosFijos:{color:'var(--copper)', note:'alquiler, seguros, sueldos admin.'},
+    gastosPersonales:{color:'var(--teal)', note:'sueldos y cargas del personal'},
+    impuestos:{color:'var(--ink)', note:'IIBB, IVA, cargas impositivas'},
+    emergencias:{color:'var(--warn)', note:'objetivo mínimo $5.000.000'},
+    inversiones:{color:'var(--good)', note:'plazo fijo + FCI'},
+    obras:{color:'var(--bad)', note:'gastos puntuales de obra'},
+    otros:{color:'var(--muted)', note:'gastos varios no clasificados'},
+  };
   document.getElementById('fund-grid').innerHTML = Object.entries(state.fondos).map(([k,v])=>`<div class="card fund-card"><div class="fund-bar" style="background:${meta[k].color};"></div><div class="fund-name">${fondoLabel[k]}</div><div class="fund-value">${fmt(v)}</div><div class="fund-target">${meta[k].note}</div></div>`).join('');
   const rows = [...state.movimientosFima].sort((a,b)=>b.fecha.localeCompare(a.fecha));
   document.getElementById('movimientos-fima-body').innerHTML = rows.length ? rows.map(m=>`<tr><td class="mono">${m.fecha}</td><td>${fondoLabel[m.fondo]}</td><td>${m.obraId?`<span class="obra-code">${getObra(m.obraId)?.code||''}</span>`:'—'}</td><td>${m.concepto}</td><td><span class="badge-inout ${m.tipo}">${m.tipo==='in'?'Ingreso':'Egreso'}</span></td><td class="num">${fmt(m.monto)}</td></tr>`).join('') : `<tr class="empty-row"><td colspan="6">Sin movimientos</td></tr>`;
@@ -1757,7 +1766,7 @@ function renderPagos(){
     const estadoDot = est==='pagado'?'good':'warn';
     const estadoTxt = est==='pagado'?'Pagado':(est==='parcial'?'Parcial':(est==='sin_fecha'?'Sin fecha':'Pendiente'));
     const action = est!=='pagado' ? `<span class="link-btn" onclick="openModalFinalizarPago('${p.id}')">Registrar pago →</span>` : '';
-    const destino = p.obraId ? `<span class="link-btn" onclick="goToObra('${p.obraId}')"><span class="obra-code">${getObra(p.obraId)?.code||''}</span></span>` : (p.tipo==='stock' ? 'Stock' : 'Negocio general');
+    const destino = p.obraId ? `<span class="link-btn" onclick="goToObra('${p.obraId}')"><span class="obra-code">${getObra(p.obraId)?.code||''}</span></span>` : (p.tipo==='stock' ? 'Stock' : (p.origenFondo ? `Fondo FIMA: ${fondoLabel[p.origenFondo]}` : 'Negocio general'));
     const prov = getProveedor(p.proveedorId);
     const provTxt = prov ? `${prov.nombre}${p.numeroFactura?' · '+p.numeroFactura:''}` : '—';
     return `<tr><td>${destino}</td><td>${p.concepto}</td><td>${ocBadge(p.numeroOC)}</td><td>${provTxt}</td><td class="num">${fmt(p.monto)}</td><td class="num">${fmt(pagoSaldo(p))}</td><td class="mono">${p.fechaPago||'—'}</td><td><span class="estado-dot ${estadoDot}"></span>${estadoTxt}</td><td>${action}</td></tr>`;
@@ -1844,7 +1853,7 @@ function openModalPagoProveedor(){
     <div class="form-grid">
       <div class="field span2"><label>Monto a pagar ($)</label><input id="f-monto" class="mono-in" type="number" value="${deuda}"></div>
       <div class="field"><label>Medio de pago</label><select id="f-forma" onchange="onMedioPagoChange()"><option>Transferencia</option><option>Efectivo</option><option>eCheq</option><option>FIMA</option></select></div>
-      <div class="field hidden" id="wrap-fondo"><label>Fondo que paga</label><select id="f-fondo"><option value="costosFijos">Costos Fijos</option><option value="jornales">Fondo Jornales</option><option value="emergencias">Emergencias</option><option value="inversiones">Inversiones</option></select></div>
+      <div class="field hidden" id="wrap-fondo"><label>Fondo que paga</label><select id="f-fondo">${fondoOptionsHTML()}</select></div>
       <div class="field span2"><label>Fecha</label><input id="f-fecha" type="date" value="${today()}"></div>
     </div>
     <div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" onclick="submitPagoProveedor('${pr.id}')">Registrar</button></div>`;
@@ -1871,6 +1880,7 @@ function submitPagoProveedor(provId){
     if(aplicar<=0) return;
     p.pagosRealizados = p.pagosRealizados||[];
     p.pagosRealizados.push({fecha, monto:aplicar, fondo, formaPago});
+    if(fondo) p.origenFondo = fondo;
     restante -= aplicar;
   });
   const aplicadoTotal = monto - restante;
@@ -2032,7 +2042,7 @@ function openModalFinalizarPago(pagoId){
         <option ${medioActual==='FIMA'?'selected':''}>FIMA</option>
       </select></div>
       <div class="field"><label>Fecha de pago</label><input id="f-fecha" type="date" value="${p.fechaPago||today()}"></div>
-      <div class="field span2 hidden" id="wrap-fondo"><label>Fondo que paga</label><select id="f-fondo"><option value="costosFijos">Costos Fijos</option><option value="jornales">Fondo Jornales</option><option value="emergencias">Emergencias</option><option value="inversiones">Inversiones</option></select></div>
+      <div class="field span2 hidden" id="wrap-fondo"><label>Fondo que paga</label><select id="f-fondo">${fondoOptionsHTML()}</select></div>
     </div>
     <div class="foot-note" style="margin-top:12px;">Si el monto es menor al saldo, la factura queda "parcial" y podés registrar otro pago más adelante. El fondo solo se pide si el medio de pago es FIMA.</div>
     <div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" onclick="submitFinalizarPago('${pagoId}')">Registrar pago</button></div>`;
@@ -2055,6 +2065,7 @@ function submitFinalizarPago(pagoId){
   if(fondo){
     state.fondos[fondo] -= monto;
     state.movimientosFima.push({fecha, fondo, obraId:p.obraId, concepto:p.concepto, tipo:'out', monto});
+    p.origenFondo = fondo;
   } else {
     state.caja -= monto;
   }
@@ -2064,7 +2075,7 @@ function submitFinalizarPago(pagoId){
 function openModalMovimientoFima(){
   modalEl.innerHTML = `<h3>Registrar movimiento FIMA</h3><div class="modal-sub">Ingreso o egreso directo de un fondo</div>
     <div class="form-grid">
-      <div class="field"><label>Fondo</label><select id="f-fondo"><option value="jornales">Fondo Jornales</option><option value="costosFijos">Costos Fijos</option><option value="emergencias">Emergencias</option><option value="inversiones">Inversiones</option></select></div>
+      <div class="field"><label>Fondo</label><select id="f-fondo">${fondoOptionsHTML()}</select></div>
       <div class="field"><label>Tipo</label><select id="f-tipo2"><option value="in">Ingreso</option><option value="out">Egreso</option></select></div>
       <div class="field span2"><label>Concepto</label><input id="f-concepto" placeholder="Ej: Transferencia desde caja"></div>
       <div class="field"><label>Monto ($)</label><input id="f-monto" class="mono-in" type="number" value="0"></div>
@@ -2079,6 +2090,9 @@ function submitMovimientoFima(){
   const fecha = document.getElementById('f-fecha').value || today();
   state.fondos[fondo] += (tipo==='in'? monto:-monto);
   state.movimientosFima.push({fecha, fondo, obraId:null, concepto, tipo, monto});
+  if(tipo==='out'){
+    state.pagos.push({id:newId('p'), tipo:'fijo', obraId:null, categoria:'costosFijos', concepto, origenFondo:fondo, cantidad:1, unitario:monto, ivaAplica:false, monto, proveedorId:null, numeroFactura:null, fechaFactura:fecha, formaPago:'FIMA', fechaPago:fecha, pagosRealizados:[{fecha, monto, fondo, formaPago:'FIMA'}]});
+  }
   closeModal(); renderAll();
 }
 
