@@ -626,7 +626,7 @@ let state = {
         comisionVendedor:1325053, gananciaNeta:450947, socio1Monto:45095, socio2Monto:135284, aqMonto:270568},
       real:{materiaPrima:12800000, manoObra:6700000, logistica:600000, estadia:380000, otros:540000},
       ingresos:{facturado:30462960, cobrado:19900000}, ingresosList:[{fecha:'2026-07-10', monto:19900000, medioPago:'Transferencia'}],
-      facturasVenta:[{id:'fv1', fecha:'2026-06-02', montoSinIva:25176000, iva:5286960, monto:30462960}], carpetaDriveUrl:'https://drive.google.com/drive/folders/1V19ue8-2t87PWhbPcMMYCURlhm61Vwdj', documentos:[] },
+      facturasVenta:[{id:'fv1', fecha:'2026-06-02', montoSinIva:25176000, iva:5286960, monto:30462960}], documentos:[] },
     { id:'o2', code:'TGS', cliente:'TGS Gasoducto Sur', encargado:'Pablo', fechaInicio:'2026-05-10', estado:'en curso',
       presupuesto:{materiaPrima:9000000, manoObra:5200000, logistica:600000, estadia:300000},
       presupuestoDetalle:{ivaPct:21, vendedorPct:5, socio1Nombre:'AL', socio1Pct:10, socio2Nombre:'JL', socio2Pct:30},
@@ -634,7 +634,7 @@ let state = {
         comisionVendedor:901474, gananciaNeta:306526, socio1Monto:30653, socio2Monto:91958, aqMonto:183915},
       real:{materiaPrima:6200000, manoObra:4300000, logistica:400000, estadia:200000, otros:0},
       ingresos:{facturado:20724880, cobrado:9000000}, ingresosList:[{fecha:'2026-06-15', monto:9000000, medioPago:'Transferencia'}],
-      facturasVenta:[{id:'fv2', fecha:'2026-05-10', montoSinIva:17128000, iva:3596880, monto:20724880}], carpetaDriveUrl:'https://drive.google.com/drive/folders/1LfmmTBO_MdLwhATfqZEp7O6LrBhzCWb7', documentos:[] },
+      facturasVenta:[{id:'fv2', fecha:'2026-05-10', montoSinIva:17128000, iva:3596880, monto:20724880}], documentos:[] },
     { id:'o3', code:'AQ-104', cliente:'Refinería Dock Sud', encargado:'Rulo', fechaInicio:'2026-04-20', estado:'en curso',
       presupuesto:{materiaPrima:7000000, manoObra:3800000, logistica:500000, estadia:200000},
       presupuestoDetalle:{ivaPct:21, vendedorPct:5, socio1Nombre:'AL', socio1Pct:10, socio2Nombre:'JL', socio2Pct:30},
@@ -642,7 +642,7 @@ let state = {
         comisionVendedor:685790, gananciaNeta:234210, socio1Monto:23421, socio2Monto:70263, aqMonto:140526},
       real:{materiaPrima:8100000, manoObra:4600000, logistica:600000, estadia:300000, otros:920000},
       ingresos:{facturado:15766300, cobrado:13800000}, ingresosList:[{fecha:'2026-07-20', monto:13800000, medioPago:'Transferencia'}],
-      facturasVenta:[{id:'fv3', fecha:'2026-04-20', montoSinIva:13030000, iva:2736300, monto:15766300}], carpetaDriveUrl:'https://drive.google.com/drive/folders/18IPYqPkzsiigKcFYgidEeO2FAKdR9JEx', documentos:[] },
+      facturasVenta:[{id:'fv3', fecha:'2026-04-20', montoSinIva:13030000, iva:2736300, monto:15766300}], documentos:[] },
   ],
   trabajadores: [
     {id:'t1', nombre:'Juan', puesto:'Trazador'},
@@ -708,7 +708,6 @@ let state = {
   ordenesFilter:'pendiente',
   selectedProveedorId:null,
   pagosFilter:'todos',
-  carpetaMadreDriveUrl: 'https://drive.google.com/drive/folders/1ufrXSSoEzAitD_t3Z4Qa7tScXEdpBtux',
   datosEmpresa: {
     nombre: 'Aislaciones Quilmes S.R.L.',
     cuit: '',
@@ -883,8 +882,8 @@ function renderObraDetail(){
       <tbody>${(o.ingresosList&&o.ingresosList.length) ? o.ingresosList.map(i=>`<tr><td class="mono">${i.fecha}</td><td>${i.medioPago}</td><td>${i.numeroFactura||'—'}</td><td>${i.numeroCobranza||'—'}</td><td class="num">${fmt(i.monto)}</td></tr>`).join('') : `<tr class="empty-row"><td colspan="5">Sin cobros registrados</td></tr>`}</tbody>
     </table></div>
 
-    <div class="section-title"><h2>Documentos</h2><div class="st-actions"><button class="btn btn-ghost btn-sm" onclick="openModalCarpetaDrive('${o.id}')">${o.carpetaDriveUrl?'📁 Editar carpeta de Drive':'📁 Vincular carpeta de Drive'}</button><button class="btn btn-ghost btn-sm" onclick="openModalDocumentoObra('${o.id}')">+ Agregar documento</button></div></div>
-    ${o.carpetaDriveUrl ? `<div class="foot-note" style="margin-top:0;">📁 Todos los archivos de esta obra (facturas, remitos, OC firmadas) se guardan en <a href="${o.carpetaDriveUrl}" target="_blank" rel="noopener">esta carpeta de Google Drive →</a>. Subilos ahí para que los vea todo el equipo.</div>` : `<div class="foot-note" style="margin-top:0;">Todavía no hay una carpeta de Drive vinculada a esta obra. Creá una subcarpeta para esta obra dentro de la <a href="${state.carpetaMadreDriveUrl}" target="_blank" rel="noopener">carpeta general de obras →</a> y pegá su link con "📁 Vincular carpeta de Drive" — ahí es donde se suben los PDF (facturas, OC, remitos) para que los vea todo el equipo.</div>`}
+    <div class="section-title"><h2>Documentos</h2><div class="st-actions"><button class="btn btn-ghost btn-sm" onclick="openModalDocumentoObra('${o.id}')">+ Agregar documento</button></div></div>
+    <div class="foot-note" style="margin-top:0;">Los archivos (facturas, remitos, OC firmadas) se suben sueltos a Drive y se listan acá con su link para verlos — no hace falta una carpeta por obra.</div>
     <div class="card card-table" style="margin-top:12px;"><table>
       <thead><tr><th>Nombre</th><th>Tipo</th><th>Fecha</th><th></th><th></th></tr></thead>
       <tbody>${obraDocumentosRows(o.id)}</tbody>
@@ -961,20 +960,6 @@ function eliminarDocumentoObra(obraId, docId){
   const o = getObra(obraId);
   o.documentos = (o.documentos||[]).filter(d=>d.id!==docId);
   renderAll();
-}
-function openModalCarpetaDrive(obraId){
-  const o = getObra(obraId);
-  modalEl.innerHTML = `<h3>Carpeta de Google Drive de la obra</h3><div class="modal-sub">Todo lo que suban ahí lo va a ver todo el equipo con acceso a esa carpeta</div>
-    <div class="form-grid">
-      <div class="field span2"><label>Link de la carpeta compartida</label><input id="f-carpeta-url" type="url" placeholder="https://drive.google.com/drive/folders/..." value="${o.carpetaDriveUrl||''}"></div>
-    </div>
-    <div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" onclick="submitCarpetaDrive('${obraId}')">Guardar</button></div>`;
-  overlay.classList.add('open');
-}
-function submitCarpetaDrive(obraId){
-  const o = getObra(obraId);
-  o.carpetaDriveUrl = document.getElementById('f-carpeta-url').value.trim();
-  closeModal(); renderAll();
 }
 function iniciarObra(id){ getObra(id).estado='en curso'; renderAll(); }
 function finalizarObra(id){ getObra(id).estado='finalizada'; renderAll(); }
@@ -1148,7 +1133,7 @@ function savePresupuesto(){
     const facturasVenta = [{id:newId('fv'), fecha:fechaFactura, montoSinIva:c.totalPresupuesto, iva:c.ivaARS, monto:c.totalConIva}];
     state.obras.push({ id, code, cliente, encargado, fechaInicio:fecha, estado:estadoInicial,
       presupuestoDetalle:detalle, presupuesto, presupuestoResumen,
-      real, ingresos:{facturado:c.totalConIva, cobrado}, ingresosList, facturasVenta, carpetaDriveUrl:'', documentos:[] });
+      real, ingresos:{facturado:c.totalConIva, cobrado}, ingresosList, facturasVenta, documentos:[] });
     if(ir){
       ['materiaPrima','logistica','estadia','otros'].forEach(cat=>{
         const monto = real[cat];
