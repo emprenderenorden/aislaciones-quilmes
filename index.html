@@ -604,7 +604,7 @@ const catLabel = {materiaPrima:'Materiales', manoObra:'Mano de obra', logistica:
 const catFijaLabel = {sueldo:'Sueldo', alquiler:'Alquiler', seguros:'Seguros', impuestos:'Impuestos', servicios:'Servicios (luz/gas/agua/internet)', mantenimiento:'Mantenimiento', otros:'Otros'};
 function catOptionsForTipo(tipo, selected){
   const opts = tipo==='obra'
-    ? {materiaPrima:'Materiales', logistica:'Logística', estadia:'Estadía de obra', otros:'Otros no previstos'}
+    ? {materiaPrima:'Materiales', manoObra:'Mano de obra', logistica:'Logística', estadia:'Estadía de obra', otros:'Otros no previstos'}
     : catFijaLabel;
   return Object.entries(opts).map(([k,l])=>`<option value="${k}" ${selected===k?'selected':''}>${l}</option>`).join('');
 }
@@ -1214,7 +1214,7 @@ function savePresupuesto(){
       presupuestoDetalle:detalle, presupuesto, presupuestoResumen,
       real, ingresos:{facturado:c.totalConIva, cobrado}, ingresosList, facturasVenta, documentos:[] });
     if(ir){
-      ['materiaPrima','logistica','estadia','otros'].forEach(cat=>{
+      ['materiaPrima','manoObra','logistica','estadia','otros'].forEach(cat=>{
         const monto = real[cat];
         if(monto>0) state.pagos.push({id:newId('p'), tipo:'obra', obraId:id, categoria:cat, concepto:'Importado desde Excel (total incurrido a la fecha)', cantidad:1, unitario:monto, ivaAplica:false, monto, proveedorId:null, numeroFactura:null, fechaFactura:fecha, formaPago:'Transferencia', fechaPago:fecha, pagosRealizados:[{fecha, monto, fondo:null, formaPago:'Transferencia'}]});
       });
@@ -1234,6 +1234,39 @@ function handleImportExcel(evt){
       const wb = XLSX.read(new Uint8Array(e.target.result), {type:'array', cellDates:true});
       const ps = wb.Sheets['PRESUPUESTO']; const hr = wb.Sheets['HOJA RESUMEN'];
       const cell = (sheet,addr)=> (sheet && sheet[addr]) ? sheet[addr].v : undefined;
+      // Busca por título de fila/columna en vez de número de fila fijo: la planilla del
+      // cliente fue corriendo filas con el tiempo y los números fijos quedaron desalineados
+      // (agarraban filas de encabezado como si fueran ítems, generando NaN en los totales).
+      const findRow_ = (sheet,col,label)=>{ for(let r=1;r<=160;r++){ const v=cell(sheet,col+r); if(v && String(v).trim().toUpperCase()===label) return r; } return null; };
+      const valorEtiqueta_ = (sheet,colEtiqueta,etiqueta,colValor)=>{ const r=findRow_(sheet,colEtiqueta,etiqueta); return r==null ? undefined : cell(sheet,colValor+r); };
+      const leerSeccionItems_ = (sheet,tituloSeccion)=>{
+        const items = [];
+        const filaTitulo = findRow_(sheet,'A',tituloSeccion);
+        if(filaTitulo==null) return items;
+        let filaHeader = null;
+        for(let r=filaTitulo+1;r<=filaTitulo+6;r++){ const v=cell(sheet,'A'+r); if(v && String(v).trim().toUpperCase()==='DETALLE'){ filaHeader=r; break; } }
+        if(filaHeader==null) return items;
+        for(let r=filaHeader+1;r<=filaHeader+40;r++){
+          const a = cell(sheet,'A'+r);
+          if(!a) break;
+          if(String(a).trim().toUpperCase()==='SUBTOTAL') break;
+          const q = cell(sheet,'D'+r), u = cell(sheet,'E'+r);
+          items.push({ detalle:String(a).trim(), cantidad: typeof q==='number'?q:0, unitario: typeof u==='number'?u:0 });
+        }
+        return items;
+      };
+      const leerMoRoles_ = (sheet)=>{
+        const rolesPorDefecto = ['Trazador','Montador','Lanero','931 x persona'];
+        const filaHeader = findRow_(sheet,'B','SALARIO/DÍA');
+        if(filaHeader==null) return rolesPorDefecto.map(p=>({puesto:p, salario:0, cantidad:0}));
+        const out = [];
+        for(let i=0;i<4;i++){
+          const r = filaHeader+1+i;
+          const a = cell(sheet,'A'+r), sal = cell(sheet,'B'+r), cant = cell(sheet,'E'+r);
+          out.push({ puesto: a?String(a).trim():rolesPorDefecto[i], salario: typeof sal==='number'?sal:0, cantidad: typeof cant==='number'?cant:0 });
+        }
+        return out;
+      };
       openPresupuestoBuilder(null);
       const code = cell(ps,'E1') || '';
       document.getElementById('pb-code').value = code;
@@ -1241,30 +1274,25 @@ function handleImportExcel(evt){
       document.getElementById('pb-encargado').value = encargado;
       const fecha = cell(hr,'C10');
       if(fecha instanceof Date) { document.getElementById('pb-fecha').value = fecha.toISOString().slice(0,10); document.getElementById('pb-fecha-factura').value = fecha.toISOString().slice(0,10); }
-      const cotizacion = cell(ps,'H74'); if(cotizacion) document.getElementById('pb-cotizacion').value = cotizacion;
+      const cotizacion = valorEtiqueta_(ps,'G','COTIZACION','H'); if(cotizacion) document.getElementById('pb-cotizacion').value = cotizacion;
 
-      buildState.mpItems = [];
-      for(let r=23;r<=41;r++){ const d=cell(ps,'A'+r), q=cell(ps,'D'+r), u=cell(ps,'E'+r); if(d) buildState.mpItems.push({detalle:d, cantidad:q||0, unitario:u||0}); }
+      buildState.mpItems = leerSeccionItems_(ps,'MATERIA PRIMA');
       if(!buildState.mpItems.length) buildState.mpItems.push({detalle:'',cantidad:0,unitario:0});
 
-      buildState.logItems = [];
-      const l47d=cell(ps,'A47'), l47q=cell(ps,'D47'), l47u=cell(ps,'E47'); if(l47d) buildState.logItems.push({detalle:l47d, cantidad:l47q||0, unitario:l47u||0});
-      const l48d=cell(ps,'A48'), l48q=cell(ps,'D48'), l48u=cell(ps,'E48'); if(l48d) buildState.logItems.push({detalle:l48d, cantidad:l48q||0, unitario:l48u||0});
+      buildState.logItems = leerSeccionItems_(ps,'LOGISTICA');
       if(!buildState.logItems.length) buildState.logItems = freshBuildState().logItems;
 
-      buildState.estItems = [];
-      [54,55,56].forEach(r=>{ const d=cell(ps,'A'+r), q=cell(ps,'D'+r), u=cell(ps,'E'+r); if(d) buildState.estItems.push({detalle:d, cantidad:q||0, unitario:u||0}); });
+      buildState.estItems = leerSeccionItems_(ps,'ESTADIA DE OBRA');
       if(!buildState.estItems.length) buildState.estItems = freshBuildState().estItems;
 
-      const roles = ['Trazador','Montador','Lanero','931 x persona'];
-      buildState.moRoles = [65,66,67,68].map((r,idx)=>({ puesto: cell(ps,'A'+r)||roles[idx], salario: cell(ps,'B'+r)||0, cantidad: cell(ps,'E'+r)||0 }));
+      buildState.moRoles = leerMoRoles_(ps);
 
-      const dias = cell(ps,'F70'); if(dias) document.getElementById('pb-dias').value = dias;
+      const dias = valorEtiqueta_(ps,'A','TIEMPO DE OBRA (DÍAS)','F'); if(dias) document.getElementById('pb-dias').value = dias;
       const factor = cell(ps,'C86'); if(factor) document.getElementById('pb-benef').value = factor;
-      const debCred = cell(ps,'H79'); if(debCred) document.getElementById('pb-debcred').value = debCred*100;
-      const ivaPct = cell(ps,'H82'); if(ivaPct) document.getElementById('pb-iva').value = ivaPct*100;
-      const iibb = cell(ps,'H85'); if(iibb){ const sel=document.getElementById('pb-provincia'); for(const opt of sel.options){ if(Math.abs(+opt.value-iibb)<0.001){ sel.value=opt.value; break; } } }
-      const descuento = cell(ps,'C96'); if(descuento) document.getElementById('pb-descuento').value = descuento*100;
+      const debCred = valorEtiqueta_(ps,'F','IMP DEBITO|CREDITO','H'); if(debCred) document.getElementById('pb-debcred').value = debCred*100;
+      const ivaPct = valorEtiqueta_(ps,'F','IVA','H'); if(ivaPct) document.getElementById('pb-iva').value = ivaPct*100;
+      const iibb = valorEtiqueta_(ps,'F','IIBB','H'); if(iibb){ const sel=document.getElementById('pb-provincia'); for(const opt of sel.options){ if(Math.abs(+opt.value-iibb)<0.001){ sel.value=opt.value; break; } } }
+      const descuento = valorEtiqueta_(ps,'A','DESCUENTO USA','C'); if(descuento) document.getElementById('pb-descuento').value = descuento*100;
 
       // Gastos reales incurridos y cobros — desde el "BALANCE DE OBRA" de HOJA RESUMEN
       const materialesReal = cell(hr,'H92')||0;
