@@ -641,7 +641,7 @@ let state = {
       presupuestoDetalle:{ivaPct:21, vendedorPct:5, socio1Nombre:'AL', socio1Pct:10, socio2Nombre:'JL', socio2Pct:30},
       presupuestoResumen:{costos:11500000, beneficio:920000, impuestos:610000, subtotalPresupuesto:13030000, descuento:0, totalPresupuesto:13030000, iva:2736300, totalConIva:15766300,
         comisionVendedor:685790, gananciaNeta:234210, socio1Monto:23421, socio2Monto:70263, aqMonto:140526},
-      real:{materiaPrima:8100000, manoObra:4600000, logistica:600000, estadia:300000, otros:300000},
+      real:{materiaPrima:8100000, manoObra:4600000, logistica:600000, estadia:300000, otros:920000},
       ingresos:{facturado:15766300, cobrado:13800000}, ingresosList:[{fecha:'2026-07-20', monto:13800000, medioPago:'Transferencia'}],
       facturasVenta:[{id:'fv3', fecha:'2026-04-20', montoSinIva:13030000, iva:2736300, monto:15766300}], carpetaDriveUrl:'https://drive.google.com/drive/folders/18IPYqPkzsiigKcFYgidEeO2FAKdR9JEx', documentos:[] },
   ],
@@ -681,6 +681,8 @@ let state = {
     {id:'p2', tipo:'obra', obraId:'o1', categoria:'materiaPrima', concepto:'Chapa lisa galvanizada', cantidad:1, unitario:5100000, ivaAplica:false, monto:5100000, proveedorId:'pr2', numeroFactura:'0002-00001187', fechaFactura:'2026-06-30', formaPago:'Transferencia', fechaPago:'2026-06-30', pagosRealizados:[{fecha:'2026-06-30', monto:5100000, fondo:'costosFijos', formaPago:'Transferencia'}]},
     {id:'p3', tipo:'fijo', obraId:null, categoria:'costosFijos', concepto:'IIBB (Ingresos Brutos)', cantidad:1, unitario:780000, ivaAplica:false, monto:780000, proveedorId:'pr4', numeroFactura:'AFIP-072026', fechaFactura:'2026-08-01', formaPago:'A definir', fechaPago:'2026-08-15', pagosRealizados:[]},
     {id:'p4', tipo:'fijo', obraId:null, categoria:'costosFijos', concepto:'Sueldos administración', cantidad:1, unitario:2100000, ivaAplica:false, monto:2100000, proveedorId:'pr5', numeroFactura:'RRHH-08-2026', fechaFactura:'2026-08-01', formaPago:'Transferencia', fechaPago:'2026-08-01', pagosRealizados:[{fecha:'2026-08-01', monto:2100000, fondo:'costosFijos', formaPago:'Transferencia'}]},
+    {id:'p5', tipo:'fijo', obraId:null, categoria:'alquiler', concepto:'Alquiler depósito', origenFondo:'costosFijos', cantidad:1, unitario:1350000, ivaAplica:false, monto:1350000, proveedorId:null, numeroFactura:null, fechaFactura:'2026-06-30', formaPago:'FIMA', fechaPago:'2026-06-30', pagosRealizados:[{fecha:'2026-06-30', monto:1350000, fondo:'costosFijos', formaPago:'FIMA'}]},
+    {id:'p6', tipo:'obra', obraId:'o3', categoria:'otros', concepto:'Reparación vehículo', origenFondo:'emergencias', cantidad:1, unitario:620000, ivaAplica:false, monto:620000, proveedorId:null, numeroFactura:null, fechaFactura:'2026-07-08', formaPago:'FIMA', fechaPago:'2026-07-08', pagosRealizados:[{fecha:'2026-07-08', monto:620000, fondo:'emergencias', formaPago:'FIMA'}]},
   ],
   proveedores: [
     {id:'pr1', nombre:'Isolan SA', cuit:'', telefono:'', email:''},
