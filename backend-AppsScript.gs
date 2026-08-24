@@ -52,9 +52,10 @@ const SHEET_NAMES = {
 const SCHEMAS = {
   config: ['caja', 'rev'],
   fondos: ['fondo', 'monto'],
-  obras: ['id', 'code', 'cliente', 'encargado', 'fechaInicio', 'estado', 'sinCobrosPendientes',
+  obras: ['id', 'code', 'cliente', 'encargado', 'fechaInicio', 'estado',
     'presupuestoJSON', 'presupuestoDetalleJSON', 'presupuestoResumenJSON',
-    'realJSON', 'ingresosJSON', 'ingresosListJSON', 'facturasVentaJSON', 'documentosJSON'],
+    'realJSON', 'ingresosJSON', 'ingresosListJSON', 'facturasVentaJSON', 'documentosJSON',
+    'sinCobrosPendientes'],
   pagos: ['id', 'tipo', 'obraId', 'categoria', 'concepto', 'cantidad', 'unitario',
     'ivaAplica', 'monto', 'proveedorId', 'numeroFactura', 'fechaFactura', 'formaPago',
     'fechaPago', 'numeroOC', 'origenFondo', 'pagosRealizadosJSON'],
@@ -243,11 +244,12 @@ function writeState_(state) {
   writeRows_(ss.getSheetByName(SHEET_NAMES.fondos), SCHEMAS.fondos, fondosRows, r => [r.fondo, r.monto]);
 
   writeRows_(ss.getSheetByName(SHEET_NAMES.obras), SCHEMAS.obras, state.obras || [], o => [
-    o.id, o.code, o.cliente, o.encargado, o.fechaInicio, o.estado, o.sinCobrosPendientes ? 'TRUE' : 'FALSE',
+    o.id, o.code, o.cliente, o.encargado, o.fechaInicio, o.estado,
     JSON.stringify(o.presupuesto || {}), JSON.stringify(o.presupuestoDetalle || null),
     JSON.stringify(o.presupuestoResumen || {}), JSON.stringify(o.real || {}),
     JSON.stringify(o.ingresos || {}), JSON.stringify(o.ingresosList || []),
     JSON.stringify(o.facturasVenta || []), JSON.stringify(o.documentos || []),
+    o.sinCobrosPendientes ? 'TRUE' : 'FALSE',
   ]);
 
   writeRows_(ss.getSheetByName(SHEET_NAMES.pagos), SCHEMAS.pagos, state.pagos || [], p => [
