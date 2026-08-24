@@ -723,8 +723,8 @@ let state = {
 /* ======================= BACKEND (Google Sheet + Drive) ======================= */
 // Completar estos dos valores después de desplegar el Apps Script (ver AppsScript_Code.gs).
 // Mientras queden vacíos, la app funciona igual que antes: en memoria, con los datos de ejemplo.
-const STATE_API_URL = '';
-const API_SECRET = '';
+const STATE_API_URL = 'https://script.google.com/macros/s/AKfycbzNUM_FeQ61f4oRQC0AdA_-zG78r7JyyCcICZSDZ1iAc2KrFTt1jeJ2MXsm2jVYY5yx/exec';
+const API_SECRET = 'ramonino22';
 function isBackendConfigured(){ return !!STATE_API_URL; }
 function loadState(){
   if(!isBackendConfigured()) return Promise.resolve();
@@ -732,10 +732,18 @@ function loadState(){
     .then(r=>r.json())
     .then(data=>{
       if(data && data.ok && data.state){
-        Object.assign(state, data.state, {
-          selectedObraId: (data.state.obras&&data.state.obras[0]&&data.state.obras[0].id) || null,
-          ordenesFilter: 'pendiente', selectedProveedorId: null, pagosFilter: 'todos',
-        });
+        const remoteVacio = !data.state.obras || data.state.obras.length===0;
+        if(remoteVacio){
+          // El Sheet todavía no tiene datos (recién creado): mantenemos los
+          // datos de ejemplo que ya están cargados y los sembramos en el
+          // backend, en vez de mostrar la app en blanco.
+          saveState();
+        } else {
+          Object.assign(state, data.state, {
+            selectedObraId: (data.state.obras&&data.state.obras[0]&&data.state.obras[0].id) || null,
+            ordenesFilter: 'pendiente', selectedProveedorId: null, pagosFilter: 'todos',
+          });
+        }
       } else if(data && data.error){
         console.error('Backend respondió con error, uso los datos de ejemplo:', data.error);
       }
