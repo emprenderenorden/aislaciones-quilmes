@@ -604,8 +604,11 @@ const fondoLabel = {costosFijos:'Costos Fijos', jornales:'Jornales', impuestos:'
 function fondoOptionsHTML(selected){ return Object.entries(fondoLabel).map(([k,l])=>`<option value="${k}" ${selected===k?'selected':''}>${l}</option>`).join(''); }
 const fmt = (n)=> '$ ' + Math.round(n||0).toLocaleString('es-AR');
 const today = ()=> new Date().toISOString().slice(0,10);
-let idCounter = 200;
-const newId = (p)=> p+(idCounter++);
+let idCounter = 0;
+// Combina hora exacta + contador + azar, para que dos dispositivos distintos
+// nunca generen el mismo id aunque creen algo al mismo tiempo (a diferencia
+// de un contador simple, que arranca de cero en cada dispositivo y sí choca).
+const newId = (p)=> p + Date.now().toString(36) + '-' + (idCounter++).toString(36) + '-' + Math.random().toString(36).slice(2,7);
 
 let state = {
   fondos: { costosFijos: 0, jornales: 0, impuestos: 0, emergencias: 0, inversiones: 0, obras: 0, otros: 0 },

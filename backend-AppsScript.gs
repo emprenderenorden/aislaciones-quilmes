@@ -98,6 +98,34 @@ function setup() {
   SpreadsheetApp.getUi().alert('Listo — se crearon todas las hojas.');
 }
 
+/**
+ * Corré esto manualmente (una vez) para chequear si quedó algún ID
+ * repetido de pruebas anteriores (antes de que se corrigiera el generador
+ * de IDs). Solo reporta, no modifica nada — muestra un cartel con lo que
+ * encontró para decidir a mano si hace falta corregir algo.
+ */
+function diagnosticarIdsDuplicados() {
+  const ss = getSs_();
+  const entidades = ['obras', 'pagos', 'ordenesCompra', 'proveedores', 'stock', 'stockMovimientos', 'trabajadores', 'jornales'];
+  const reporte = [];
+  entidades.forEach(key => {
+    const sh = ss.getSheetByName(SHEET_NAMES[key]);
+    if (!sh) return;
+    const rows = sheetToRows_(sh, SCHEMAS[key]);
+    const porId = {};
+    rows.forEach(r => { (porId[r.id] = porId[r.id] || []).push(r); });
+    Object.keys(porId).forEach(id => {
+      if (porId[id].length > 1) {
+        const detalle = porId[id].map(r => r.code || r.nombre || r.concepto || r.numero || '').join(' | ');
+        reporte.push(SHEET_NAMES[key] + ': id "' + id + '" repetido ' + porId[id].length + ' veces (' + detalle + ')');
+      }
+    });
+  });
+  const mensaje = reporte.length ? reporte.join('\n') : 'No se encontraron IDs duplicados.';
+  Logger.log(mensaje);
+  SpreadsheetApp.getUi().alert(reporte.length ? 'Se encontraron IDs duplicados:' : 'Todo OK', mensaje, SpreadsheetApp.getUi().ButtonSet.OK);
+}
+
 function sheetToRows_(sh, headers) {
   const lastRow = sh.getLastRow();
   if (lastRow < 2) return [];
