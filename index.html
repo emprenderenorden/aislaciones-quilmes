@@ -602,6 +602,13 @@
 <script>
 /* ======================= STATE ======================= */
 const catLabel = {materiaPrima:'Materiales', manoObra:'Mano de obra', logistica:'Logística', estadia:'Estadía de obra', otros:'Otros no previstos', stock:'Reposición de stock'};
+const catFijaLabel = {sueldo:'Sueldo', alquiler:'Alquiler', seguros:'Seguros', impuestos:'Impuestos', servicios:'Servicios (luz/gas/agua/internet)', mantenimiento:'Mantenimiento', otros:'Otros'};
+function catOptionsForTipo(tipo, selected){
+  const opts = tipo==='obra'
+    ? {materiaPrima:'Materiales', logistica:'Logística', estadia:'Estadía de obra', otros:'Otros no previstos'}
+    : catFijaLabel;
+  return Object.entries(opts).map(([k,l])=>`<option value="${k}" ${selected===k?'selected':''}>${l}</option>`).join('');
+}
 const fondoLabel = {costosFijos:'Costos Fijos', gastosPersonales:'Gastos Personales', impuestos:'Impuestos', emergencias:'Emergencias', inversiones:'Inversiones', obras:'Obras', otros:'Otros'};
 function fondoOptionsHTML(selected){ return Object.entries(fondoLabel).map(([k,l])=>`<option value="${k}" ${selected===k?'selected':''}>${l}</option>`).join(''); }
 const fmt = (n)=> '$ ' + Math.round(n||0).toLocaleString('es-AR');
@@ -1600,7 +1607,7 @@ function openModalOrdenCompra(id){
         <option value="stock" ${tipo==='stock'?'selected':''}>Stock</option>
       </select></div>
       <div class="field" id="wrap-oc-obra"><label>Obra</label><select id="f-obra">${obraOptions}</select></div>
-      <div class="field" id="wrap-oc-cat"><label>Categoría</label><select id="f-cat"><option value="materiaPrima" ${existing&&existing.categoria==='materiaPrima'?'selected':''}>Materiales</option><option value="logistica" ${existing&&existing.categoria==='logistica'?'selected':''}>Logística</option><option value="estadia" ${existing&&existing.categoria==='estadia'?'selected':''}>Estadía de obra</option><option value="otros" ${existing&&existing.categoria==='otros'?'selected':''}>Otros no previstos</option></select></div>
+      <div class="field" id="wrap-oc-cat"><label>Categoría</label><select id="f-cat">${catOptionsForTipo(tipo==='fijo'?'fijo':'obra', existing?existing.categoria:null)}</select></div>
       <div class="field span2"><label>Proveedor</label><select id="f-proveedor" onchange="onProveedorSelectChange(this)">${proveedorOptionsHTML(existing?existing.proveedorId:null)}</select><div style="margin-top:4px;font-size:11.5px;color:var(--muted);">Para cargar o corregir CUIT/teléfono/mail de un proveedor ya existente, andá a Pagos → Proveedores → Editar datos.</div></div>
       <div class="field hidden span2" id="wrap-proveedor-nuevo"><label>Nombre del nuevo proveedor</label><input id="f-proveedor-nuevo" placeholder="Nombre"></div>
       <div class="field hidden" id="wrap-proveedor-nuevo-cuit"><label>CUIT</label><input id="f-proveedor-nuevo-cuit" placeholder="30-12345678-9"></div>
@@ -1621,12 +1628,17 @@ function openModalOrdenCompra(id){
     <div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" onclick="submitOrdenCompra('${id||''}')">${existing?'Guardar cambios':'Enviar a autorización'}</button></div>`;
   overlay.classList.add('open');
   ocItemsDraft = existing && existing.items && existing.items.length ? existing.items.map(it=>({...it})) : [{producto:'',cantidad:1,unitario:0}];
-  onOcTipoChange(); renderOcItemsTable();
+  syncOcTipoVisibility(); renderOcItemsTable();
 }
-function onOcTipoChange(){
+function syncOcTipoVisibility(){
   const tipo = document.getElementById('f-tipo').value;
   document.getElementById('wrap-oc-obra').classList.toggle('hidden', tipo!=='obra');
-  document.getElementById('wrap-oc-cat').classList.toggle('hidden', tipo!=='obra');
+  document.getElementById('wrap-oc-cat').classList.toggle('hidden', tipo==='stock');
+}
+function onOcTipoChange(){
+  syncOcTipoVisibility();
+  const tipo = document.getElementById('f-tipo').value;
+  document.getElementById('f-cat').innerHTML = catOptionsForTipo(tipo==='fijo'?'fijo':'obra');
 }
 let ocItemsDraft = [];
 function ocItemsTotal(){ return ocItemsDraft.reduce((a,it)=>a+it.cantidad*it.unitario,0); }
@@ -1652,7 +1664,7 @@ function removeOcItem(i){ ocItemsDraft.splice(i,1); renderOcItemsTable(); }
 function submitOrdenCompra(id){
   const tipo = document.getElementById('f-tipo').value;
   const obraId = tipo==='obra' ? document.getElementById('f-obra').value : null;
-  const categoria = tipo==='obra' ? document.getElementById('f-cat').value : (tipo==='fijo'?'costosFijos':null);
+  const categoria = tipo!=='stock' ? document.getElementById('f-cat').value : null;
   const proveedorId = resolveProveedorId();
   const items = ocItemsDraft.filter(it=>it.producto.trim()).map(it=>({producto:it.producto.trim(), cantidad:it.cantidad, unitario:it.unitario}));
   if(!items.length){ alert('Cargá al menos un producto en la orden.'); return; }
@@ -1932,7 +1944,7 @@ function openModalCompra(preselectObraId){
     <div class="form-grid">
       <div class="field"><label>Tipo</label><select id="f-tipo" onchange="onTipoPagoChange()"><option value="obra" ${isObra?'selected':''}>Gasto de obra</option><option value="fijo" ${!isObra?'selected':''}>Gasto fijo</option></select></div>
       <div class="field" id="wrap-obra"><label>Obra</label><select id="f-obra">${obraOptions}</select></div>
-      <div class="field" id="wrap-cat"><label>Categoría</label><select id="f-cat" onchange="onCategoriaChange()"><option value="materiaPrima">Materiales</option><option value="logistica">Logística</option><option value="estadia">Estadía de obra</option><option value="otros">Otros no previstos</option></select></div>
+      <div class="field" id="wrap-cat"><label>Categoría</label><select id="f-cat" onchange="onCategoriaChange()">${catOptionsForTipo(isObra?'obra':'fijo')}</select></div>
       <div class="field checkbox span2 hidden" id="wrap-usostock"><input type="checkbox" id="f-usostock" onchange="onUsoStockChange()"><label>Utilizado de stock (no genera un pago nuevo)</label></div>
       <div class="field span2 hidden" id="wrap-stock-material"><label>Material (de stock)</label><select id="f-stock-material" onchange="onStockMaterialChange()">${stockOptions||'<option disabled>No hay materiales en stock</option>'}</select></div>
       <div class="field span2" id="wrap-detalle"><label>Detalle</label><input id="f-concepto" placeholder="Ej: Lana de vidrio 50mm"></div>
@@ -1953,9 +1965,10 @@ function openModalCompra(preselectObraId){
   onTipoPagoChange(); onCategoriaChange(); previewCompraMonto();
 }
 function onTipoPagoChange(){
-  const isObra = document.getElementById('f-tipo').value==='obra';
+  const tipo = document.getElementById('f-tipo').value;
+  const isObra = tipo==='obra';
   document.getElementById('wrap-obra').classList.toggle('hidden', !isObra);
-  document.getElementById('wrap-cat').classList.toggle('hidden', !isObra);
+  document.getElementById('f-cat').innerHTML = catOptionsForTipo(tipo);
   if(!isObra){ document.getElementById('f-usostock').checked=false; }
   onCategoriaChange();
 }
@@ -1997,7 +2010,7 @@ function previewCompraMonto(){
 function submitCompra(){
   const tipo = document.getElementById('f-tipo').value;
   const obraId = tipo==='obra' ? document.getElementById('f-obra').value : null;
-  const categoria = tipo==='obra' ? document.getElementById('f-cat').value : 'costosFijos';
+  const categoria = document.getElementById('f-cat').value;
   const usoStock = tipo==='obra' && categoria==='materiaPrima' && document.getElementById('f-usostock').checked;
   const cantidad = +document.getElementById('f-cantidad').value||0;
 
@@ -2152,12 +2165,13 @@ function renderResultados(){
 
   const egresoRows = [
     ...r.egresosPagos.map(ev=>{ const p=ev.pago; const prov=getProveedor(p.proveedorId);
-      return {fecha:ev.fecha, categoria: p.tipo==='obra'?catLabel[p.categoria]:(p.tipo==='stock'?'Reposición de stock':'Costo fijo'), destino: p.obraId?getObra(p.obraId)?.code:(p.tipo==='stock'?'Stock':'Negocio general'), concepto:p.concepto+(prov?' ('+prov.nombre+')':''), monto:ev.monto}; }),
+      return {fecha:ev.fecha, categoria: p.tipo==='obra'?catLabel[p.categoria]:(p.tipo==='stock'?'Reposición de stock':(catFijaLabel[p.categoria]||'Costo fijo')), destino: p.obraId?getObra(p.obraId)?.code:(p.tipo==='stock'?'Stock':'Negocio general'), concepto:p.concepto+(prov?' ('+prov.nombre+')':''), monto:ev.monto}; }),
     ...r.egresosJornales.map(m=>({fecha:m.fecha, categoria:'Mano de obra (jornales)', destino:'—', concepto:m.concepto, monto:m.monto})),
   ].sort((a,b)=>a.fecha.localeCompare(b.fecha));
   document.getElementById('res-egresos-body').innerHTML = egresoRows.length ? egresoRows.map(e=>`<tr><td class="mono">${e.fecha}</td><td>${e.categoria}</td><td>${e.destino}</td><td>${e.concepto}</td><td class="num">${fmt(e.monto)}</td></tr>`).join('') : `<tr class="empty-row"><td colspan="5">Sin egresos pagados este mes</td></tr>`;
 
-  const catColors = {'Materiales':'var(--teal)','Reposición de stock':'var(--copper)','Mano de obra (jornales)':'var(--copper)','Logística':'var(--good)','Estadía de obra':'var(--warn)','Otros no previstos':'var(--bad)','Costo fijo':'var(--ink)'};
+  const catColors = {'Materiales':'var(--teal)','Reposición de stock':'var(--copper)','Mano de obra (jornales)':'var(--copper)','Logística':'var(--good)','Estadía de obra':'var(--warn)','Otros no previstos':'var(--bad)','Costo fijo':'var(--ink)',
+    'Sueldo':'var(--teal)','Alquiler':'var(--copper)','Seguros':'var(--warn)','Impuestos':'var(--ink)','Servicios (luz/gas/agua/internet)':'var(--good)','Mantenimiento':'var(--bad)','Otros':'var(--muted)'};
   const catTotales = {};
   egresoRows.forEach(e=>{ catTotales[e.categoria] = (catTotales[e.categoria]||0) + e.monto; });
   const catList = Object.entries(catTotales).sort((a,b)=>b[1]-a[1]);
