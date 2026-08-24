@@ -28,10 +28,9 @@
   .sidebar.collapsed .brand{justify-content:center;}
   .sidebar.collapsed .brand-text,.sidebar.collapsed .nav-label,.sidebar.collapsed .sidebar-foot{display:none;}
   .sidebar.collapsed .nav-item{justify-content:center;padding:10px;}
-  .sidebar-toggle{width:30px;height:30px;border-radius:8px;border:1px solid #2A3339;background:#1B2126;color:#C7CDCB;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
-  .sidebar-toggle:hover{background:#20282F;color:#fff;}
+  .menu-toggle-btn{width:34px;height:34px;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--ink);cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;position:sticky;top:0;z-index:5;margin-bottom:14px;}
+  .menu-toggle-btn:hover{background:var(--paper);}
   .brand{display:flex;align-items:center;gap:10px;margin-bottom:34px;padding:0 6px;}
-  .brand-mark{width:34px;height:34px;border-radius:8px;background:linear-gradient(135deg,var(--teal),var(--teal-deep));display:flex;align-items:center;justify-content:center;font-family:'Montserrat',sans-serif;font-weight:700;font-size:14px;color:#fff;flex-shrink:0;}
   .brand-text{white-space:nowrap;}
   .brand-text .l1{font-family:'Montserrat',sans-serif;font-weight:600;font-size:14.5px;line-height:1.15;}
   .brand-text .l2{font-size:11px;color:#9AA5A3;margin-top:1px;}
@@ -135,6 +134,8 @@
 
   .fund-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:8px;}
   .fund-card{position:relative;overflow:hidden;}
+  .fund-edit-btn{position:absolute;top:10px;right:10px;width:22px;height:22px;border-radius:6px;border:1px solid var(--line);background:var(--surface);color:var(--muted);cursor:pointer;font-size:11px;display:flex;align-items:center;justify-content:center;line-height:1;}
+  .fund-edit-btn:hover{background:var(--paper);color:var(--ink);}
   .fund-card .fund-bar{position:absolute;left:0;bottom:0;height:4px;width:100%;}
   .fund-card .fund-name{font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:10px;}
   .fund-card .fund-value{font-family:'Montserrat',sans-serif;font-size:21px;font-weight:600;}
@@ -209,10 +210,6 @@
 
 <aside class="sidebar" id="sidebar">
   <div class="brand">
-    <button class="sidebar-toggle" onclick="toggleSidebar()" title="Mostrar/ocultar menú">
-      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
-    </button>
-    <div class="brand-mark">AQ</div>
     <div class="brand-text"><div class="l1">Aislaciones Quilmes</div><div class="l2">Gestión Financiera</div></div>
   </div>
   <nav>
@@ -254,6 +251,9 @@
 <div class="sidebar-backdrop" id="sidebar-backdrop" onclick="closeMobileSidebar()"></div>
 
 <main>
+  <button class="menu-toggle-btn" onclick="toggleSidebar()" title="Mostrar/ocultar menú">
+    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+  </button>
 
   <!-- ============ DASHBOARD ============ -->
   <div class="view active" id="view-dashboard">
@@ -1342,9 +1342,21 @@ function renderFima(){
     obras:{color:'var(--bad)', note:'gastos puntuales de obra'},
     otros:{color:'var(--muted)', note:'gastos varios no clasificados'},
   };
-  document.getElementById('fund-grid').innerHTML = Object.entries(state.fondos).map(([k,v])=>`<div class="card fund-card"><div class="fund-bar" style="background:${meta[k].color};"></div><div class="fund-name">${fondoLabel[k]}</div><div class="fund-value">${fmt(v)}</div><div class="fund-target">${meta[k].note}</div></div>`).join('');
+  document.getElementById('fund-grid').innerHTML = Object.entries(state.fondos).map(([k,v])=>`<div class="card fund-card"><button class="fund-edit-btn" onclick="openModalEditarFondo('${k}')" title="Editar fondo">✎</button><div class="fund-bar" style="background:${meta[k].color};"></div><div class="fund-name">${fondoLabel[k]}</div><div class="fund-value">${fmt(v)}</div><div class="fund-target">${meta[k].note}</div></div>`).join('');
   const rows = [...state.movimientosFima].sort((a,b)=>b.fecha.localeCompare(a.fecha));
   document.getElementById('movimientos-fima-body').innerHTML = rows.length ? rows.map(m=>`<tr><td class="mono">${m.fecha}</td><td>${fondoLabel[m.fondo]}</td><td>${m.obraId?`<span class="obra-code">${getObra(m.obraId)?.code||''}</span>`:'—'}</td><td>${m.concepto}</td><td><span class="badge-inout ${m.tipo}">${m.tipo==='in'?'Ingreso':'Egreso'}</span></td><td class="num">${fmt(m.monto)}</td></tr>`).join('') : `<tr class="empty-row"><td colspan="6">Sin movimientos</td></tr>`;
+}
+function openModalEditarFondo(fondo){
+  modalEl.innerHTML = `<h3>Editar fondo — ${fondoLabel[fondo]}</h3><div class="modal-sub">Ajustá el monto actual del fondo — por ejemplo, para cargar un saldo inicial</div>
+    <div class="form-grid">
+      <div class="field span2"><label>Monto actual ($)</label><input id="f-fondo-monto" class="mono-in" type="number" value="${state.fondos[fondo]}"></div>
+    </div>
+    <div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" onclick="submitEditarFondo('${fondo}')">Guardar</button></div>`;
+  overlay.classList.add('open');
+}
+function submitEditarFondo(fondo){
+  state.fondos[fondo] = +document.getElementById('f-fondo-monto').value || 0;
+  closeModal(); renderAll();
 }
 
 /* ======================= STOCK ======================= */
@@ -2092,13 +2104,27 @@ function openModalMovimientoFima(){
   modalEl.innerHTML = `<h3>Registrar movimiento FIMA</h3><div class="modal-sub">Ingreso o egreso directo de un fondo</div>
     <div class="form-grid">
       <div class="field"><label>Fondo</label><select id="f-fondo">${fondoOptionsHTML()}</select></div>
-      <div class="field"><label>Tipo</label><select id="f-tipo2"><option value="in">Ingreso</option><option value="out">Egreso</option></select></div>
+      <div class="field"><label>Tipo</label><select id="f-tipo2" onchange="onFimaTipoChange()"><option value="in">Ingreso</option><option value="out">Egreso</option></select></div>
       <div class="field span2"><label>Concepto</label><input id="f-concepto" placeholder="Ej: Transferencia desde caja"></div>
+      <div class="field hidden" id="wrap-fima-proveedor"><label>Proveedor</label><select id="f-proveedor" onchange="onProveedorSelectChange(this)">${proveedorOptionsHTML()}</select></div>
+      <div class="field hidden span2" id="wrap-proveedor-nuevo"><label>Nombre del nuevo proveedor</label><input id="f-proveedor-nuevo" placeholder="Nombre"></div>
+      <div class="field hidden" id="wrap-proveedor-nuevo-cuit"><label>CUIT</label><input id="f-proveedor-nuevo-cuit" placeholder="30-12345678-9"></div>
+      <div class="field hidden" id="wrap-proveedor-nuevo-tel"><label>Teléfono</label><input id="f-proveedor-nuevo-tel" placeholder="(011) 15-0000-0000"></div>
+      <div class="field hidden" id="wrap-proveedor-nuevo-mail"><label>E-mail</label><input id="f-proveedor-nuevo-mail" type="email" placeholder="contacto@proveedor.com"></div>
+      <div class="field hidden" id="wrap-fima-factura"><label>Nº de factura</label><input id="f-factura" placeholder="Ej: 0001-00004521"></div>
+      <div class="field hidden" id="wrap-fima-oc"><label>Nº de OC (opcional)</label><input id="f-numero-oc" placeholder="Ej: OC-0005"></div>
       <div class="field"><label>Monto ($)</label><input id="f-monto" class="mono-in" type="number" value="0"></div>
       <div class="field"><label>Fecha</label><input id="f-fecha" type="date" value="${today()}"></div>
     </div>
     <div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" onclick="submitMovimientoFima()">Registrar</button></div>`;
   overlay.classList.add('open');
+  onFimaTipoChange();
+}
+function onFimaTipoChange(){
+  const isOut = document.getElementById('f-tipo2').value==='out';
+  ['wrap-fima-proveedor','wrap-fima-factura','wrap-fima-oc'].forEach(id=>document.getElementById(id).classList.toggle('hidden', !isOut));
+  if(isOut) onProveedorSelectChange(document.getElementById('f-proveedor'));
+  else { ['wrap-proveedor-nuevo','wrap-proveedor-nuevo-cuit','wrap-proveedor-nuevo-tel','wrap-proveedor-nuevo-mail'].forEach(id=>document.getElementById(id).classList.add('hidden')); }
 }
 function submitMovimientoFima(){
   const fondo = document.getElementById('f-fondo').value; const tipo = document.getElementById('f-tipo2').value;
@@ -2107,7 +2133,10 @@ function submitMovimientoFima(){
   state.fondos[fondo] += (tipo==='in'? monto:-monto);
   state.movimientosFima.push({fecha, fondo, obraId:null, concepto, tipo, monto});
   if(tipo==='out'){
-    state.pagos.push({id:newId('p'), tipo:'fijo', obraId:null, categoria:'costosFijos', concepto, origenFondo:fondo, cantidad:1, unitario:monto, ivaAplica:false, monto, proveedorId:null, numeroFactura:null, fechaFactura:fecha, formaPago:'FIMA', fechaPago:fecha, pagosRealizados:[{fecha, monto, fondo, formaPago:'FIMA'}]});
+    const proveedorId = resolveProveedorId();
+    const numeroFactura = document.getElementById('f-factura').value.trim() || null;
+    const numeroOC = document.getElementById('f-numero-oc').value.trim() || null;
+    state.pagos.push({id:newId('p'), tipo:'fijo', obraId:null, categoria:'costosFijos', concepto, origenFondo:fondo, numeroOC, cantidad:1, unitario:monto, ivaAplica:false, monto, proveedorId, numeroFactura, fechaFactura:fecha, formaPago:'FIMA', fechaPago:fecha, pagosRealizados:[{fecha, monto, fondo, formaPago:'FIMA'}]});
   }
   closeModal(); renderAll();
 }
