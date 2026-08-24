@@ -274,7 +274,6 @@
       <div class="topbar">
         <div><h1>Obras</h1><div class="sub">Listado de obras — filtrá por estado, fecha o buscá por nombre</div></div>
         <div class="topbar-actions">
-          <button class="btn btn-ghost" onclick="window.open(state.carpetaMadreDriveUrl,'_blank')">📁 Carpeta general de obras (Drive)</button>
           <input type="file" id="import-excel-input" accept=".xlsx" style="display:none" onchange="handleImportExcel(event)">
           <button class="btn btn-ghost" onclick="document.getElementById('import-excel-input').click()">⇧ Importar Excel de obra</button>
           <button class="btn btn-primary" onclick="openPresupuestoBuilder(null)">+ Nueva obra</button>
@@ -934,7 +933,7 @@ const tipoDocLabel = {facturaEmitida:'Factura emitida', facturaRecibida:'Factura
 function obraDocumentosRows(obraId){
   const docs = getObra(obraId).documentos || [];
   if(!docs.length) return `<tr class="empty-row"><td colspan="5">Todavía no hay documentos cargados</td></tr>`;
-  return [...docs].sort((a,b)=>(b.fecha||'').localeCompare(a.fecha||'')).map(d=>`<tr><td>${d.nombre}</td><td>${tipoDocLabel[d.tipo]||d.tipo}</td><td class="mono">${d.fecha||'—'}</td><td><a class="link-btn" href="${d.url}" target="_blank" rel="noopener">Abrir →</a></td><td><span class="link-btn danger" onclick="eliminarDocumentoObra('${obraId}','${d.id}')">Quitar</span></td></tr>`).join('');
+  return [...docs].sort((a,b)=>(b.fecha||'').localeCompare(a.fecha||'')).map(d=>`<tr><td>${d.nombre}</td><td>${tipoDocLabel[d.tipo]||d.tipo}</td><td class="mono">${d.fecha||'—'}</td><td><a class="link-btn" href="${d.url}" target="_blank" rel="noopener">Ver →</a></td><td><span class="link-btn danger" onclick="eliminarDocumentoObra('${obraId}','${d.id}')">Quitar</span></td></tr>`).join('');
 }
 function openModalDocumentoObra(obraId){
   modalEl.innerHTML = `<h3>Agregar documento</h3><div class="modal-sub">Obra: <b>${getObra(obraId).code}</b> — pegá el link para compartir de Google Drive</div>
