@@ -570,18 +570,18 @@
       <tbody id="res-pendientes-body"></tbody>
     </table></div>
 
-    <div class="section-title"><h2>Pendientes de cobro</h2><span class="hint">Facturado vs. cobrado, todas las obras</span></div>
+    <div class="section-title"><h2>Pendientes de cobro</h2><span class="hint">Presupuestado vs. cobrado, todas las obras</span></div>
     <div class="card card-table"><table>
-      <thead><tr><th>Obra</th><th class="num">Facturado</th><th class="num">Cobrado</th><th class="num">Saldo pendiente</th></tr></thead>
+      <thead><tr><th>Obra</th><th class="num">Presupuestado</th><th class="num">Cobrado</th><th class="num">Saldo pendiente</th></tr></thead>
       <tbody id="res-cobros-pendientes-body"></tbody>
     </table></div>
 
 
-    <div class="section-title"><h2>Reporte de IVA del mes</h2><span class="hint">Por fecha de factura, no de pago/cobro</span></div>
+    <div class="section-title"><h2>Reporte de IVA del mes</h2><span class="hint">Débito por fecha de cobro, crédito por fecha de factura de compra</span></div>
     <div class="kpi-row" id="iva-kpi-row"></div>
-    <div class="section-title"><h2>IVA débito fiscal (ventas)</h2><span class="hint">Facturas de obra emitidas este mes</span></div>
+    <div class="section-title"><h2>IVA débito fiscal (ventas)</h2><span class="hint">Cobros de obra recibidos este mes</span></div>
     <div class="card card-table"><table>
-      <thead><tr><th>Fecha factura</th><th>Obra</th><th class="num">Monto sin IVA</th><th class="num">IVA</th><th class="num">Total</th></tr></thead>
+      <thead><tr><th>Fecha de cobro</th><th>Obra</th><th class="num">Monto sin IVA</th><th class="num">IVA</th><th class="num">Total</th></tr></thead>
       <tbody id="iva-debito-body"></tbody>
     </table></div>
     <div class="section-title"><h2>IVA crédito fiscal (compras)</h2><span class="hint">Facturas de proveedores emitidas este mes</span></div>
@@ -882,9 +882,12 @@ function renderObraDetail(){
       <tbody>${obraPagosRows(o.id)}</tbody>
     </table></div>
 
-    <div class="section-title"><h2>Ingresos</h2><div class="st-actions"><button class="btn btn-ghost btn-sm" onclick="openModalIngreso('${o.id}')">+ Registrar cobro</button></div></div>
+    <div class="section-title"><h2>Ingresos</h2><div class="st-actions">
+      <button class="btn btn-ghost btn-sm" onclick="toggleSinCobrosPendientes('${o.id}')">${o.sinCobrosPendientes?'✓ Sin cobros pendientes':'Marcar sin cobros pendientes'}</button>
+      <button class="btn btn-ghost btn-sm" onclick="openModalIngreso('${o.id}')">+ Registrar cobro</button>
+    </div></div>
     <div class="card cat-card">
-      <div class="layerbar-wrap"><div class="layerbar"><div class="fill good" style="width:${Math.min(cobradoPct,100)}%;"></div></div><div class="layerbar-labels"><span>${cobradoPct}% cobrado</span><span>${fmt(o.ingresos.cobrado)} / ${fmt(o.ingresos.facturado)}</span></div></div>
+      <div class="layerbar-wrap"><div class="layerbar"><div class="fill good" style="width:${o.sinCobrosPendientes?100:Math.min(cobradoPct,100)}%;"></div></div><div class="layerbar-labels"><span>${o.sinCobrosPendientes?'100% cobrado (marcado sin pendientes)':cobradoPct+'% cobrado'}</span><span>${fmt(o.ingresos.cobrado)} / ${fmt(o.ingresos.facturado)}</span></div></div>
     </div>
     <div class="card card-table" style="margin-top:10px;"><table>
       <thead><tr><th>Fecha</th><th>Medio de pago</th><th>Nº factura</th><th>Nº cobranza</th><th class="num">Monto</th></tr></thead>
@@ -982,6 +985,7 @@ function eliminarDocumentoObra(obraId, docId){
 }
 function iniciarObra(id){ getObra(id).estado='en curso'; renderAll(); }
 function finalizarObra(id){ getObra(id).estado='finalizada'; renderAll(); }
+function toggleSinCobrosPendientes(id){ const o=getObra(id); o.sinCobrosPendientes = !o.sinCobrosPendientes; renderAll(); }
 
 /* ======================= PRESUPUESTO BUILDER ======================= */
 let buildState = null;
@@ -2262,21 +2266,26 @@ function renderResultados(){
 
   document.getElementById('res-pendientes-body').innerHTML = pendientes.length ? pendientes.map(p=>`<tr><td class="mono">${p.fechaPago}</td><td>${p.obraId?getObra(p.obraId)?.code:'Negocio general'}</td><td>${p.concepto}${pagoEstado(p)==='parcial'?' (parcial)':''}</td><td class="num">${fmt(pagoSaldo(p))}</td></tr>`).join('') : `<tr class="empty-row"><td colspan="4">Sin pendientes con vencimiento este mes</td></tr>`;
 
-  const obrasConSaldo = state.obras.filter(o=>(o.ingresos.facturado-o.ingresos.cobrado)>0.01);
+  const obrasConSaldo = state.obras.filter(o=>!o.sinCobrosPendientes && (o.ingresos.facturado-o.ingresos.cobrado)>0.01);
   document.getElementById('res-cobros-pendientes-body').innerHTML = obrasConSaldo.length ? obrasConSaldo.map(o=>`<tr><td><span class="obra-code">${o.code}</span></td><td class="num">${fmt(o.ingresos.facturado)}</td><td class="num">${fmt(o.ingresos.cobrado)}</td><td class="num">${fmt(o.ingresos.facturado-o.ingresos.cobrado)}</td></tr>`).join('') : `<tr class="empty-row"><td colspan="4">No hay saldos pendientes de cobro</td></tr>`;
 
   renderIvaReporte(mes);
 }
 
 /* ======================= REPORTE DE IVA ======================= */
-function allFacturasVenta(){
+function allIngresosCobrados(){
+  // El IVA débito se genera cuando se recibe el cobro (no cuando se armó
+  // el presupuesto): cada ingreso se toma como monto con IVA incluido.
   const out=[];
-  state.obras.forEach(o=>(o.facturasVenta||[]).forEach(fv=>out.push({...fv, obraId:o.id})));
+  state.obras.forEach(o=>(o.ingresosList||[]).forEach(i=>{
+    const montoSinIva = i.monto/1.21, iva = i.monto - montoSinIva;
+    out.push({obraId:o.id, fecha:i.fecha, montoSinIva, iva, monto:i.monto});
+  }));
   return out;
 }
 function pagoIvaMonto(p){ return p.ivaAplica ? p.monto - (p.monto/1.21) : 0; }
 function renderIvaReporte(mes){
-  const debitoRows = allFacturasVenta().filter(fv=>fv.fecha.slice(0,7)===mes).sort((a,b)=>a.fecha.localeCompare(b.fecha));
+  const debitoRows = allIngresosCobrados().filter(fv=>fv.fecha.slice(0,7)===mes).sort((a,b)=>a.fecha.localeCompare(b.fecha));
   const creditoRows = state.pagos.filter(p=>p.fechaFactura && p.fechaFactura.slice(0,7)===mes && p.ivaAplica).sort((a,b)=>a.fechaFactura.localeCompare(b.fechaFactura));
 
   const totalDebito = debitoRows.reduce((a,fv)=>a+fv.iva,0);
@@ -2284,11 +2293,11 @@ function renderIvaReporte(mes){
   const saldo = totalDebito - totalCredito;
 
   document.getElementById('iva-kpi-row').innerHTML = `
-    <div class="card kpi"><div class="kpi-label">IVA débito fiscal</div><div class="kpi-value">${fmt(totalDebito)}</div><div class="kpi-note">${debitoRows.length} factura(s) de venta</div></div>
+    <div class="card kpi"><div class="kpi-label">IVA débito fiscal</div><div class="kpi-value">${fmt(totalDebito)}</div><div class="kpi-note">${debitoRows.length} cobro(s)</div></div>
     <div class="card kpi"><div class="kpi-label">IVA crédito fiscal</div><div class="kpi-value">${fmt(totalCredito)}</div><div class="kpi-note">${creditoRows.length} factura(s) de compra</div></div>
     <div class="card kpi"><div class="kpi-label">Saldo del mes</div><div class="kpi-value" style="color:${saldo>=0?'var(--bad)':'var(--good)'};">${fmt(Math.abs(saldo))}</div><div class="kpi-note">${saldo>=0?'A pagar':'A favor'}</div></div>
   `;
-  document.getElementById('iva-debito-body').innerHTML = debitoRows.length ? debitoRows.map(fv=>`<tr><td class="mono">${fv.fecha}</td><td><span class="obra-code">${getObra(fv.obraId)?.code||''}</span></td><td class="num">${fmt(fv.montoSinIva)}</td><td class="num">${fmt(fv.iva)}</td><td class="num">${fmt(fv.monto)}</td></tr>`).join('') : `<tr class="empty-row"><td colspan="5">Sin facturas de venta este mes</td></tr>`;
+  document.getElementById('iva-debito-body').innerHTML = debitoRows.length ? debitoRows.map(fv=>`<tr><td class="mono">${fv.fecha}</td><td><span class="obra-code">${getObra(fv.obraId)?.code||''}</span></td><td class="num">${fmt(fv.montoSinIva)}</td><td class="num">${fmt(fv.iva)}</td><td class="num">${fmt(fv.monto)}</td></tr>`).join('') : `<tr class="empty-row"><td colspan="5">Sin cobros este mes</td></tr>`;
   document.getElementById('iva-credito-body').innerHTML = creditoRows.length ? creditoRows.map(p=>{ const prov=getProveedor(p.proveedorId); const ivaM=pagoIvaMonto(p);
     return `<tr><td class="mono">${p.fechaFactura}</td><td>${prov?prov.nombre:'—'}</td><td>${p.concepto}</td><td class="num">${fmt(p.monto-ivaM)}</td><td class="num">${fmt(ivaM)}</td><td class="num">${fmt(p.monto)}</td></tr>`;
   }).join('') : `<tr class="empty-row"><td colspan="6">Sin facturas de compra este mes</td></tr>`;

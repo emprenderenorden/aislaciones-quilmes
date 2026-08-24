@@ -52,7 +52,7 @@ const SHEET_NAMES = {
 const SCHEMAS = {
   config: ['caja', 'rev'],
   fondos: ['fondo', 'monto'],
-  obras: ['id', 'code', 'cliente', 'encargado', 'fechaInicio', 'estado',
+  obras: ['id', 'code', 'cliente', 'encargado', 'fechaInicio', 'estado', 'sinCobrosPendientes',
     'presupuestoJSON', 'presupuestoDetalleJSON', 'presupuestoResumenJSON',
     'realJSON', 'ingresosJSON', 'ingresosListJSON', 'facturasVentaJSON', 'documentosJSON'],
   pagos: ['id', 'tipo', 'obraId', 'categoria', 'concepto', 'cantidad', 'unitario',
@@ -164,7 +164,7 @@ function readState_() {
 
   const obras = sheetToRows_(ss.getSheetByName(SHEET_NAMES.obras), SCHEMAS.obras).map(r => ({
     id: r.id, code: r.code, cliente: r.cliente, encargado: r.encargado,
-    fechaInicio: r.fechaInicio, estado: r.estado,
+    fechaInicio: r.fechaInicio, estado: r.estado, sinCobrosPendientes: toBool_(r.sinCobrosPendientes),
     presupuesto: parseJsonField_(r.presupuestoJSON, { materiaPrima: 0, manoObra: 0, logistica: 0, estadia: 0 }),
     presupuestoDetalle: parseJsonField_(r.presupuestoDetalleJSON, null),
     presupuestoResumen: parseJsonField_(r.presupuestoResumenJSON, {}),
@@ -243,7 +243,7 @@ function writeState_(state) {
   writeRows_(ss.getSheetByName(SHEET_NAMES.fondos), SCHEMAS.fondos, fondosRows, r => [r.fondo, r.monto]);
 
   writeRows_(ss.getSheetByName(SHEET_NAMES.obras), SCHEMAS.obras, state.obras || [], o => [
-    o.id, o.code, o.cliente, o.encargado, o.fechaInicio, o.estado,
+    o.id, o.code, o.cliente, o.encargado, o.fechaInicio, o.estado, o.sinCobrosPendientes ? 'TRUE' : 'FALSE',
     JSON.stringify(o.presupuesto || {}), JSON.stringify(o.presupuestoDetalle || null),
     JSON.stringify(o.presupuestoResumen || {}), JSON.stringify(o.real || {}),
     JSON.stringify(o.ingresos || {}), JSON.stringify(o.ingresosList || []),
