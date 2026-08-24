@@ -748,11 +748,20 @@ function closeMobileSidebar(){
   document.getElementById('sidebar').classList.remove('mobile-open');
   document.getElementById('sidebar-backdrop').classList.remove('show');
 }
-function showView(name){
+const VALID_VIEWS = ['dashboard','obra','jornales','ordenes','pagos','fima','stock','resultados','presupuesto'];
+function applyView(name){
   document.querySelectorAll('.nav-item').forEach(i=>i.classList.toggle('active', i.dataset.view===name || (name==='presupuesto' && i.dataset.view==='obra')));
   document.querySelectorAll('.view').forEach(v=>v.classList.toggle('active', v.id==='view-'+name));
   if(window.innerWidth <= 860) closeMobileSidebar();
 }
+function showView(name){
+  applyView(name);
+  if(location.hash.slice(1)!==name) location.hash = name;
+}
+window.addEventListener('hashchange', ()=>{
+  const name = location.hash.slice(1);
+  applyView(VALID_VIEWS.includes(name) ? name : 'dashboard');
+});
 function goToObra(id){ state.selectedObraId = id; showView('obra'); showObraSubview('detalle'); renderObraDetail(); }
 function showObraSubview(which){
   document.getElementById('obra-sub-lista').classList.toggle('hidden', which!=='lista');
@@ -2237,6 +2246,9 @@ function renderIvaReporte(mes){
 function renderAll(){ renderDashboard(); renderObraLista(); if(!document.getElementById('obra-sub-detalle').classList.contains('hidden')) renderObraDetail(); renderJornales(); renderOrdenes(); renderFima(); renderStock(); renderPagos(); renderResultados(); }
 showObraSubview('lista');
 renderAll();
+const initialView = location.hash.slice(1);
+if(VALID_VIEWS.includes(initialView)) applyView(initialView);
+else location.hash = 'dashboard';
 </script>
 </body>
 </html>
