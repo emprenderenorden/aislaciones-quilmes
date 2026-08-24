@@ -732,11 +732,12 @@ function loadState(){
     .then(r=>r.json())
     .then(data=>{
       if(data && data.ok && data.state){
-        const remoteVacio = !data.state.obras || data.state.obras.length===0;
-        if(remoteVacio){
-          // El Sheet todavía no tiene datos (recién creado): mantenemos los
-          // datos de ejemplo que ya están cargados y los sembramos en el
-          // backend, en vez de mostrar la app en blanco.
+        if(!data.state.sembrado){
+          // El Sheet todavía no fue sembrado (recién creado): mantenemos los
+          // datos de ejemplo que ya están cargados y los guardamos en el
+          // backend, en vez de mostrar la app en blanco. A partir de acá el
+          // Sheet manda, aunque después se borre todo desde la planilla.
+          state.sembrado = true;
           saveState();
         } else {
           Object.assign(state, data.state, {

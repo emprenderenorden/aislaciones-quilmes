@@ -50,7 +50,7 @@ const SHEET_NAMES = {
 };
 
 const SCHEMAS = {
-  config: ['caja'],
+  config: ['caja', 'sembrado'],
   fondos: ['fondo', 'monto'],
   obras: ['id', 'code', 'cliente', 'encargado', 'fechaInicio', 'estado',
     'presupuestoJSON', 'presupuestoDetalleJSON', 'presupuestoResumenJSON',
@@ -127,6 +127,7 @@ function readState_() {
 
   const configRows = sheetToRows_(ss.getSheetByName(SHEET_NAMES.config), SCHEMAS.config);
   const caja = configRows.length ? Number(configRows[0].caja) || 0 : 0;
+  const sembrado = configRows.length ? toBool_(configRows[0].sembrado) : false;
 
   const fondos = {};
   sheetToRows_(ss.getSheetByName(SHEET_NAMES.fondos), SCHEMAS.fondos).forEach(r => {
@@ -189,7 +190,7 @@ function readState_() {
   const empresaRows = sheetToRows_(ss.getSheetByName(SHEET_NAMES.datosEmpresa), SCHEMAS.datosEmpresa);
   const datosEmpresa = empresaRows.length ? empresaRows[0] : {};
 
-  return { caja, fondos, obras, pagos, ordenesCompra, proveedores, stock, stockMovimientos,
+  return { caja, sembrado, fondos, obras, pagos, ordenesCompra, proveedores, stock, stockMovimientos,
     trabajadores, jornales, movimientosFima, datosEmpresa };
 }
 
@@ -208,7 +209,7 @@ function writeState_(state) {
   Object.keys(SHEET_NAMES).forEach(key => getOrCreateSheet_(ss, SHEET_NAMES[key], SCHEMAS[key]));
 
   writeRows_(ss.getSheetByName(SHEET_NAMES.config), SCHEMAS.config,
-    [{ caja: state.caja || 0 }], r => [r.caja]);
+    [{ caja: state.caja || 0, sembrado: state.sembrado ? 'TRUE' : 'FALSE' }], r => [r.caja, r.sembrado]);
 
   const fondosRows = Object.keys(state.fondos || {}).map(k => ({ fondo: k, monto: state.fondos[k] }));
   writeRows_(ss.getSheetByName(SHEET_NAMES.fondos), SCHEMAS.fondos, fondosRows, r => [r.fondo, r.monto]);
