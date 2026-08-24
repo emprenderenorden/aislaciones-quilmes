@@ -609,7 +609,7 @@ function catOptionsForTipo(tipo, selected){
     : catFijaLabel;
   return Object.entries(opts).map(([k,l])=>`<option value="${k}" ${selected===k?'selected':''}>${l}</option>`).join('');
 }
-const fondoLabel = {costosFijos:'Costos Fijos', gastosPersonales:'Gastos Personales', impuestos:'Impuestos', emergencias:'Emergencias', inversiones:'Inversiones', obras:'Obras', otros:'Otros'};
+const fondoLabel = {costosFijos:'Costos Fijos', jornales:'Jornales', impuestos:'Impuestos', emergencias:'Emergencias', inversiones:'Inversiones', obras:'Obras', otros:'Otros'};
 function fondoOptionsHTML(selected){ return Object.entries(fondoLabel).map(([k,l])=>`<option value="${k}" ${selected===k?'selected':''}>${l}</option>`).join(''); }
 const fmt = (n)=> '$ ' + Math.round(n||0).toLocaleString('es-AR');
 const today = ()=> new Date().toISOString().slice(0,10);
@@ -617,7 +617,7 @@ let idCounter = 200;
 const newId = (p)=> p+(idCounter++);
 
 let state = {
-  fondos: { costosFijos: 12100000, gastosPersonales: 8240000, impuestos: 0, emergencias: 5500000, inversiones: 15440000, obras: 0, otros: 0 },
+  fondos: { costosFijos: 12100000, jornales: 8240000, impuestos: 0, emergencias: 5500000, inversiones: 15440000, obras: 0, otros: 0 },
   caja: 3440000,
   obras: [
     { id:'o1', code:'X-669', cliente:'TGS Cerri', encargado:'Julio', fechaInicio:'2026-06-02', estado:'en curso',
@@ -672,7 +672,7 @@ let state = {
     {id:'j17', trabajadorId:'t5', obraId:'o2', semanaInicio:'2026-06-29', dias:['trabajado','trabajado','trabajado','trabajado','trabajado','sin_obra','sin_obra']},
   ],
   movimientosFima: [
-    {fecha:'2026-04-24', fondo:'gastosPersonales', obraId:'o1', concepto:'Mark IVA', tipo:'in', monto:200000},
+    {fecha:'2026-04-24', fondo:'jornales', obraId:'o1', concepto:'Mark IVA', tipo:'in', monto:200000},
     {fecha:'2026-06-30', fondo:'costosFijos', obraId:null, concepto:'Alquiler depósito', tipo:'out', monto:1350000},
     {fecha:'2026-07-08', fondo:'emergencias', obraId:'o3', concepto:'Reparación vehículo', tipo:'out', monto:620000},
   ],
@@ -1333,7 +1333,7 @@ function submitTrabajador(id){
 function renderFima(){
   const meta = {
     costosFijos:{color:'var(--copper)', note:'alquiler, seguros, sueldos admin.'},
-    gastosPersonales:{color:'var(--teal)', note:'sueldos y cargas del personal'},
+    jornales:{color:'var(--teal)', note:'cubre jornales próximos'},
     impuestos:{color:'var(--ink)', note:'IIBB, IVA, cargas impositivas'},
     emergencias:{color:'var(--warn)', note:'objetivo mínimo $5.000.000'},
     inversiones:{color:'var(--good)', note:'plazo fijo + FCI'},
