@@ -59,7 +59,7 @@ const SCHEMAS = {
     'ivaAplica', 'monto', 'proveedorId', 'numeroFactura', 'fechaFactura', 'formaPago',
     'fechaPago', 'numeroOC', 'origenFondo', 'pagosRealizadosJSON'],
   ordenesCompra: ['id', 'numero', 'fecha', 'solicitante', 'tipo', 'obraId', 'categoria',
-    'itemsJSON', 'monto', 'proveedorId', 'estado', 'comentarioDueno', 'pagoId',
+    'itemsJSON', 'monto', 'ivaAplica', 'proveedorId', 'estado', 'comentarioDueno', 'pagoId',
     'cotizacionUsd', 'notaMaterial', 'notaGeneral'],
   proveedores: ['id', 'nombre', 'cuit', 'telefono', 'email'],
   stock: ['id', 'nombre', 'unidad', 'cantidad', 'costoUnitario'],
@@ -161,7 +161,7 @@ function readState_() {
   const ordenesCompra = sheetToRows_(ss.getSheetByName(SHEET_NAMES.ordenesCompra), SCHEMAS.ordenesCompra).map(r => ({
     id: r.id, numero: r.numero, fecha: r.fecha, solicitante: r.solicitante, tipo: r.tipo,
     obraId: toStrOrNull_(r.obraId), categoria: toStrOrNull_(r.categoria),
-    items: parseJsonField_(r.itemsJSON, []), monto: Number(r.monto) || 0,
+    items: parseJsonField_(r.itemsJSON, []), monto: Number(r.monto) || 0, ivaAplica: toBool_(r.ivaAplica),
     proveedorId: toStrOrNull_(r.proveedorId), estado: r.estado,
     comentarioDueno: toStrOrNull_(r.comentarioDueno), pagoId: toStrOrNull_(r.pagoId),
     cotizacionUsd: toNumOrNull_(r.cotizacionUsd), notaMaterial: r.notaMaterial || '',
@@ -230,7 +230,7 @@ function writeState_(state) {
 
   writeRows_(ss.getSheetByName(SHEET_NAMES.ordenesCompra), SCHEMAS.ordenesCompra, state.ordenesCompra || [], o => [
     o.id, o.numero, o.fecha, o.solicitante, o.tipo, o.obraId, o.categoria,
-    JSON.stringify(o.items || []), o.monto, o.proveedorId, o.estado, o.comentarioDueno,
+    JSON.stringify(o.items || []), o.monto, o.ivaAplica ? 'TRUE' : 'FALSE', o.proveedorId, o.estado, o.comentarioDueno,
     o.pagoId, o.cotizacionUsd, o.notaMaterial || '', o.notaGeneral || '',
   ]);
 

@@ -1631,7 +1631,9 @@ function imprimirOrden(id){
     ${o.notaMaterial?`<div class="box"><h4>Nota sobre los materiales</h4><div>${o.notaMaterial}</div></div>`:''}
 
     <div class="totales"><table>
-      <tr><td>Monto estimado</td><td class="num">${fmt(o.monto)}</td></tr>
+      ${o.ivaAplica?`<tr><td>Subtotal</td><td class="num">${fmt(o.items.reduce((a,it)=>a+it.cantidad*it.unitario,0))}</td></tr>
+      <tr><td>IVA (21%)</td><td class="num">${fmt(o.items.reduce((a,it)=>a+it.cantidad*it.unitario,0)*0.21)}</td></tr>
+      <tr><td>Total</td><td class="num">${fmt(o.monto)}</td></tr>`:`<tr><td>Monto estimado</td><td class="num">${fmt(o.monto)}</td></tr>`}
       ${o.cotizacionUsd?`<tr><td>Cotización USD</td><td class="num">$ ${o.cotizacionUsd} / US$1</td></tr>`:''}
     </table></div>
 
@@ -1696,7 +1698,8 @@ function openModalOrdenCompra(id){
     </div>
     <div class="section-title" style="margin:18px 0 8px;"><h2 style="font-size:13.5px;">Materiales / productos</h2></div>
     <div class="card card-table"><table><thead><tr><th style="width:44%;">Producto</th><th class="num">Cantidad</th><th class="num">Precio unitario</th><th class="num">Subtotal</th><th></th></tr></thead><tbody id="oc-items-body"></tbody></table>
-      <div style="padding:10px 12px;"><span class="link-btn" onclick="addOcItem()">+ Agregar ítem</span></div></div>
+      <div style="padding:10px 12px;display:flex;justify-content:space-between;align-items:center;"><span class="link-btn" onclick="addOcItem()">+ Agregar ítem</span>
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;"><input type="checkbox" id="f-oc-iva" ${existing&&existing.ivaAplica?'checked':''} onchange="renderOcItemsTable()"> + IVA (21%)</label></div></div>
     <div class="form-grid" style="margin-top:12px;">
       <div class="field span2"><label>Nota sobre los materiales</label><textarea id="f-nota-material" placeholder="Ej: entregar en obra, marca específica, etc.">${existing&&existing.notaMaterial?existing.notaMaterial:''}</textarea></div>
       <div class="field span2"><label>Nota general de la orden</label><textarea id="f-nota-general" placeholder="Observaciones generales para esta OC">${existing&&existing.notaGeneral?existing.notaGeneral:''}</textarea></div>
@@ -1719,6 +1722,14 @@ function onOcTipoChange(){
 }
 let ocItemsDraft = [];
 function ocItemsTotal(){ return ocItemsDraft.reduce((a,it)=>a+it.cantidad*it.unitario,0); }
+function ocIvaAplica(){ const el = document.getElementById('f-oc-iva'); return el ? el.checked : false; }
+function ocMontoTotal(){ const sub = ocItemsTotal(); return ocIvaAplica() ? sub*1.21 : sub; }
+function renderOcPreview(){
+  const sub = ocItemsTotal();
+  document.getElementById('oc-preview').textContent = ocIvaAplica()
+    ? `Subtotal: ${fmt(sub)}  +  IVA (21%): ${fmt(sub*0.21)}  =  Total: ${fmt(sub*1.21)}`
+    : 'Monto estimado: ' + fmt(sub);
+}
 function renderOcItemsTable(){
   document.getElementById('oc-items-body').innerHTML = ocItemsDraft.map((it,i)=>`
     <tr>
@@ -1728,13 +1739,13 @@ function renderOcItemsTable(){
       <td class="num" id="oc-item-total-${i}">${fmt(it.cantidad*it.unitario)}</td>
       <td>${ocItemsDraft.length>1?`<span class="link-btn danger" onclick="removeOcItem(${i})">✕</span>`:''}</td>
     </tr>`).join('');
-  document.getElementById('oc-preview').textContent = 'Monto estimado: ' + fmt(ocItemsTotal());
+  renderOcPreview();
 }
 function updateOcItem(i,field,value){
   ocItemsDraft[i][field] = (field==='producto') ? value : (+value||0);
   const cell = document.getElementById('oc-item-total-'+i);
   if(cell) cell.textContent = fmt(ocItemsDraft[i].cantidad*ocItemsDraft[i].unitario);
-  document.getElementById('oc-preview').textContent = 'Monto estimado: ' + fmt(ocItemsTotal());
+  renderOcPreview();
 }
 function addOcItem(){ ocItemsDraft.push({producto:'',cantidad:1,unitario:0}); renderOcItemsTable(); }
 function removeOcItem(i){ ocItemsDraft.splice(i,1); renderOcItemsTable(); }
@@ -1745,7 +1756,9 @@ function submitOrdenCompra(id){
   const proveedorId = resolveProveedorId();
   const items = ocItemsDraft.filter(it=>it.producto.trim()).map(it=>({producto:it.producto.trim(), cantidad:it.cantidad, unitario:it.unitario}));
   if(!items.length){ alert('Cargá al menos un producto en la orden.'); return; }
-  const monto = items.reduce((a,it)=>a+it.cantidad*it.unitario,0);
+  const ivaAplica = document.getElementById('f-oc-iva').checked;
+  const subtotal = items.reduce((a,it)=>a+it.cantidad*it.unitario,0);
+  const monto = ivaAplica ? subtotal*1.21 : subtotal;
   const solicitante = document.getElementById('f-solicitante').value.trim() || 'Sin especificar';
   const fecha = document.getElementById('f-fecha').value || today();
   const cotizacionUsd = +document.getElementById('f-cotizacion-usd').value || null;
@@ -1753,9 +1766,9 @@ function submitOrdenCompra(id){
   const notaGeneral = document.getElementById('f-nota-general').value.trim();
   if(id){
     const o = getOrden(id);
-    Object.assign(o, {tipo, obraId, categoria, proveedorId, items, monto, solicitante, fecha, cotizacionUsd, notaMaterial, notaGeneral});
+    Object.assign(o, {tipo, obraId, categoria, proveedorId, items, monto, ivaAplica, solicitante, fecha, cotizacionUsd, notaMaterial, notaGeneral});
   } else {
-    state.ordenesCompra.push({id:newId('oc'), numero: nextOcNumero(), fecha, solicitante, tipo, obraId, categoria, items, monto, proveedorId, estado:'pendiente', comentarioDueno:null, pagoId:null, cotizacionUsd, notaMaterial, notaGeneral});
+    state.ordenesCompra.push({id:newId('oc'), numero: nextOcNumero(), fecha, solicitante, tipo, obraId, categoria, items, monto, ivaAplica, proveedorId, estado:'pendiente', comentarioDueno:null, pagoId:null, cotizacionUsd, notaMaterial, notaGeneral});
   }
   closeModal(); renderAll();
 }
@@ -1767,7 +1780,8 @@ function openModalAutorizarOrden(id){
       <div class="summary-line"><span>Destino</span><span>${ordenDestinoTxt(o)}</span></div>
       <div class="summary-line"><span>Proveedor</span><span>${prov?prov.nombre:'—'}</span></div>
       ${(o.items||[]).map(it=>`<div class="summary-line sub"><span>${it.producto} × ${it.cantidad}</span><span>${fmt(it.cantidad*it.unitario)}</span></div>`).join('')}
-      <div class="summary-line total"><span>Monto estimado</span><span>${fmt(o.monto)}</span></div>
+      ${o.ivaAplica?`<div class="summary-line sub"><span>IVA (21%)</span><span>${fmt((o.items||[]).reduce((a,it)=>a+it.cantidad*it.unitario,0)*0.21)}</span></div>`:''}
+      <div class="summary-line total"><span>Monto ${o.ivaAplica?'con IVA':'estimado'}</span><span>${fmt(o.monto)}</span></div>
     </div>
     <div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" onclick="submitAutorizarOrden('${id}')">Confirmar autorización</button></div>`;
   overlay.classList.add('open');
@@ -1786,7 +1800,7 @@ function openModalEfectivizarOrden(id){
     <div class="form-grid">
       <div class="field span2"><label>Nº remito / factura</label><input id="f-factura" placeholder="Ej: 0001-00004521"></div>
       <div class="field"><label>Monto final ($, con IVA si aplica)</label><input id="f-monto" class="mono-in" type="number" value="${o.monto}"></div>
-      <div class="field checkbox"><input type="checkbox" id="f-iva" checked><label>El monto incluye IVA (21%)</label></div>
+      <div class="field checkbox"><input type="checkbox" id="f-iva" ${o.ivaAplica?'checked':''}><label>El monto incluye IVA (21%)</label></div>
       <div class="field"><label>Fecha de factura (para IVA)</label><input id="f-fecha-factura" type="date" value="${today()}"></div>
       <div class="field"><label>Medio de pago</label><select id="f-forma"><option>A definir</option><option>Transferencia</option><option>Efectivo</option><option>eCheq</option><option>FIMA</option></select></div>
       <div class="field checkbox"><input type="checkbox" id="f-sinfecha" checked onchange="document.getElementById('wrap-fecha').classList.toggle('hidden', this.checked)"><label>Sin fecha de pago todavía</label></div>
