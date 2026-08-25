@@ -832,6 +832,7 @@ function renderObraDetail(){
   if(o.estado==='borrador') actions.innerHTML = `<button class="btn btn-ghost btn-sm" onclick="openPresupuestoBuilder('${o.id}')">Editar presupuesto</button><button class="btn btn-dark btn-sm" onclick="iniciarObra('${o.id}')">Iniciar obra</button>`;
   if(o.estado==='en curso') actions.innerHTML = `<button class="btn btn-ghost btn-sm" onclick="openPresupuestoBuilder('${o.id}')">Editar presupuesto</button><button class="btn btn-ghost btn-sm" onclick="finalizarObra('${o.id}')">Finalizar obra</button>`;
   if(o.estado==='finalizada') actions.innerHTML = `<button class="btn btn-ghost btn-sm" onclick="openPresupuestoBuilder('${o.id}')">Editar presupuesto</button>`;
+  actions.innerHTML += `<button class="btn btn-ghost btn-sm" style="color:var(--bad);border-color:var(--bad);" onclick="eliminarObra('${o.id}')">Eliminar obra</button>`;
 
   const cats = [['materiaPrima','M'],['manoObra','MO'],['logistica','L'],['estadia','E']];
   const catCards = cats.map(([key,icon])=>{
@@ -987,6 +988,49 @@ function eliminarDocumentoObra(obraId, docId){
 function iniciarObra(id){ getObra(id).estado='en curso'; renderAll(); }
 function finalizarObra(id){ getObra(id).estado='finalizada'; renderAll(); }
 function toggleSinCobrosPendientes(id){ const o=getObra(id); o.sinCobrosPendientes = !o.sinCobrosPendientes; renderAll(); }
+function eliminarObra(id){
+  const o = getObra(id);
+  if(!o) return;
+  const tienePagosReales = state.pagos.some(p=>p.obraId===id && (p.pagosRealizados||[]).length>0);
+  const advertencia = tienePagosReales
+    ? `La obra ${o.code} tiene pagos con plata ya movida (de caja o FIMA). Esos pagos NO se van a borrar (quedan como "Negocio general" en Pagos para no perder ese historial); el resto de los gastos, órdenes de compra sin pagos reales y el stock consumido sí se van a borrar/revertir.\n\n¿Eliminar igual la obra "${o.code}"? Esta acción no se puede deshacer.`
+    : `¿Eliminar la obra "${o.code}"? Se van a borrar sus gastos y órdenes de compra (ninguno tiene pagos reales todavía) y se va a devolver al stock lo que se haya consumido. Esta acción no se puede deshacer.`;
+  if(!confirm(advertencia)) return;
+
+  // Pagos sin plata real movida: se borran. Los que ya tuvieron un pago real
+  // se desvinculan de la obra (pasan a "Negocio general") para no perder el
+  // historial de caja/FIMA que ya se descontó.
+  state.pagos = state.pagos.filter(p=>{
+    if(p.obraId!==id) return true;
+    if((p.pagosRealizados||[]).length>0){ p.obraId=null; p.tipo='fijo'; p.categoria='otros'; p.concepto += ` (obra eliminada: ${o.code})`; return true; }
+    return false;
+  });
+
+  // Ordenes de compra: si su pago sigue existiendo (tenía plata real), se
+  // desvinculan; el resto (sin plata real todavía) se borra.
+  state.ordenesCompra = state.ordenesCompra.filter(oc=>{
+    if(oc.obraId!==id) return true;
+    if(oc.pagoId && state.pagos.find(p=>p.id===oc.pagoId)){ oc.obraId=null; return true; }
+    return false;
+  });
+
+  // Stock consumido por esta obra: se devuelve al stock, no representa plata movida.
+  state.stockMovimientos = state.stockMovimientos.filter(m=>{
+    if(m.obraId!==id) return true;
+    if(m.tipo==='consumo'){ const item=getStockItem(m.stockId); if(item) item.cantidad += m.cantidad; }
+    return false;
+  });
+
+  // Movimientos de FIMA y jornales: ya representan plata movida o asistencia
+  // real, no se borran — solo se desvinculan de la obra eliminada.
+  state.movimientosFima.forEach(m=>{ if(m.obraId===id) m.obraId=null; });
+  state.jornales.forEach(j=>{ if(j.obraId===id) j.obraId=null; });
+
+  state.obras = state.obras.filter(x=>x.id!==id);
+  state.selectedObraId = state.obras[0] ? state.obras[0].id : null;
+  showObraSubview('lista');
+  renderAll();
+}
 
 /* ======================= PRESUPUESTO BUILDER ======================= */
 let buildState = null;
