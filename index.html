@@ -890,8 +890,8 @@ function renderObraDetail(){
       <div class="layerbar-wrap"><div class="layerbar"><div class="fill good" style="width:${o.sinCobrosPendientes?100:Math.min(cobradoPct,100)}%;"></div></div><div class="layerbar-labels"><span>${o.sinCobrosPendientes?'100% cobrado (marcado sin pendientes)':cobradoPct+'% cobrado'}</span><span>${fmt(o.ingresos.cobrado)} / ${fmt(o.ingresos.facturado)}</span></div></div>
     </div>
     <div class="card card-table" style="margin-top:10px;"><table>
-      <thead><tr><th>Fecha</th><th>Medio de pago</th><th>Nº factura</th><th>Nº cobranza</th><th class="num">Monto</th></tr></thead>
-      <tbody>${(o.ingresosList&&o.ingresosList.length) ? o.ingresosList.map(i=>`<tr><td class="mono">${i.fecha}</td><td>${i.medioPago}</td><td>${i.numeroFactura||'—'}</td><td>${i.numeroCobranza||'—'}</td><td class="num">${fmt(i.monto)}</td></tr>`).join('') : `<tr class="empty-row"><td colspan="5">Sin cobros registrados</td></tr>`}</tbody>
+      <thead><tr><th>Fecha</th><th>Medio de pago</th><th>Nº factura</th><th>Nº cobranza</th><th class="num">Monto</th><th></th></tr></thead>
+      <tbody>${(o.ingresosList&&o.ingresosList.length) ? o.ingresosList.map(i=>`<tr><td class="mono">${i.fecha}</td><td>${i.medioPago}</td><td>${i.numeroFactura||'—'}</td><td>${i.numeroCobranza||'—'}</td><td class="num">${fmt(i.monto)}</td><td><span class="link-btn" onclick="openModalIngreso('${o.id}','${i.id}')">Editar</span></td></tr>`).join('') : `<tr class="empty-row"><td colspan="6">Sin cobros registrados</td></tr>`}</tbody>
     </table></div>
 
     <div class="section-title"><h2>Documentos</h2><div class="st-actions"><button class="btn btn-ghost btn-sm" onclick="openModalDocumentoObra('${o.id}')">+ Agregar documento</button></div></div>
@@ -926,7 +926,8 @@ function obraPagosRows(obraId){
     const est = pagoEstado(p);
     const estadoDot = est==='pagado'?'good':(est==='parcial'?'warn':'warn');
     const estadoTxt = est==='pagado'?'Pagado':(est==='parcial'?'Parcial':(est==='sin_fecha'?'Sin fecha':'Pendiente'));
-    const action = est!=='pagado' ? `<span class="link-btn" onclick="openModalFinalizarPago('${p.id}')">Registrar pago →</span>` : '';
+    let action = (!p.numeroOC && !p.origenFondo) ? `<span class="link-btn" onclick="openModalCompra(null,'${p.id}')">Editar</span>` : '';
+    if(est!=='pagado') action += `${action?' · ':''}<span class="link-btn" onclick="openModalFinalizarPago('${p.id}')">Registrar pago →</span>`;
     const prov = getProveedor(p.proveedorId);
     const provTxt = prov ? `${prov.nombre}${p.numeroFactura?' · '+p.numeroFactura:''}` : '—';
     return `<tr><td>${catLabel[p.categoria]||p.categoria}</td><td>${p.concepto}</td><td>${ocBadge(p.numeroOC)}</td><td>${provTxt}</td><td class="num">${fmt(p.monto)}</td><td class="num">${fmt(pagoSaldo(p))}</td><td class="mono">${p.fechaPago||'—'}</td><td><span class="estado-dot ${estadoDot}"></span>${estadoTxt}</td><td>${action}</td></tr>`;
@@ -1840,7 +1841,8 @@ function renderPagos(){
     const est = pagoEstado(p);
     const estadoDot = est==='pagado'?'good':'warn';
     const estadoTxt = est==='pagado'?'Pagado':(est==='parcial'?'Parcial':(est==='sin_fecha'?'Sin fecha':'Pendiente'));
-    const action = est!=='pagado' ? `<span class="link-btn" onclick="openModalFinalizarPago('${p.id}')">Registrar pago →</span>` : '';
+    let action = (!p.numeroOC && !p.origenFondo) ? `<span class="link-btn" onclick="openModalCompra(null,'${p.id}')">Editar</span>` : '';
+    if(est!=='pagado') action += `${action?' · ':''}<span class="link-btn" onclick="openModalFinalizarPago('${p.id}')">Registrar pago →</span>`;
     const destino = p.obraId ? `<span class="link-btn" onclick="goToObra('${p.obraId}')"><span class="obra-code">${getObra(p.obraId)?.code||''}</span></span>` : (p.tipo==='stock' ? 'Stock' : 'Negocio general');
     const prov = getProveedor(p.proveedorId);
     const provTxt = prov ? `${prov.nombre}${p.numeroFactura?' · '+p.numeroFactura:''}` : '—';
@@ -1972,19 +1974,27 @@ function submitPagoProveedor(provId){
   if(restante>0) alert(`Se aplicaron ${fmt(aplicadoTotal)} contra las facturas pendientes. Los ${fmt(restante)} restantes no se aplicaron porque no hay más deuda con este proveedor.`);
 }
 
-function openModalIngreso(obraId){
-  modalEl.innerHTML = `<h3>Registrar cobro</h3><div class="modal-sub">Obra: <b>${getObra(obraId).code}</b></div>
+function openModalIngreso(obraId, editId){
+  const o = getObra(obraId);
+  const editing = editId ? (o.ingresosList||[]).find(i=>i.id===editId) : null;
+  const medioActual = editing ? editing.medioPago : 'Transferencia';
+  modalEl.innerHTML = `<h3>${editing?'Editar cobro':'Registrar cobro'}</h3><div class="modal-sub">Obra: <b>${o.code}</b></div>
     <div class="form-grid">
-      <div class="field"><label>Monto cobrado ($)</label><input id="f-monto" class="mono-in" type="number" value="0"></div>
-      <div class="field"><label>Medio de pago</label><select id="f-medio"><option>Transferencia</option><option>Efectivo</option><option>Cheque</option><option>Otro</option></select></div>
-      <div class="field"><label>Nº de factura</label><input id="f-nro-factura" placeholder="Ej: 0001-00004521"></div>
-      <div class="field"><label>Nº de cobranza / recibo</label><input id="f-nro-cobranza" placeholder="Ej: RC-0032"></div>
-      <div class="field span2"><label>Fecha</label><input id="f-fecha" type="date" value="${today()}"></div>
+      <div class="field"><label>Monto cobrado ($)</label><input id="f-monto" class="mono-in" type="number" value="${editing?editing.monto:0}"></div>
+      <div class="field"><label>Medio de pago</label><select id="f-medio">
+        <option ${medioActual==='Transferencia'?'selected':''}>Transferencia</option>
+        <option ${medioActual==='Efectivo'?'selected':''}>Efectivo</option>
+        <option ${medioActual==='Cheque'?'selected':''}>Cheque</option>
+        <option ${medioActual==='Otro'?'selected':''}>Otro</option>
+      </select></div>
+      <div class="field"><label>Nº de factura</label><input id="f-nro-factura" placeholder="Ej: 0001-00004521" value="${editing&&editing.numeroFactura?editing.numeroFactura:''}"></div>
+      <div class="field"><label>Nº de cobranza / recibo</label><input id="f-nro-cobranza" placeholder="Ej: RC-0032" value="${editing&&editing.numeroCobranza?editing.numeroCobranza:''}"></div>
+      <div class="field span2"><label>Fecha</label><input id="f-fecha" type="date" value="${editing?editing.fecha:today()}"></div>
     </div>
-    <div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" onclick="submitIngreso('${obraId}')">Registrar</button></div>`;
+    <div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" onclick="submitIngreso('${obraId}','${editId||''}')">${editing?'Guardar cambios':'Registrar'}</button></div>`;
   overlay.classList.add('open');
 }
-function submitIngreso(obraId){
+function submitIngreso(obraId, editId){
   const monto = +document.getElementById('f-monto').value||0;
   const medioPago = document.getElementById('f-medio').value;
   const fecha = document.getElementById('f-fecha').value || today();
@@ -1992,40 +2002,62 @@ function submitIngreso(obraId){
   const numeroCobranza = document.getElementById('f-nro-cobranza').value.trim();
   const o = getObra(obraId);
   o.ingresosList = o.ingresosList || [];
-  o.ingresosList.push({fecha, monto, medioPago, numeroFactura, numeroCobranza});
+  if(editId){
+    const i = o.ingresosList.find(x=>x.id===editId);
+    const montoAnterior = i.monto;
+    Object.assign(i, {fecha, monto, medioPago, numeroFactura, numeroCobranza});
+    state.caja += (monto - montoAnterior);
+  } else {
+    o.ingresosList.push({id:newId('ing'), fecha, monto, medioPago, numeroFactura, numeroCobranza});
+    state.caja += monto;
+  }
   o.ingresos.cobrado = o.ingresosList.reduce((a,i)=>a+i.monto,0);
-  state.caja += monto;
   closeModal(); renderAll();
 }
 
-function openModalCompra(preselectObraId){
-  const obraOptions = state.obras.map(o=>`<option value="${o.id}" ${o.id===preselectObraId?'selected':''}>${o.code}</option>`).join('');
+function openModalCompra(preselectObraId, editId){
+  const editing = editId ? state.pagos.find(x=>x.id===editId) : null;
+  const obraIdActual = editing ? editing.obraId : preselectObraId;
+  const obraOptions = state.obras.map(o=>`<option value="${o.id}" ${o.id===obraIdActual?'selected':''}>${o.code}</option>`).join('');
   const stockOptions = state.stock.map(s=>`<option value="${s.id}">${s.nombre} (${s.unidad}) — stock: ${s.cantidad}</option>`).join('');
-  const isObra = !!preselectObraId;
+  const isObra = editing ? editing.tipo==='obra' : !!preselectObraId;
+  const medioActual = editing ? editing.formaPago : 'A definir';
   modalEl.innerHTML = `
-    <h3>Registrar compra / gasto</h3><div class="modal-sub">Gasto fijo del negocio o vinculado a una obra</div>
+    <h3>${editing?'Editar gasto':'Registrar compra / gasto'}</h3><div class="modal-sub">Gasto fijo del negocio o vinculado a una obra</div>
     <div class="form-grid">
       <div class="field"><label>Tipo</label><select id="f-tipo" onchange="onTipoPagoChange()"><option value="obra" ${isObra?'selected':''}>Gasto de obra</option><option value="fijo" ${!isObra?'selected':''}>Gasto fijo</option></select></div>
       <div class="field" id="wrap-obra"><label>Obra</label><select id="f-obra">${obraOptions}</select></div>
-      <div class="field" id="wrap-cat"><label>Categoría</label><select id="f-cat" onchange="onCategoriaChange()">${catOptionsForTipo(isObra?'obra':'fijo')}</select></div>
-      <div class="field checkbox span2 hidden" id="wrap-usostock"><input type="checkbox" id="f-usostock" onchange="onUsoStockChange()"><label>Utilizado de stock (no genera un pago nuevo)</label></div>
+      <div class="field" id="wrap-cat"><label>Categoría</label><select id="f-cat" onchange="onCategoriaChange()">${catOptionsForTipo(isObra?'obra':'fijo', editing?editing.categoria:null)}</select></div>
+      <div class="field checkbox span2 hidden" id="wrap-usostock"><input type="checkbox" id="f-usostock" onchange="onUsoStockChange()" ${editing?'disabled':''}><label>Utilizado de stock (no genera un pago nuevo)</label></div>
       <div class="field span2 hidden" id="wrap-stock-material"><label>Material (de stock)</label><select id="f-stock-material" onchange="onStockMaterialChange()">${stockOptions||'<option disabled>No hay materiales en stock</option>'}</select></div>
-      <div class="field span2" id="wrap-detalle"><label>Detalle</label><input id="f-concepto" placeholder="Ej: Lana de vidrio 50mm"></div>
-      <div class="field" id="wrap-proveedor"><label>Proveedor</label><select id="f-proveedor" onchange="onProveedorSelectChange(this)">${proveedorOptionsHTML()}</select></div>
-      <div class="field" id="wrap-factura"><label>Nº remito / factura</label><input id="f-factura" placeholder="Ej: 0001-00004521"></div>
-      <div class="field" id="wrap-fecha-factura"><label>Fecha de factura (para IVA)</label><input id="f-fecha-factura" type="date" value="${today()}"></div>
+      <div class="field span2" id="wrap-detalle"><label>Detalle</label><input id="f-concepto" placeholder="Ej: Lana de vidrio 50mm" value="${editing?editing.concepto:''}"></div>
+      <div class="field" id="wrap-proveedor"><label>Proveedor</label><select id="f-proveedor" onchange="onProveedorSelectChange(this)">${proveedorOptionsHTML(editing?editing.proveedorId:null)}</select></div>
+      <div class="field" id="wrap-factura"><label>Nº remito / factura</label><input id="f-factura" placeholder="Ej: 0001-00004521" value="${editing&&editing.numeroFactura?editing.numeroFactura:''}"></div>
+      <div class="field" id="wrap-fecha-factura"><label>Fecha de factura (para IVA)</label><input id="f-fecha-factura" type="date" value="${editing?editing.fechaFactura:today()}"></div>
       <div class="field span2 hidden" id="wrap-proveedor-nuevo"><label>Nombre del nuevo proveedor</label><input id="f-proveedor-nuevo" placeholder="Nombre"></div>
-      <div class="field"><label>Cantidad</label><input id="f-cantidad" class="mono-in" type="number" value="1" oninput="previewCompraMonto()"></div>
-      <div class="field" id="wrap-unitario"><label>Precio unitario ($)</label><input id="f-unitario" class="mono-in" type="number" value="0" oninput="previewCompraMonto()"></div>
-      <div class="field checkbox span2" id="wrap-iva"><input type="checkbox" id="f-iva" onchange="previewCompraMonto()"><label>Aplica IVA (21%)</label></div>
-      <div class="field" id="wrap-forma"><label>Medio de pago</label><select id="f-forma"><option>A definir</option><option>Transferencia</option><option>Efectivo</option><option>eCheq</option><option>FIMA</option></select></div>
-      <div class="field checkbox" id="wrap-sinfecha"><input type="checkbox" id="f-sinfecha" checked onchange="toggleFechaPago()"><label>Sin fecha de pago todavía</label></div>
-      <div class="field hidden" id="wrap-fecha"><label>Fecha de pago</label><input id="f-fechapago" type="date"></div>
+      <div class="field"><label>Cantidad</label><input id="f-cantidad" class="mono-in" type="number" value="${editing?editing.cantidad:1}" oninput="previewCompraMonto()"></div>
+      <div class="field" id="wrap-unitario"><label>Precio unitario ($)</label><input id="f-unitario" class="mono-in" type="number" value="${editing?editing.unitario:0}" oninput="previewCompraMonto()"></div>
+      <div class="field checkbox span2" id="wrap-iva"><input type="checkbox" id="f-iva" onchange="previewCompraMonto()" ${editing&&editing.ivaAplica?'checked':''}><label>Aplica IVA (21%)</label></div>
+      <div class="field" id="wrap-forma"><label>Medio de pago</label><select id="f-forma">
+        <option ${medioActual==='A definir'?'selected':''}>A definir</option>
+        <option ${medioActual==='Transferencia'?'selected':''}>Transferencia</option>
+        <option ${medioActual==='Efectivo'?'selected':''}>Efectivo</option>
+        <option ${medioActual==='eCheq'?'selected':''}>eCheq</option>
+        <option ${medioActual==='FIMA'?'selected':''}>FIMA</option>
+      </select></div>
+      <div class="field checkbox" id="wrap-sinfecha"><input type="checkbox" id="f-sinfecha" ${(!editing||!editing.fechaPago)?'checked':''} onchange="toggleFechaPago()"><label>Sin fecha de pago todavía</label></div>
+      <div class="field ${(!editing||!editing.fechaPago)?'hidden':''}" id="wrap-fecha"><label>Fecha de pago</label><input id="f-fechapago" type="date" value="${editing&&editing.fechaPago?editing.fechaPago:''}"></div>
     </div>
     <div class="modal-preview" style="background:var(--teal-soft);border-radius:10px;padding:12px 14px;margin-top:12px;font-size:13px;color:var(--teal-deep);font-family:'Montserrat',sans-serif;" id="compra-preview">Monto: $ 0</div>
-    <div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" onclick="submitCompra()">Registrar</button></div>`;
+    <div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" onclick="submitCompra('${editId||''}')">${editing?'Guardar cambios':'Registrar'}</button></div>`;
   overlay.classList.add('open');
-  onTipoPagoChange(); onCategoriaChange(); previewCompraMonto();
+  syncCompraTipoVisibility(); previewCompraMonto();
+}
+function syncCompraTipoVisibility(){
+  const tipo = document.getElementById('f-tipo').value;
+  const isObra = tipo==='obra';
+  document.getElementById('wrap-obra').classList.toggle('hidden', !isObra);
+  onCategoriaChange();
 }
 function onTipoPagoChange(){
   const tipo = document.getElementById('f-tipo').value;
@@ -2070,11 +2102,11 @@ function previewCompraMonto(){
   const base=cant*uni; const iva = document.getElementById('f-iva').checked? base*0.21:0;
   document.getElementById('compra-preview').textContent = `Subtotal: ${fmt(base)}  +  IVA: ${fmt(iva)}  =  Total: ${fmt(base+iva)}`;
 }
-function submitCompra(){
+function submitCompra(editId){
   const tipo = document.getElementById('f-tipo').value;
   const obraId = tipo==='obra' ? document.getElementById('f-obra').value : null;
   const categoria = document.getElementById('f-cat').value;
-  const usoStock = tipo==='obra' && categoria==='materiaPrima' && document.getElementById('f-usostock').checked;
+  const usoStock = !editId && tipo==='obra' && categoria==='materiaPrima' && document.getElementById('f-usostock').checked;
   const cantidad = +document.getElementById('f-cantidad').value||0;
 
   if(usoStock){
@@ -2100,8 +2132,16 @@ function submitCompra(){
   const formaPago = document.getElementById('f-forma').value;
   const sinFecha = document.getElementById('f-sinfecha').checked;
   const fechaPago = sinFecha? null : (document.getElementById('f-fechapago').value || today());
-  state.pagos.push({id:newId('p'), tipo, obraId, categoria, concepto, cantidad, unitario, ivaAplica, monto, proveedorId, numeroFactura, fechaFactura, formaPago, fechaPago, pagosRealizados:[]});
-  if(tipo==='obra'){ const o=getObra(obraId); if(o) o.real[categoria]+=monto; }
+
+  if(editId){
+    const p = state.pagos.find(x=>x.id===editId);
+    if(p.tipo==='obra' && p.obraId){ const oAnterior=getObra(p.obraId); if(oAnterior) oAnterior.real[p.categoria]-=p.monto; }
+    Object.assign(p, {tipo, obraId, categoria, concepto, cantidad, unitario, ivaAplica, monto, proveedorId, numeroFactura, fechaFactura, formaPago, fechaPago});
+    if(tipo==='obra'){ const o=getObra(obraId); if(o) o.real[categoria]+=monto; }
+  } else {
+    state.pagos.push({id:newId('p'), tipo, obraId, categoria, concepto, cantidad, unitario, ivaAplica, monto, proveedorId, numeroFactura, fechaFactura, formaPago, fechaPago, pagosRealizados:[]});
+    if(tipo==='obra'){ const o=getObra(obraId); if(o) o.real[categoria]+=monto; }
+  }
   closeModal(); renderAll();
 }
 
