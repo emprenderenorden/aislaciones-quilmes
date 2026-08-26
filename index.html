@@ -470,7 +470,9 @@
       <div class="filter-tab" data-filter="stock" onclick="setPagosFilter('stock')">Reposición de stock</div>
       <div class="filter-tab" data-filter="fima" onclick="setPagosFilter('fima')">Ingresos a FIMA</div>
       <div class="filter-tab" data-filter="proveedores" onclick="setPagosFilter('proveedores')">Proveedores</div>
-    </div></div>
+    </div>
+    <select id="pagos-cat-filter" class="filter-tab" style="padding:6px 10px;" onchange="setPagosCategoriaFilter(this.value)"></select>
+    </div>
     <div class="card card-table" id="pagos-table-egresos"><table>
       <thead><tr><th>Obra / destino</th><th>Concepto</th><th>Nº OC</th><th>Proveedor / factura</th><th class="num">Monto</th><th class="num">Saldo</th><th>Fecha de pago</th><th>Estado</th><th></th></tr></thead>
       <tbody id="pagos-body"></tbody>
@@ -632,6 +634,8 @@ let state = {
   ordenesFilter: 'pendiente',
   selectedProveedorId: null,
   pagosFilter: 'todos',
+  pagosCategoriaFilter: 'todas',
+  obraGastosCategoriaFilter: 'todas',
   datosEmpresa: {
     nombre: 'Aislaciones Quilmes S.R.L.',
     cuit: '',
@@ -762,7 +766,8 @@ window.addEventListener('hashchange', ()=>{
   const name = location.hash.slice(1);
   applyView(VALID_VIEWS.includes(name) ? name : 'dashboard');
 });
-function goToObra(id){ state.selectedObraId = id; showView('obra'); showObraSubview('detalle'); renderObraDetail(); }
+function goToObra(id){ state.selectedObraId = id; state.obraGastosCategoriaFilter = 'todas'; showView('obra'); showObraSubview('detalle'); renderObraDetail(); }
+function setObraGastosCategoriaFilter(v){ state.obraGastosCategoriaFilter = v; renderObraDetail(); }
 function showObraSubview(which){
   document.getElementById('obra-sub-lista').classList.toggle('hidden', which!=='lista');
   document.getElementById('obra-sub-detalle').classList.toggle('hidden', which!=='detalle');
@@ -877,7 +882,13 @@ function renderObraDetail(){
       <div class="summary-line grand"><span>Total + IVA (facturado)</span><span>${fmt(o.presupuestoResumen.totalConIva)}</span></div>
     </div>
 
-    <div class="section-title"><h2>Materiales y gastos reales de la obra</h2><div class="st-actions"><button class="btn btn-ghost btn-sm" onclick="openModalCompra('${o.id}')">+ Registrar compra/gasto</button></div></div>
+    <div class="section-title"><h2>Materiales y gastos reales de la obra</h2><div class="st-actions">
+      <select id="obra-gastos-cat-filter" class="filter-tab" style="padding:6px 10px;" onchange="setObraGastosCategoriaFilter(this.value)">
+        <option value="todas" ${state.obraGastosCategoriaFilter==='todas'?'selected':''}>Todas las categorías</option>
+        ${['materiaPrima','manoObra','logistica','estadia','otros'].map(k=>`<option value="${k}" ${state.obraGastosCategoriaFilter===k?'selected':''}>${catLabel[k]}</option>`).join('')}
+      </select>
+      <button class="btn btn-ghost btn-sm" onclick="openModalCompra('${o.id}')">+ Registrar compra/gasto</button>
+    </div></div>
     <div class="card card-table"><table>
       <thead><tr><th>Categoría</th><th>Detalle</th><th>Nº OC</th><th>Proveedor / factura</th><th class="num">Monto</th><th class="num">Saldo</th><th>Fecha de pago</th><th>Estado</th><th></th></tr></thead>
       <tbody>${obraPagosRows(o.id)}</tbody>
@@ -923,7 +934,8 @@ function renderObraDetail(){
   `;
 }
 function obraPagosRows(obraId){
-  const pagoRows = state.pagos.filter(p=>p.obraId===obraId).map(p=>{
+  const catFiltro = state.obraGastosCategoriaFilter;
+  const pagoRows = state.pagos.filter(p=>p.obraId===obraId && (catFiltro==='todas' || p.categoria===catFiltro)).map(p=>{
     const est = pagoEstado(p);
     const estadoDot = est==='pagado'?'good':(est==='parcial'?'warn':'warn');
     const estadoTxt = est==='pagado'?'Pagado':(est==='parcial'?'Parcial':(est==='sin_fecha'?'Sin fecha':'Pendiente'));
@@ -933,12 +945,12 @@ function obraPagosRows(obraId){
     const provTxt = prov ? `${prov.nombre}${p.numeroFactura?' · '+p.numeroFactura:''}` : '—';
     return `<tr><td>${catLabel[p.categoria]||p.categoria}</td><td>${p.concepto}</td><td>${ocBadge(p.numeroOC)}</td><td>${provTxt}</td><td class="num">${fmt(p.monto)}</td><td class="num">${fmt(pagoSaldo(p))}</td><td class="mono">${p.fechaPago||'—'}</td><td><span class="estado-dot ${estadoDot}"></span>${estadoTxt}</td><td>${action}</td></tr>`;
   });
-  const stockRows = state.stockMovimientos.filter(m=>m.tipo==='consumo' && m.obraId===obraId).map(m=>{
+  const stockRows = (catFiltro==='todas' || catFiltro==='materiaPrima') ? state.stockMovimientos.filter(m=>m.tipo==='consumo' && m.obraId===obraId).map(m=>{
     const item = getStockItem(m.stockId);
     return `<tr><td>Materiales</td><td>${item?item.nombre:'—'} (de stock, x${m.cantidad})</td><td>—</td><td>—</td><td class="num">${fmt(m.monto)}</td><td class="num">$ 0</td><td class="mono">${m.fecha}</td><td><span class="estado-dot good"></span>No aplica</td><td></td></tr>`;
-  });
+  }) : [];
   const rows = [...pagoRows, ...stockRows];
-  if(!rows.length) return `<tr class="empty-row"><td colspan="9">Todavía no hay compras registradas en esta obra</td></tr>`;
+  if(!rows.length) return `<tr class="empty-row"><td colspan="9">${catFiltro==='todas' ? 'Todavía no hay compras registradas en esta obra' : 'No hay gastos en esa categoría'}</td></tr>`;
   return rows.join('');
 }
 const tipoDocLabel = {facturaEmitida:'Factura emitida', facturaRecibida:'Factura recibida', ordenCompra:'Orden de compra', remito:'Remito', otro:'Otro'};
@@ -1861,13 +1873,29 @@ function setPagosFilter(f){
   state.pagosFilter=f;
   document.querySelectorAll('.filter-tab').forEach(t=>t.classList.toggle('active', t.dataset.filter===f));
   state.selectedProveedorId = null;
+  state.pagosCategoriaFilter = 'todas';
   renderPagos();
+}
+function setPagosCategoriaFilter(v){ state.pagosCategoriaFilter = v; renderPagos(); }
+function categoriaOptionsForPagosFilter(){
+  if(state.pagosFilter==='fijo') return catFijaLabel;
+  if(state.pagosFilter==='obra') return {materiaPrima:catLabel.materiaPrima, manoObra:catLabel.manoObra, logistica:catLabel.logistica, estadia:catLabel.estadia, otros:catLabel.otros};
+  return {materiaPrima:catLabel.materiaPrima, manoObra:catLabel.manoObra, logistica:catLabel.logistica, estadia:catLabel.estadia, ...catFijaLabel};
 }
 function renderPagos(){
   document.getElementById('pagos-table-egresos').classList.toggle('hidden', state.pagosFilter==='fima'||state.pagosFilter==='proveedores');
   document.getElementById('pagos-table-fima').classList.toggle('hidden', state.pagosFilter!=='fima');
   document.getElementById('pagos-table-proveedores').classList.toggle('hidden', !(state.pagosFilter==='proveedores' && !state.selectedProveedorId));
   document.getElementById('pagos-table-proveedor-detalle').classList.toggle('hidden', !(state.pagosFilter==='proveedores' && state.selectedProveedorId));
+
+  const catFilterEl = document.getElementById('pagos-cat-filter');
+  const mostrarCatFilter = !['stock','fima','proveedores'].includes(state.pagosFilter);
+  catFilterEl.classList.toggle('hidden', !mostrarCatFilter);
+  if(mostrarCatFilter){
+    const opts = categoriaOptionsForPagosFilter();
+    catFilterEl.innerHTML = `<option value="todas">Todas las categorías</option>` +
+      Object.entries(opts).map(([k,l])=>`<option value="${k}" ${state.pagosCategoriaFilter===k?'selected':''}>${l}</option>`).join('');
+  }
 
   if(state.pagosFilter==='fima'){
     const ingresos = state.movimientosFima.filter(m=>m.tipo==='in').sort((a,b)=>b.fecha.localeCompare(a.fecha));
@@ -1880,6 +1908,7 @@ function renderPagos(){
     return;
   }
   let rows = state.pagos; if(state.pagosFilter!=='todos') rows = rows.filter(p=>p.tipo===state.pagosFilter);
+  if(state.pagosCategoriaFilter!=='todas') rows = rows.filter(p=>p.categoria===state.pagosCategoriaFilter);
   rows = [...rows].sort((a,b)=>(b.fechaPago||'').localeCompare(a.fechaPago||''));
   document.getElementById('pagos-body').innerHTML = rows.length ? rows.map(p=>{
     const est = pagoEstado(p);
