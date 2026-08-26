@@ -954,7 +954,7 @@ function obraPagosRows(obraId){
     const est = pagoEstado(p);
     const estadoDot = est==='pagado'?'good':(est==='parcial'?'warn':'warn');
     const estadoTxt = est==='pagado'?'Pagado':(est==='parcial'?'Parcial':(est==='sin_fecha'?'Sin fecha':'Pendiente'));
-    let action = (!p.numeroOC && !p.origenFondo) ? `<span class="link-btn" onclick="openModalCompra(null,'${p.id}')">Editar</span>` : '';
+    let action = (!state.ordenesCompra.some(oc=>oc.pagoId===p.id) && !p.origenFondo) ? `<span class="link-btn" onclick="openModalCompra(null,'${p.id}')">Editar</span>` : '';
     if(est!=='pagado') action += `${action?' · ':''}<span class="link-btn" onclick="openModalFinalizarPago('${p.id}')">Registrar pago →</span>`;
     if(est==='pagado'||est==='parcial') action += `${action?' · ':''}<span class="link-btn danger" onclick="revertirPago('${p.id}')">Revertir a pendiente</span>`;
     const prov = getProveedor(p.proveedorId);
@@ -1930,7 +1930,7 @@ function renderPagos(){
     const est = pagoEstado(p);
     const estadoDot = est==='pagado'?'good':'warn';
     const estadoTxt = est==='pagado'?'Pagado':(est==='parcial'?'Parcial':(est==='sin_fecha'?'Sin fecha':'Pendiente'));
-    let action = (!p.numeroOC && !p.origenFondo) ? `<span class="link-btn" onclick="openModalCompra(null,'${p.id}')">Editar</span>` : '';
+    let action = (!state.ordenesCompra.some(oc=>oc.pagoId===p.id) && !p.origenFondo) ? `<span class="link-btn" onclick="openModalCompra(null,'${p.id}')">Editar</span>` : '';
     if(est!=='pagado') action += `${action?' · ':''}<span class="link-btn" onclick="openModalFinalizarPago('${p.id}')">Registrar pago →</span>`;
     if(est==='pagado'||est==='parcial') action += `${action?' · ':''}<span class="link-btn danger" onclick="revertirPago('${p.id}')">Revertir a pendiente</span>`;
     const destino = p.obraId ? `<span class="link-btn" onclick="goToObra('${p.obraId}')"><span class="obra-code">${getObra(p.obraId)?.code||''}</span></span>` : (p.tipo==='stock' ? 'Stock' : 'Negocio general');
@@ -2124,6 +2124,7 @@ function openModalCompra(preselectObraId, editId){
       <div class="field" id="wrap-proveedor"><label>Proveedor</label><select id="f-proveedor" onchange="onProveedorSelectChange(this)">${proveedorOptionsHTML(editing?editing.proveedorId:null)}</select></div>
       <div class="field" id="wrap-factura"><label>Nº remito / factura</label><input id="f-factura" placeholder="Ej: 0001-00004521" value="${editing&&editing.numeroFactura?editing.numeroFactura:''}"></div>
       <div class="field" id="wrap-fecha-factura"><label>Fecha de factura (para IVA)</label><input id="f-fecha-factura" type="date" value="${editing?editing.fechaFactura:today()}"></div>
+      <div class="field" id="wrap-numero-oc"><label>Nº de OC (opcional)</label><input id="f-numero-oc" placeholder="Ej: OC de otro sistema" value="${editing&&editing.numeroOC?editing.numeroOC:''}"></div>
       <div class="field span2 hidden" id="wrap-proveedor-nuevo"><label>Nombre del nuevo proveedor</label><input id="f-proveedor-nuevo" placeholder="Nombre"></div>
       <div class="field"><label>Cantidad</label><input id="f-cantidad" class="mono-in" type="number" value="${editing?editing.cantidad:1}" oninput="previewCompraMonto()"></div>
       <div class="field" id="wrap-unitario"><label>Precio unitario ($)</label><input id="f-unitario" class="mono-in" type="number" value="${editing?editing.unitario:0}" oninput="previewCompraMonto()"></div>
@@ -2165,7 +2166,7 @@ function onCategoriaChange(){
 }
 function onUsoStockChange(){
   const usoStock = document.getElementById('f-usostock').checked;
-  ['wrap-unitario','wrap-iva','wrap-forma','wrap-sinfecha','wrap-proveedor','wrap-factura','wrap-fecha-factura'].forEach(id=>document.getElementById(id).classList.toggle('hidden', usoStock));
+  ['wrap-unitario','wrap-iva','wrap-forma','wrap-sinfecha','wrap-proveedor','wrap-factura','wrap-fecha-factura','wrap-numero-oc'].forEach(id=>document.getElementById(id).classList.toggle('hidden', usoStock));
   document.getElementById('wrap-fecha').classList.toggle('hidden', usoStock || document.getElementById('f-sinfecha').checked);
   document.getElementById('wrap-proveedor-nuevo').classList.toggle('hidden', usoStock || document.getElementById('f-proveedor').value!=='__nuevo__');
   document.getElementById('wrap-stock-material').classList.toggle('hidden', !usoStock);
@@ -2218,6 +2219,7 @@ function submitCompra(editId){
   const monto = cantidad*unitario*(ivaAplica?1.21:1);
   const proveedorId = resolveProveedorId();
   const numeroFactura = document.getElementById('f-factura').value.trim() || null;
+  const numeroOC = document.getElementById('f-numero-oc').value.trim() || null;
   const fechaFactura = document.getElementById('f-fecha-factura').value || today();
   const formaPago = document.getElementById('f-forma').value;
   const sinFecha = document.getElementById('f-sinfecha').checked;
@@ -2226,10 +2228,10 @@ function submitCompra(editId){
   if(editId){
     const p = state.pagos.find(x=>x.id===editId);
     if(p.tipo==='obra' && p.obraId){ const oAnterior=getObra(p.obraId); if(oAnterior) oAnterior.real[categoriaParaReal(p.categoria)]-=p.monto; }
-    Object.assign(p, {tipo, obraId, categoria, concepto, cantidad, unitario, ivaAplica, monto, proveedorId, numeroFactura, fechaFactura, formaPago, fechaPago});
+    Object.assign(p, {tipo, obraId, categoria, concepto, cantidad, unitario, ivaAplica, monto, proveedorId, numeroFactura, numeroOC, fechaFactura, formaPago, fechaPago});
     if(tipo==='obra'){ const o=getObra(obraId); if(o) o.real[categoriaParaReal(categoria)]+=monto; }
   } else {
-    state.pagos.push({id:newId('p'), tipo, obraId, categoria, concepto, cantidad, unitario, ivaAplica, monto, proveedorId, numeroFactura, fechaFactura, formaPago, fechaPago, pagosRealizados:[]});
+    state.pagos.push({id:newId('p'), tipo, obraId, categoria, concepto, cantidad, unitario, ivaAplica, monto, proveedorId, numeroFactura, numeroOC, fechaFactura, formaPago, fechaPago, pagosRealizados:[]});
     if(tipo==='obra'){ const o=getObra(obraId); if(o) o.real[categoriaParaReal(categoria)]+=monto; }
   }
   closeModal(); renderAll();
