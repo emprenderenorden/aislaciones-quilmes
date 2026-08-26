@@ -846,14 +846,28 @@ function renderObraDetail(){
   if(o.estado==='finalizada') actions.innerHTML = `<button class="btn btn-ghost btn-sm" onclick="openPresupuestoBuilder('${o.id}')">Editar presupuesto</button>`;
   actions.innerHTML += `<button class="btn btn-ghost btn-sm" style="color:var(--bad);border-color:var(--bad);" onclick="eliminarObra('${o.id}')">Eliminar obra</button>`;
 
-  const cats = [['materiaPrima','M'],['manoObra','MO'],['logistica','L'],['estadia','E']];
-  const catCards = cats.map(([key,icon])=>{
-    const pres = o.presupuesto[key], real = o.real[key];
+  const catCardHTML = (label,icon,pres,real)=>{
     const pct = pres>0? Math.round(real/pres*100) : (real>0?100:0);
     const fillClass = pct>105?'bad':(pct>=90?'warn':'good');
-    return `<div class="card cat-card"><div class="cat-name"><div class="cat-icon">${icon}</div>${catLabel[key]}</div>
+    return `<div class="card cat-card"><div class="cat-name"><div class="cat-icon">${icon}</div>${label}</div>
       <div class="layerbar-wrap"><div class="layerbar"><div class="fill ${fillClass}" style="width:${Math.min(pct,100)}%;"></div></div><div class="layerbar-labels"><span>${pct}%</span><span>${fmt(real)} / ${fmt(pres)}</span></div></div></div>`;
-  }).join('') + `<div class="card cat-card"><div class="cat-name"><div class="cat-icon">+</div>Otros no previstos</div>
+  };
+  const cats = [['materiaPrima','M'],['manoObra','MO'],['estadia','E']];
+  const pagosObra = state.pagos.filter(p=>p.obraId===o.id);
+  const combustibleRealDirecto = pagosObra.filter(p=>p.categoria==='combustible').reduce((a,p)=>a+p.monto,0);
+  const telepaseReal = pagosObra.filter(p=>p.categoria==='telepase').reduce((a,p)=>a+p.monto,0);
+  // Gastos viejos (importados de Excel, antes de dividir Logística) quedaron con
+  // categoria "logistica" a secas: no desaparecen, se suman a Combustible para
+  // no perder plata de vista en las cards.
+  const logisticaSinDividir = Math.max(0, o.real.logistica - combustibleRealDirecto - telepaseReal);
+  const combustibleReal = combustibleRealDirecto + logisticaSinDividir;
+  const logItems = (o.presupuestoDetalle && o.presupuestoDetalle.logItems) || [];
+  const combustiblePres = logItems.filter(i=>/combustible|nafta|gasoil|gnc/i.test(i.detalle||'')).reduce((a,i)=>a+i.cantidad*i.unitario,0);
+  const telepasePres = logItems.filter(i=>!/combustible|nafta|gasoil|gnc/i.test(i.detalle||'')).reduce((a,i)=>a+i.cantidad*i.unitario,0);
+  const catCards = cats.map(([key,icon])=>catCardHTML(catLabel[key], icon, o.presupuesto[key], o.real[key])).join('')
+    + catCardHTML('Combustible', 'C', combustiblePres, combustibleReal)
+    + catCardHTML('Telepase', 'T', telepasePres, telepaseReal)
+    + `<div class="card cat-card"><div class="cat-name"><div class="cat-icon">+</div>Otros no previstos</div>
       <div class="layerbar-wrap"><div class="layerbar"><div class="fill ${o.real.otros>0?'bad':'good'}" style="width:${o.real.otros>0?100:0}%;"></div></div><div class="layerbar-labels"><span>sin presupuesto</span><span>${fmt(o.real.otros)}</span></div></div></div>`;
 
   const cobradoPct = o.ingresos.facturado>0? Math.round(o.ingresos.cobrado/o.ingresos.facturado*100):0;
