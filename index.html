@@ -600,13 +600,20 @@
 
 <script>
 /* ======================= STATE ======================= */
-const catLabel = {materiaPrima:'Materiales', manoObra:'Mano de obra', logistica:'Logística', estadia:'Estadía de obra', otros:'Otros no previstos', stock:'Reposición de stock'};
+// "logistica" queda como categoría heredada (para gastos viejos ya cargados
+// así); las cargas nuevas de logística se etiquetan como combustible o
+// telepase, pero ambas se siguen sumando al mismo total de "Logística" del
+// presupuesto/real de la obra (no se dividió ese total, solo el detalle).
+const catLabel = {materiaPrima:'Materiales', manoObra:'Mano de obra', logistica:'Logística', combustible:'Combustible', telepase:'Telepase', estadia:'Estadía de obra', otros:'Otros no previstos', stock:'Reposición de stock'};
 const catFijaLabel = {sueldo:'Sueldo', alquiler:'Alquiler', seguros:'Seguros', impuestos:'Impuestos', servicios:'Servicios (luz/gas/agua/internet)', mantenimiento:'Mantenimiento', otros:'Otros'};
+const categoriaParaReal = (categoria)=> (categoria==='combustible'||categoria==='telepase') ? 'logistica' : categoria;
 function catOptionsForTipo(tipo, selected){
   const opts = tipo==='obra'
-    ? {materiaPrima:'Materiales', manoObra:'Mano de obra', logistica:'Logística', estadia:'Estadía de obra', otros:'Otros no previstos'}
+    ? {materiaPrima:'Materiales', manoObra:'Mano de obra', combustible:'Combustible', telepase:'Telepase', estadia:'Estadía de obra', otros:'Otros no previstos'}
     : catFijaLabel;
-  return Object.entries(opts).map(([k,l])=>`<option value="${k}" ${selected===k?'selected':''}>${l}</option>`).join('');
+  let html = Object.entries(opts).map(([k,l])=>`<option value="${k}" ${selected===k?'selected':''}>${l}</option>`).join('');
+  if(selected && !opts[selected]) html += `<option value="${selected}" selected>${catLabel[selected]||catFijaLabel[selected]||selected}</option>`;
+  return html;
 }
 const fondoLabel = {costosFijos:'Costos Fijos', jornales:'Jornales', impuestos:'Impuestos', emergencias:'Emergencias', inversiones:'Inversiones', obras:'Obras', otros:'Otros'};
 function fondoOptionsHTML(selected){ return Object.entries(fondoLabel).map(([k,l])=>`<option value="${k}" ${selected===k?'selected':''}>${l}</option>`).join(''); }
@@ -867,6 +874,14 @@ function renderObraDetail(){
   const diffRow = (label,pres,real)=>`<tr><td>${label}</td><td class="num">${fmt(pres)}</td><td class="num">${fmt(real)}</td><td class="num" style="color:${real-pres>0?'var(--bad)':'var(--good)'};">${real-pres>=0?'+':''}${fmt(real-pres)}</td></tr>`;
 
   document.getElementById('obra-detail-content').innerHTML = `
+    <div class="card" style="margin-bottom:16px;padding:16px 18px;font-family:'Montserrat',sans-serif;background:${resultReal>=0?'var(--good-soft)':'var(--bad-soft)'};">
+      <div style="font-size:11.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px;">Resultado parcial de obra</div>
+      <div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px;">
+        <div style="font-size:24px;font-weight:700;color:${resultReal>=0?'var(--good)':'var(--bad)'};">${fmt(resultReal)}</div>
+        <div style="font-size:12.5px;color:var(--muted);">Cobrado ${fmt(o.ingresos.cobrado)} − Costos reales ${fmt(realTotal)}</div>
+      </div>
+    </div>
+
     <div class="section-title"><h2>Costos por categoría</h2><span class="hint">Presupuestado vs. real</span></div>
     <div class="cat-grid">${catCards}</div>
 
@@ -885,7 +900,7 @@ function renderObraDetail(){
     <div class="section-title"><h2>Materiales y gastos reales de la obra</h2><div class="st-actions">
       <select id="obra-gastos-cat-filter" class="filter-tab" style="padding:6px 10px;" onchange="setObraGastosCategoriaFilter(this.value)">
         <option value="todas" ${state.obraGastosCategoriaFilter==='todas'?'selected':''}>Todas las categorías</option>
-        ${['materiaPrima','manoObra','logistica','estadia','otros'].map(k=>`<option value="${k}" ${state.obraGastosCategoriaFilter===k?'selected':''}>${catLabel[k]}</option>`).join('')}
+        ${['materiaPrima','manoObra','combustible','telepase','logistica','estadia','otros'].map(k=>`<option value="${k}" ${state.obraGastosCategoriaFilter===k?'selected':''}>${catLabel[k]}</option>`).join('')}
       </select>
       <button class="btn btn-ghost btn-sm" onclick="openModalCompra('${o.id}')">+ Registrar compra/gasto</button>
     </div></div>
@@ -1864,7 +1879,7 @@ function submitEfectivizarOrden(id){
   const cantidadTotal = o.items.reduce((a,it)=>a+it.cantidad,0);
   const pago = {id:newId('p'), tipo:o.tipo, obraId:o.obraId, categoria:o.categoria||'costosFijos', concepto:ocProductosTxt(o), numeroOC:o.numero, cantidad:cantidadTotal, unitario:cantidadTotal?montoNeto/cantidadTotal:montoNeto, ivaAplica, monto, proveedorId:o.proveedorId, numeroFactura, fechaFactura, formaPago, fechaPago, pagosRealizados:[]};
   state.pagos.push(pago);
-  if(o.tipo==='obra'){ const obra=getObra(o.obraId); if(obra) obra.real[o.categoria]+=monto; }
+  if(o.tipo==='obra'){ const obra=getObra(o.obraId); if(obra) obra.real[categoriaParaReal(o.categoria)]+=monto; }
   o.estado='comprada'; o.pagoId=pago.id;
   closeModal(); renderAll();
 }
@@ -1880,8 +1895,8 @@ function setPagosFilter(f){
 function setPagosCategoriaFilter(v){ state.pagosCategoriaFilter = v; renderPagos(); }
 function categoriaOptionsForPagosFilter(){
   if(state.pagosFilter==='fijo') return catFijaLabel;
-  if(state.pagosFilter==='obra') return {materiaPrima:catLabel.materiaPrima, manoObra:catLabel.manoObra, logistica:catLabel.logistica, estadia:catLabel.estadia, otros:catLabel.otros};
-  return {materiaPrima:catLabel.materiaPrima, manoObra:catLabel.manoObra, logistica:catLabel.logistica, estadia:catLabel.estadia, ...catFijaLabel};
+  if(state.pagosFilter==='obra') return {materiaPrima:catLabel.materiaPrima, manoObra:catLabel.manoObra, combustible:catLabel.combustible, telepase:catLabel.telepase, logistica:catLabel.logistica, estadia:catLabel.estadia, otros:catLabel.otros};
+  return {materiaPrima:catLabel.materiaPrima, manoObra:catLabel.manoObra, combustible:catLabel.combustible, telepase:catLabel.telepase, logistica:catLabel.logistica, estadia:catLabel.estadia, ...catFijaLabel};
 }
 function renderPagos(){
   document.getElementById('pagos-table-egresos').classList.toggle('hidden', state.pagosFilter==='fima'||state.pagosFilter==='proveedores');
@@ -2210,12 +2225,12 @@ function submitCompra(editId){
 
   if(editId){
     const p = state.pagos.find(x=>x.id===editId);
-    if(p.tipo==='obra' && p.obraId){ const oAnterior=getObra(p.obraId); if(oAnterior) oAnterior.real[p.categoria]-=p.monto; }
+    if(p.tipo==='obra' && p.obraId){ const oAnterior=getObra(p.obraId); if(oAnterior) oAnterior.real[categoriaParaReal(p.categoria)]-=p.monto; }
     Object.assign(p, {tipo, obraId, categoria, concepto, cantidad, unitario, ivaAplica, monto, proveedorId, numeroFactura, fechaFactura, formaPago, fechaPago});
-    if(tipo==='obra'){ const o=getObra(obraId); if(o) o.real[categoria]+=monto; }
+    if(tipo==='obra'){ const o=getObra(obraId); if(o) o.real[categoriaParaReal(categoria)]+=monto; }
   } else {
     state.pagos.push({id:newId('p'), tipo, obraId, categoria, concepto, cantidad, unitario, ivaAplica, monto, proveedorId, numeroFactura, fechaFactura, formaPago, fechaPago, pagosRealizados:[]});
-    if(tipo==='obra'){ const o=getObra(obraId); if(o) o.real[categoria]+=monto; }
+    if(tipo==='obra'){ const o=getObra(obraId); if(o) o.real[categoriaParaReal(categoria)]+=monto; }
   }
   closeModal(); renderAll();
 }
