@@ -941,6 +941,7 @@ function obraPagosRows(obraId){
     const estadoTxt = est==='pagado'?'Pagado':(est==='parcial'?'Parcial':(est==='sin_fecha'?'Sin fecha':'Pendiente'));
     let action = (!p.numeroOC && !p.origenFondo) ? `<span class="link-btn" onclick="openModalCompra(null,'${p.id}')">Editar</span>` : '';
     if(est!=='pagado') action += `${action?' · ':''}<span class="link-btn" onclick="openModalFinalizarPago('${p.id}')">Registrar pago →</span>`;
+    if(est==='pagado'||est==='parcial') action += `${action?' · ':''}<span class="link-btn danger" onclick="revertirPago('${p.id}')">Revertir a pendiente</span>`;
     const prov = getProveedor(p.proveedorId);
     const provTxt = prov ? `${prov.nombre}${p.numeroFactura?' · '+p.numeroFactura:''}` : '—';
     return `<tr><td>${catLabel[p.categoria]||p.categoria}</td><td>${p.concepto}</td><td>${ocBadge(p.numeroOC)}</td><td>${provTxt}</td><td class="num">${fmt(p.monto)}</td><td class="num">${fmt(pagoSaldo(p))}</td><td class="mono">${p.fechaPago||'—'}</td><td><span class="estado-dot ${estadoDot}"></span>${estadoTxt}</td><td>${action}</td></tr>`;
@@ -1217,7 +1218,7 @@ function savePresupuesto(){
     if(ir){
       ['materiaPrima','manoObra','logistica','estadia','otros'].forEach(cat=>{
         const monto = real[cat];
-        if(monto>0) state.pagos.push({id:newId('p'), tipo:'obra', obraId:id, categoria:cat, concepto:'Importado desde Excel (total incurrido a la fecha)', cantidad:1, unitario:monto, ivaAplica:false, monto, proveedorId:null, numeroFactura:null, fechaFactura:fecha, formaPago:'Transferencia', fechaPago:fecha, pagosRealizados:[{fecha, monto, fondo:null, formaPago:'Transferencia'}]});
+        if(monto>0) state.pagos.push({id:newId('p'), tipo:'obra', obraId:id, categoria:cat, concepto:'Importado desde Excel (total incurrido a la fecha)', cantidad:1, unitario:monto, ivaAplica:false, monto, proveedorId:null, numeroFactura:null, fechaFactura:fecha, formaPago:'A definir', fechaPago:null, pagosRealizados:[]});
       });
     }
     state.selectedObraId = id;
@@ -1916,6 +1917,7 @@ function renderPagos(){
     const estadoTxt = est==='pagado'?'Pagado':(est==='parcial'?'Parcial':(est==='sin_fecha'?'Sin fecha':'Pendiente'));
     let action = (!p.numeroOC && !p.origenFondo) ? `<span class="link-btn" onclick="openModalCompra(null,'${p.id}')">Editar</span>` : '';
     if(est!=='pagado') action += `${action?' · ':''}<span class="link-btn" onclick="openModalFinalizarPago('${p.id}')">Registrar pago →</span>`;
+    if(est==='pagado'||est==='parcial') action += `${action?' · ':''}<span class="link-btn danger" onclick="revertirPago('${p.id}')">Revertir a pendiente</span>`;
     const destino = p.obraId ? `<span class="link-btn" onclick="goToObra('${p.obraId}')"><span class="obra-code">${getObra(p.obraId)?.code||''}</span></span>` : (p.tipo==='stock' ? 'Stock' : 'Negocio general');
     const prov = getProveedor(p.proveedorId);
     const provTxt = prov ? `${prov.nombre}${p.numeroFactura?' · '+p.numeroFactura:''}` : '—';
@@ -2259,6 +2261,22 @@ function submitFinalizarPago(pagoId){
     state.caja -= monto;
   }
   closeModal(); renderAll();
+}
+function revertirPago(pagoId){
+  const p = state.pagos.find(x=>x.id===pagoId);
+  if(!p || !(p.pagosRealizados||[]).length) return;
+  if(!confirm(`¿Revertir "${p.concepto}" a pendiente? Se le devuelve la plata registrada a la caja o al fondo FIMA correspondiente, y el gasto vuelve a quedar sin fecha de pago.`)) return;
+  p.pagosRealizados.forEach(pr=>{
+    if(pr.fondo) state.fondos[pr.fondo] += pr.monto;
+    else state.caja += pr.monto;
+  });
+  state.movimientosFima = state.movimientosFima.filter(m=>{
+    return !p.pagosRealizados.some(pr=>pr.fondo && m.tipo==='out' && m.fondo===pr.fondo && m.obraId===p.obraId && m.concepto===p.concepto && m.monto===pr.monto);
+  });
+  p.pagosRealizados = [];
+  p.fechaPago = null;
+  p.origenFondo = null;
+  renderAll();
 }
 
 function openModalMovimientoFima(){
