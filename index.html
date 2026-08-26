@@ -957,7 +957,7 @@ function obraPagosRows(obraId){
     let action = (!state.ordenesCompra.some(oc=>oc.pagoId===p.id) && !p.origenFondo) ? `<span class="link-btn" onclick="openModalCompra(null,'${p.id}')">Editar</span>` : '';
     if(est!=='pagado') action += `${action?' · ':''}<span class="link-btn" onclick="openModalFinalizarPago('${p.id}')">Registrar pago →</span>`;
     if(est==='pagado'||est==='parcial') action += `${action?' · ':''}<span class="link-btn danger" onclick="revertirPago('${p.id}')">Revertir a pendiente</span>`;
-    if(pagoMontoPagado(p)===0 && !p.origenFondo) action += `${action?' · ':''}<span class="link-btn danger" onclick="eliminarGasto('${p.id}')">Eliminar</span>`;
+    action += `${action?' · ':''}<span class="link-btn danger" onclick="eliminarGasto('${p.id}')">Eliminar</span>`;
     const prov = getProveedor(p.proveedorId);
     const provTxt = prov ? `${prov.nombre}${p.numeroFactura?' · '+p.numeroFactura:''}` : '—';
     return `<tr><td>${catLabel[p.categoria]||p.categoria}</td><td>${p.concepto}</td><td>${ocBadge(p.numeroOC)}</td><td>${provTxt}</td><td class="num">${fmt(p.monto)}</td><td class="num">${fmt(pagoSaldo(p))}</td><td class="mono">${p.fechaPago||'—'}</td><td><span class="estado-dot ${estadoDot}"></span>${estadoTxt}</td><td>${action}</td></tr>`;
@@ -1934,7 +1934,7 @@ function renderPagos(){
     let action = (!state.ordenesCompra.some(oc=>oc.pagoId===p.id) && !p.origenFondo) ? `<span class="link-btn" onclick="openModalCompra(null,'${p.id}')">Editar</span>` : '';
     if(est!=='pagado') action += `${action?' · ':''}<span class="link-btn" onclick="openModalFinalizarPago('${p.id}')">Registrar pago →</span>`;
     if(est==='pagado'||est==='parcial') action += `${action?' · ':''}<span class="link-btn danger" onclick="revertirPago('${p.id}')">Revertir a pendiente</span>`;
-    if(pagoMontoPagado(p)===0 && !p.origenFondo) action += `${action?' · ':''}<span class="link-btn danger" onclick="eliminarGasto('${p.id}')">Eliminar</span>`;
+    action += `${action?' · ':''}<span class="link-btn danger" onclick="eliminarGasto('${p.id}')">Eliminar</span>`;
     const destino = p.obraId ? `<span class="link-btn" onclick="goToObra('${p.obraId}')"><span class="obra-code">${getObra(p.obraId)?.code||''}</span></span>` : (p.tipo==='stock' ? 'Stock' : 'Negocio general');
     const prov = getProveedor(p.proveedorId);
     const provTxt = prov ? `${prov.nombre}${p.numeroFactura?' · '+p.numeroFactura:''}` : '—';
@@ -2301,8 +2301,20 @@ function revertirPago(pagoId){
 function eliminarGasto(pagoId){
   const p = state.pagos.find(x=>x.id===pagoId);
   if(!p) return;
-  if(pagoMontoPagado(p)>0){ alert('Este gasto ya tiene un pago real registrado. Primero usá "Revertir a pendiente" para deshacer ese pago antes de eliminarlo.'); return; }
-  if(!confirm(`¿Eliminar el gasto "${p.concepto}" (${fmt(p.monto)})? Esta acción no se puede deshacer.`)) return;
+  const tienePagoReal = (p.pagosRealizados||[]).length>0;
+  const advertencia = tienePagoReal
+    ? `El gasto "${p.concepto}" (${fmt(p.monto)}) ya tiene plata real pagada. Al eliminarlo se le devuelve esa plata a la caja o al fondo FIMA correspondiente, y se borra la línea. Esta acción no se puede deshacer.\n\n¿Eliminar igual?`
+    : `¿Eliminar el gasto "${p.concepto}" (${fmt(p.monto)})? Esta acción no se puede deshacer.`;
+  if(!confirm(advertencia)) return;
+  if(tienePagoReal){
+    p.pagosRealizados.forEach(pr=>{
+      if(pr.fondo) state.fondos[pr.fondo] += pr.monto;
+      else state.caja += pr.monto;
+    });
+    state.movimientosFima = state.movimientosFima.filter(m=>{
+      return !p.pagosRealizados.some(pr=>pr.fondo && m.tipo==='out' && m.fondo===pr.fondo && m.obraId===p.obraId && m.concepto===p.concepto && m.monto===pr.monto);
+    });
+  }
   if(p.tipo==='obra' && p.obraId){ const o=getObra(p.obraId); if(o) o.real[categoriaParaReal(p.categoria)] -= p.monto; }
   state.ordenesCompra.forEach(oc=>{ if(oc.pagoId===p.id){ oc.pagoId=null; oc.estado='pendiente'; } });
   state.pagos = state.pagos.filter(x=>x.id!==pagoId);
