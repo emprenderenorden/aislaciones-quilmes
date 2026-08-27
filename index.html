@@ -355,7 +355,7 @@
     <div class="section-title"><h2>Parámetros del presupuesto</h2></div>
     <div class="card">
       <div class="form-grid">
-        <div class="field"><label>Beneficio (factor sobre costos) <span id="pb-benef-pct-hint" class="hint"></span></label><input id="pb-benef" class="cell-input mono-in" type="number" step="0.01" value="1.08" oninput="recomputeBuildTotals()"></div>
+        <div class="field"><label>Beneficio (% sobre costos)</label><input id="pb-benef" class="cell-input mono-in" type="number" step="1" value="108" oninput="recomputeBuildTotals()"></div>
         <div class="field"><label>Provincia (IIBB)</label>
           <select id="pb-provincia" class="cell-input" onchange="recomputeBuildTotals()">
             <option value="0.04">Córdoba (4%)</option><option value="0.05">Buenos Aires (5%)</option><option value="0.03">CABA (3%)</option>
@@ -1102,7 +1102,7 @@ function openPresupuestoBuilder(obraId){
   buildState = freshBuildState();
   document.getElementById('pb-code').value=''; document.getElementById('pb-cliente').value=''; document.getElementById('pb-encargado').value='';
   document.getElementById('pb-fecha').value=today(); document.getElementById('pb-fecha-factura').value=today(); document.getElementById('pb-cotizacion').value=1450;
-  document.getElementById('pb-benef').value=1.08; document.getElementById('pb-debcred').value=0.6; document.getElementById('pb-iva').value=21; document.getElementById('pb-descuento').value=0;
+  document.getElementById('pb-benef').value=108; document.getElementById('pb-debcred').value=0.6; document.getElementById('pb-iva').value=21; document.getElementById('pb-descuento').value=0;
   document.getElementById('pb-dias').value=0;
   document.getElementById('pb-vendedor-pct').value=8; document.getElementById('pb-socio1-nombre').value='AL'; document.getElementById('pb-socio1-pct').value=10;
   document.getElementById('pb-socio2-nombre').value='JL'; document.getElementById('pb-socio2-pct').value=30;
@@ -1119,7 +1119,7 @@ function openPresupuestoBuilder(obraId){
     if(o.presupuestoDetalle){
       const d = o.presupuestoDetalle;
       buildState.mpItems = d.mpItems.map(i=>({...i})); buildState.logItems = d.logItems.map(i=>({...i})); buildState.estItems = d.estItems.map(i=>({...i})); buildState.moRoles = d.moRoles.map(i=>({...i}));
-      document.getElementById('pb-cotizacion').value = d.cotizacion; document.getElementById('pb-benef').value = d.factor; document.getElementById('pb-debcred').value = d.debCredPct; document.getElementById('pb-iva').value = d.ivaPct; document.getElementById('pb-descuento').value = d.descuentoPct; document.getElementById('pb-dias').value = d.dias;
+      document.getElementById('pb-cotizacion').value = d.cotizacion; document.getElementById('pb-benef').value = (d.factor||0)*100; document.getElementById('pb-debcred').value = d.debCredPct; document.getElementById('pb-iva').value = d.ivaPct; document.getElementById('pb-descuento').value = d.descuentoPct; document.getElementById('pb-dias').value = d.dias;
       document.getElementById('pb-vendedor-pct').value = d.vendedorPct??8; document.getElementById('pb-socio1-nombre').value = d.socio1Nombre||'AL'; document.getElementById('pb-socio1-pct').value = d.socio1Pct??10;
       document.getElementById('pb-socio2-nombre').value = d.socio2Nombre||'JL'; document.getElementById('pb-socio2-pct').value = d.socio2Pct??30;
     }
@@ -1168,12 +1168,12 @@ function recomputeBuildTotals(){
   document.getElementById('est-subtotal').textContent = fmt(estTotal);
   const materialesARS = mpTotal+logTotal+estTotal;
   const moSubtotalDia = buildState.moRoles.reduce((a,r)=>a+r.salario*r.cantidad,0);
-  document.getElementById('mo-subtotal').textContent = fmt(moSubtotalDia) + ' / día';
   const dias = +document.getElementById('pb-dias').value||0;
   const manoObraARS = moSubtotalDia*dias;
+  document.getElementById('mo-subtotal').textContent = `${fmt(moSubtotalDia)} / día × ${dias} días = ${fmt(manoObraARS)}`;
   const costosARS = materialesARS+manoObraARS;
-  const factor = +document.getElementById('pb-benef').value||0;
-  const benefHint = document.getElementById('pb-benef-pct-hint'); if(benefHint) benefHint.textContent = `= ${Math.round(factor*100)}%`;
+  const benefPct = +document.getElementById('pb-benef').value||0;
+  const factor = benefPct/100;
   const beneficioARS = costosARS*factor;
   const baseImp = costosARS+beneficioARS;
   const ivaPct = (+document.getElementById('pb-iva').value||0)/100;
@@ -1203,7 +1203,7 @@ function recomputeBuildTotals(){
     <div class="summary-line"><span>Materiales (materia prima + logística + estadía)</span><span class="mono">${fmt(materialesARS)}</span></div>
     <div class="summary-line"><span>Mano de obra (subtotal/día × días)</span><span class="mono">${fmt(manoObraARS)}</span></div>
     <div class="summary-line divider total"><span>Costos</span><span class="mono">${fmt(costosARS)}</span></div>
-    <div class="summary-line"><span>+ Beneficio (${Math.round(factor*100)}%)</span><span class="mono">${fmt(beneficioARS)}</span></div>
+    <div class="summary-line"><span>+ Beneficio (${benefPct}%)</span><span class="mono">${fmt(beneficioARS)}</span></div>
     <div class="summary-line sub"><span>Débito/crédito</span><span class="mono">${fmt(impDebCred)}</span></div>
     <div class="summary-line sub"><span>IIBB</span><span class="mono">${fmt(impIIBB)}</span></div>
     <div class="summary-line"><span>+ Impuestos</span><span class="mono">${fmt(impuestosARS)}</span></div>
@@ -1230,7 +1230,7 @@ function savePresupuesto(){
   const detalle = {
     mpItems: buildState.mpItems.map(i=>({...i})), logItems: buildState.logItems.map(i=>({...i})), estItems: buildState.estItems.map(i=>({...i})), moRoles: buildState.moRoles.map(i=>({...i})),
     dias: +document.getElementById('pb-dias').value||0, cotizacion: +document.getElementById('pb-cotizacion').value||1450,
-    factor: +document.getElementById('pb-benef').value||0, iibbPct: +document.getElementById('pb-provincia').value||0,
+    factor: (+document.getElementById('pb-benef').value||0)/100, iibbPct: +document.getElementById('pb-provincia').value||0,
     debCredPct: +document.getElementById('pb-debcred').value||0, ivaPct: +document.getElementById('pb-iva').value||0, descuentoPct: +document.getElementById('pb-descuento').value||0,
     vendedorPct: +document.getElementById('pb-vendedor-pct').value||0, socio1Nombre: document.getElementById('pb-socio1-nombre').value.trim()||'Socio 1', socio1Pct: +document.getElementById('pb-socio1-pct').value||0,
     socio2Nombre: document.getElementById('pb-socio2-nombre').value.trim()||'Socio 2', socio2Pct: +document.getElementById('pb-socio2-pct').value||0,
@@ -1332,7 +1332,7 @@ function handleImportExcel(evt){
       buildState.moRoles = leerMoRoles_(ps);
 
       const dias = valorEtiqueta_(ps,'A','TIEMPO DE OBRA (DÍAS)','F'); if(dias) document.getElementById('pb-dias').value = dias;
-      const factor = cell(ps,'C86'); if(factor) document.getElementById('pb-benef').value = factor;
+      const factor = cell(ps,'C86'); if(factor) document.getElementById('pb-benef').value = factor*100;
       const debCred = valorEtiqueta_(ps,'F','IMP DEBITO|CREDITO','H'); if(debCred) document.getElementById('pb-debcred').value = debCred*100;
       const ivaPct = valorEtiqueta_(ps,'F','IVA','H'); if(ivaPct) document.getElementById('pb-iva').value = ivaPct*100;
       const iibb = valorEtiqueta_(ps,'F','IIBB','H'); if(iibb){ const sel=document.getElementById('pb-provincia'); for(const opt of sel.options){ if(Math.abs(+opt.value-iibb)<0.001){ sel.value=opt.value; break; } } }
