@@ -287,7 +287,7 @@
       <div class="card" style="margin-bottom:16px;">
         <div class="form-grid">
           <div class="field span2"><label>Buscar</label><input id="obra-filter-q" placeholder="Código, cliente o encargado…" oninput="renderObraLista()"></div>
-          <div class="field"><label>Estado</label><select id="obra-filter-estado" onchange="renderObraLista()"><option value="todos">Todos</option><option value="borrador">Borrador</option><option value="en curso">En curso</option><option value="finalizada">Finalizada</option></select></div>
+          <div class="field"><label>Estado</label><select id="obra-filter-estado" onchange="renderObraLista()"><option value="todos">Todos</option><option value="borrador">Borrador</option><option value="aceptado">Aceptado</option><option value="rechazado">Rechazado</option><option value="en curso">En curso</option><option value="finalizada">Finalizada</option></select></div>
           <div class="field"><label>Inicio desde</label><input id="obra-filter-desde" type="date" onchange="renderObraLista()"></div>
           <div class="field"><label>Inicio hasta</label><input id="obra-filter-hasta" type="date" onchange="renderObraLista()"></div>
         </div>
@@ -355,7 +355,7 @@
     <div class="section-title"><h2>Parámetros del presupuesto</h2></div>
     <div class="card">
       <div class="form-grid">
-        <div class="field"><label>Beneficio (factor sobre costos)</label><input id="pb-benef" class="cell-input mono-in" type="number" step="0.01" value="1.08" oninput="recomputeBuildTotals()"></div>
+        <div class="field"><label>Beneficio (factor sobre costos) <span id="pb-benef-pct-hint" class="hint"></span></label><input id="pb-benef" class="cell-input mono-in" type="number" step="0.01" value="1.08" oninput="recomputeBuildTotals()"></div>
         <div class="field"><label>Provincia (IIBB)</label>
           <select id="pb-provincia" class="cell-input" onchange="recomputeBuildTotals()">
             <option value="0.04">Córdoba (4%)</option><option value="0.05">Buenos Aires (5%)</option><option value="0.03">CABA (3%)</option>
@@ -606,6 +606,7 @@
 // presupuesto/real de la obra (no se dividió ese total, solo el detalle).
 const catLabel = {materiaPrima:'Materiales', manoObra:'Mano de obra', logistica:'Logística', combustible:'Combustible', telepase:'Telepase', estadia:'Estadía de obra', otros:'Otros no previstos', stock:'Reposición de stock'};
 const catFijaLabel = {sueldo:'Sueldo', alquiler:'Alquiler', seguros:'Seguros', impuestos:'Impuestos', servicios:'Servicios (luz/gas/agua/internet)', mantenimiento:'Mantenimiento', otros:'Otros'};
+const estadoColor = {borrador:'var(--muted)', aceptado:'var(--good)', rechazado:'var(--bad)', 'en curso':'var(--warn)', finalizada:'var(--good)'};
 const categoriaParaReal = (categoria)=> (categoria==='combustible'||categoria==='telepase') ? 'logistica' : categoria;
 function catOptionsForTipo(tipo, selected){
   const opts = tipo==='obra'
@@ -839,9 +840,11 @@ function renderObraDetail(){
   document.getElementById('obra-meta-row').innerHTML = `
     <div class="obra-meta-item"><div class="m-label">Encargado</div><div class="m-value">${o.encargado}</div></div>
     <div class="obra-meta-item"><div class="m-label">Inicio</div><div class="m-value">${o.fechaInicio}</div></div>
-    <div class="obra-meta-item"><div class="m-label">Estado</div><div class="m-value" style="color:${o.estado==='borrador'?'var(--muted)':o.estado==='finalizada'?'var(--good)':'var(--warn)'};">${o.estado}</div></div>`;
+    <div class="obra-meta-item"><div class="m-label">Estado</div><div class="m-value" style="color:${estadoColor[o.estado]||'var(--warn)'};">${o.estado}</div></div>`;
   const actions = document.getElementById('obra-lifecycle-actions'); actions.innerHTML='';
-  if(o.estado==='borrador') actions.innerHTML = `<button class="btn btn-ghost btn-sm" onclick="openPresupuestoBuilder('${o.id}')">Editar presupuesto</button><button class="btn btn-dark btn-sm" onclick="iniciarObra('${o.id}')">Iniciar obra</button>`;
+  if(o.estado==='borrador') actions.innerHTML = `<button class="btn btn-ghost btn-sm" onclick="openPresupuestoBuilder('${o.id}')">Editar presupuesto</button><button class="btn btn-dark btn-sm" onclick="aceptarPresupuesto('${o.id}')">Aceptar presupuesto</button><button class="btn btn-ghost btn-sm" style="color:var(--bad);border-color:var(--bad);" onclick="rechazarPresupuesto('${o.id}')">Rechazar presupuesto</button>`;
+  if(o.estado==='aceptado') actions.innerHTML = `<button class="btn btn-ghost btn-sm" onclick="openPresupuestoBuilder('${o.id}')">Editar presupuesto</button><button class="btn btn-dark btn-sm" onclick="iniciarObra('${o.id}')">Iniciar obra</button>`;
+  if(o.estado==='rechazado') actions.innerHTML = `<button class="btn btn-ghost btn-sm" onclick="openPresupuestoBuilder('${o.id}')">Editar presupuesto</button><button class="btn btn-ghost btn-sm" onclick="volverABorrador('${o.id}')">Volver a borrador</button>`;
   if(o.estado==='en curso') actions.innerHTML = `<button class="btn btn-ghost btn-sm" onclick="openPresupuestoBuilder('${o.id}')">Editar presupuesto</button><button class="btn btn-ghost btn-sm" onclick="finalizarObra('${o.id}')">Finalizar obra</button>`;
   if(o.estado==='finalizada') actions.innerHTML = `<button class="btn btn-ghost btn-sm" onclick="openPresupuestoBuilder('${o.id}')">Editar presupuesto</button>`;
   actions.innerHTML += `<button class="btn btn-ghost btn-sm" style="color:var(--bad);border-color:var(--bad);" onclick="eliminarObra('${o.id}')">Eliminar obra</button>`;
@@ -902,7 +905,7 @@ function renderObraDetail(){
     <div class="section-title"><h2>Presupuesto → Facturación</h2><span class="hint">Costos, beneficio, impuestos e IVA</span></div>
     <div class="card" style="font-family:'Montserrat',sans-serif;font-size:13px;">
       <div class="summary-line"><span>Costos (materiales + mano de obra)</span><span>${fmt(o.presupuestoResumen.costos)}</span></div>
-      <div class="summary-line"><span>+ Beneficio</span><span>${fmt(o.presupuestoResumen.beneficio)}</span></div>
+      <div class="summary-line"><span>+ Beneficio${pd.factor?` (${Math.round(pd.factor*100)}%)`:''}</span><span>${fmt(o.presupuestoResumen.beneficio)}</span></div>
       <div class="summary-line"><span>+ Impuestos (IIBB + débito/crédito)</span><span>${fmt(o.presupuestoResumen.impuestos)}</span></div>
       <div class="summary-line divider total"><span>Subtotal presupuesto</span><span>${fmt(o.presupuestoResumen.subtotalPresupuesto)}</span></div>
       <div class="summary-line sub"><span>− Descuento</span><span>${fmt(o.presupuestoResumen.descuento)}</span></div>
@@ -1028,6 +1031,9 @@ function eliminarDocumentoObra(obraId, docId){
   o.documentos = (o.documentos||[]).filter(d=>d.id!==docId);
   renderAll();
 }
+function aceptarPresupuesto(id){ getObra(id).estado='aceptado'; renderAll(); }
+function rechazarPresupuesto(id){ if(!confirm('¿Marcar este presupuesto como rechazado por el cliente?')) return; getObra(id).estado='rechazado'; renderAll(); }
+function volverABorrador(id){ getObra(id).estado='borrador'; renderAll(); }
 function iniciarObra(id){ getObra(id).estado='en curso'; renderAll(); }
 function finalizarObra(id){ getObra(id).estado='finalizada'; renderAll(); }
 function toggleSinCobrosPendientes(id){ const o=getObra(id); o.sinCobrosPendientes = !o.sinCobrosPendientes; renderAll(); }
@@ -1162,6 +1168,7 @@ function recomputeBuildTotals(){
   const manoObraARS = moSubtotalDia*dias;
   const costosARS = materialesARS+manoObraARS;
   const factor = +document.getElementById('pb-benef').value||0;
+  const benefHint = document.getElementById('pb-benef-pct-hint'); if(benefHint) benefHint.textContent = `= ${Math.round(factor*100)}%`;
   const beneficioARS = costosARS*factor;
   const baseImp = costosARS+beneficioARS;
   const ivaPct = (+document.getElementById('pb-iva').value||0)/100;
@@ -1191,7 +1198,7 @@ function recomputeBuildTotals(){
     <div class="summary-line"><span>Materiales (materia prima + logística + estadía)</span><span class="mono">${fmt(materialesARS)}</span></div>
     <div class="summary-line"><span>Mano de obra (subtotal/día × días)</span><span class="mono">${fmt(manoObraARS)}</span></div>
     <div class="summary-line divider total"><span>Costos</span><span class="mono">${fmt(costosARS)}</span></div>
-    <div class="summary-line"><span>+ Beneficio (factor ${factor})</span><span class="mono">${fmt(beneficioARS)}</span></div>
+    <div class="summary-line"><span>+ Beneficio (${Math.round(factor*100)}%)</span><span class="mono">${fmt(beneficioARS)}</span></div>
     <div class="summary-line sub"><span>Débito/crédito</span><span class="mono">${fmt(impDebCred)}</span></div>
     <div class="summary-line sub"><span>IIBB</span><span class="mono">${fmt(impIIBB)}</span></div>
     <div class="summary-line"><span>+ Impuestos</span><span class="mono">${fmt(impuestosARS)}</span></div>
