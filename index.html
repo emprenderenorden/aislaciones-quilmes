@@ -619,6 +619,11 @@ function catOptionsForTipo(tipo, selected){
 const fondoLabel = {costosFijos:'Costos Fijos', jornales:'Jornales', impuestos:'Impuestos', emergencias:'Emergencias', inversiones:'Inversiones', obras:'Obras', otros:'Otros'};
 function fondoOptionsHTML(selected){ return Object.entries(fondoLabel).map(([k,l])=>`<option value="${k}" ${selected===k?'selected':''}>${l}</option>`).join(''); }
 const fmt = (n)=> '$ ' + Math.round(n||0).toLocaleString('es-AR');
+// Las fechas se guardan/comparan siempre en formato ISO (YYYY-MM-DD); esto
+// solo se usa para MOSTRARLAS como dd/mm/aaaa. Si llega algo que no tiene
+// pinta de fecha ISO (por ejemplo un valor viejo mal guardado) se muestra
+// tal cual en vez de romper la pantalla.
+const fmtFecha = (iso)=>{ if(!iso) return '—'; const m = String(iso).match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? `${m[3]}/${m[2]}/${m[1]}` : String(iso); };
 const today = ()=> new Date().toISOString().slice(0,10);
 let idCounter = 0;
 // Combina hora exacta + contador + azar, para que dos dispositivos distintos
@@ -800,7 +805,7 @@ function renderObraLista(){
     return `<tr style="cursor:pointer;" onclick="goToObra('${o.id}')">
       <td><span class="obra-code">${o.code}</span></td>
       <td>${o.cliente? o.cliente+' · ':''}${o.encargado}</td>
-      <td class="mono">${o.fechaInicio}</td>
+      <td class="mono">${fmtFecha(o.fechaInicio)}</td>
       <td><span class="estado-dot ${fillClass}"></span>${o.estado}</td>
       <td><div class="layerbar-wrap"><div class="layerbar"><div class="fill ${fillClass}" style="width:${Math.min(pct,100)}%;"></div></div><div class="layerbar-labels"><span>${pct}%</span></div></div></td>
       <td><span class="link-btn">Ver detalle →</span></td>
@@ -818,7 +823,7 @@ function renderDashboard(){
     <div class="card kpi"><div class="kpi-label">Liquidez disponible</div><div class="kpi-value">${fmt(liquidezTotal())}</div><div class="kpi-note">Caja + saldos FIMA</div></div>
     <div class="card kpi"><div class="kpi-label">Ganancia real acumulada</div><div class="kpi-value">${fmt(gananciaReal)}</div><div class="kpi-note">Proyectada ${fmt(gananciaProy)}</div></div>
     <div class="card kpi"><div class="kpi-label">Obras activas</div><div class="kpi-value">${state.obras.filter(o=>o.estado==='en curso').length}</div><div class="kpi-note">${state.obras.filter(o=>obraRealTotal(o)>obraPresTotal(o)).length} por encima del presupuesto</div></div>
-    <div class="card kpi"><div class="kpi-label">Pagos pendientes <span class="tag warn">${pendientes.length}</span></div><div class="kpi-value">${fmt(pendientesTotal)}</div><div class="kpi-note">${pendientes[0]? (pendientes[0].fechaPago||'sin fecha asignada') : 'Sin pendientes'}</div></div>
+    <div class="card kpi"><div class="kpi-label">Pagos pendientes <span class="tag warn">${pendientes.length}</span></div><div class="kpi-value">${fmt(pendientesTotal)}</div><div class="kpi-note">${pendientes[0]? (pendientes[0].fechaPago?fmtFecha(pendientes[0].fechaPago):'sin fecha asignada') : 'Sin pendientes'}</div></div>
   `;
   document.getElementById('obras-dashboard-body').innerHTML = state.obras.map(o=>{
     const pres = obraPresTotal(o), real = obraRealTotal(o);
@@ -829,7 +834,7 @@ function renderDashboard(){
       <td><span class="estado-dot ${fillClass}"></span>${o.estado}</td><td><span class="link-btn" onclick="goToObra('${o.id}')">Ver detalle →</span></td></tr>`;
   }).join('') || `<tr class="empty-row"><td colspan="5">No hay obras cargadas</td></tr>`;
   const pend = state.pagos.filter(p=>pagoEstado(p)==='pendiente'||pagoEstado(p)==='parcial').sort((a,b)=>(a.fechaPago||'').localeCompare(b.fechaPago||''));
-  document.getElementById('vencimientos-body').innerHTML = pend.length ? pend.map(p=>`<tr><td class="mono">${p.fechaPago}</td><td>${p.obraId?`<span class="obra-code">${getObra(p.obraId).code}</span>`:'—'}</td><td>${p.concepto}${pagoEstado(p)==='parcial'?' <span class="tag warn">parcial</span>':''}</td><td class="num">${fmt(pagoSaldo(p))}</td><td><span class="tag warn">Pendiente</span></td></tr>`).join('') : `<tr class="empty-row"><td colspan="5">No hay pagos con fecha pendiente</td></tr>`;
+  document.getElementById('vencimientos-body').innerHTML = pend.length ? pend.map(p=>`<tr><td class="mono">${fmtFecha(p.fechaPago)}</td><td>${p.obraId?`<span class="obra-code">${getObra(p.obraId).code}</span>`:'—'}</td><td>${p.concepto}${pagoEstado(p)==='parcial'?' <span class="tag warn">parcial</span>':''}</td><td class="num">${fmt(pagoSaldo(p))}</td><td><span class="tag warn">Pendiente</span></td></tr>`).join('') : `<tr class="empty-row"><td colspan="5">No hay pagos con fecha pendiente</td></tr>`;
 }
 
 /* ======================= RENDER: OBRA ======================= */
@@ -839,7 +844,7 @@ function renderObraDetail(){
   document.getElementById('obra-picker-code').textContent = o.code;
   document.getElementById('obra-meta-row').innerHTML = `
     <div class="obra-meta-item"><div class="m-label">Encargado</div><div class="m-value">${o.encargado}</div></div>
-    <div class="obra-meta-item"><div class="m-label">Inicio</div><div class="m-value">${o.fechaInicio}</div></div>
+    <div class="obra-meta-item"><div class="m-label">Inicio</div><div class="m-value">${fmtFecha(o.fechaInicio)}</div></div>
     <div class="obra-meta-item"><div class="m-label">Estado</div><div class="m-value" style="color:${estadoColor[o.estado]||'var(--warn)'};">${o.estado}</div></div>`;
   const actions = document.getElementById('obra-lifecycle-actions'); actions.innerHTML='';
   if(o.estado==='borrador') actions.innerHTML = `<button class="btn btn-ghost btn-sm" onclick="openPresupuestoBuilder('${o.id}')">Editar presupuesto</button><button class="btn btn-dark btn-sm" onclick="aceptarPresupuesto('${o.id}')">Aceptar presupuesto</button><button class="btn btn-ghost btn-sm" style="color:var(--bad);border-color:var(--bad);" onclick="rechazarPresupuesto('${o.id}')">Rechazar presupuesto</button>`;
@@ -935,7 +940,7 @@ function renderObraDetail(){
     </div>
     <div class="card card-table" style="margin-top:10px;"><table>
       <thead><tr><th>Fecha</th><th>Medio de pago</th><th>Nº factura</th><th>Nº cobranza</th><th class="num">Monto</th><th></th></tr></thead>
-      <tbody>${(o.ingresosList&&o.ingresosList.length) ? o.ingresosList.map(i=>`<tr><td class="mono">${i.fecha}</td><td>${i.medioPago}</td><td>${i.numeroFactura||'—'}</td><td>${i.numeroCobranza||'—'}</td><td class="num">${fmt(i.monto)}</td><td><span class="link-btn" onclick="openModalIngreso('${o.id}','${i.id}')">Editar</span></td></tr>`).join('') : `<tr class="empty-row"><td colspan="6">Sin cobros registrados</td></tr>`}</tbody>
+      <tbody>${(o.ingresosList&&o.ingresosList.length) ? o.ingresosList.map(i=>`<tr><td class="mono">${fmtFecha(i.fecha)}</td><td>${i.medioPago}</td><td>${i.numeroFactura||'—'}</td><td>${i.numeroCobranza||'—'}</td><td class="num">${fmt(i.monto)}</td><td><span class="link-btn" onclick="openModalIngreso('${o.id}','${i.id}')">Editar</span></td></tr>`).join('') : `<tr class="empty-row"><td colspan="6">Sin cobros registrados</td></tr>`}</tbody>
     </table></div>
 
     <div class="section-title"><h2>Documentos</h2><div class="st-actions"><button class="btn btn-ghost btn-sm" onclick="openModalDocumentoObra('${o.id}')">+ Agregar documento</button></div></div>
@@ -977,11 +982,11 @@ function obraPagosRows(obraId){
     action += `${action?' · ':''}<span class="link-btn danger" onclick="eliminarGasto('${p.id}')">Eliminar</span>`;
     const prov = getProveedor(p.proveedorId);
     const provTxt = prov ? `${prov.nombre}${p.numeroFactura?' · '+p.numeroFactura:''}` : '—';
-    return `<tr><td>${catLabel[p.categoria]||p.categoria}</td><td>${p.concepto}</td><td>${ocBadge(p.numeroOC)}</td><td>${provTxt}</td><td class="num">${fmt(p.monto)}</td><td class="num">${fmt(pagoSaldo(p))}</td><td class="mono">${p.fechaPago||'—'}</td><td><span class="estado-dot ${estadoDot}"></span>${estadoTxt}</td><td>${action}</td></tr>`;
+    return `<tr><td>${catLabel[p.categoria]||p.categoria}</td><td>${p.concepto}</td><td>${ocBadge(p.numeroOC)}</td><td>${provTxt}</td><td class="num">${fmt(p.monto)}</td><td class="num">${fmt(pagoSaldo(p))}</td><td class="mono">${fmtFecha(p.fechaPago)}</td><td><span class="estado-dot ${estadoDot}"></span>${estadoTxt}</td><td>${action}</td></tr>`;
   });
   const stockRows = (catFiltro==='todas' || catFiltro==='materiaPrima') ? state.stockMovimientos.filter(m=>m.tipo==='consumo' && m.obraId===obraId).map(m=>{
     const item = getStockItem(m.stockId);
-    return `<tr><td>Materiales</td><td>${item?item.nombre:'—'} (de stock, x${m.cantidad})</td><td>—</td><td>—</td><td class="num">${fmt(m.monto)}</td><td class="num">$ 0</td><td class="mono">${m.fecha}</td><td><span class="estado-dot good"></span>No aplica</td><td></td></tr>`;
+    return `<tr><td>Materiales</td><td>${item?item.nombre:'—'} (de stock, x${m.cantidad})</td><td>—</td><td>—</td><td class="num">${fmt(m.monto)}</td><td class="num">$ 0</td><td class="mono">${fmtFecha(m.fecha)}</td><td><span class="estado-dot good"></span>No aplica</td><td></td></tr>`;
   }) : [];
   const rows = [...pagoRows, ...stockRows];
   if(!rows.length) return `<tr class="empty-row"><td colspan="9">${catFiltro==='todas' ? 'Todavía no hay compras registradas en esta obra' : 'No hay gastos en esa categoría'}</td></tr>`;
@@ -991,7 +996,7 @@ const tipoDocLabel = {facturaEmitida:'Factura emitida', facturaRecibida:'Factura
 function obraDocumentosRows(obraId){
   const docs = getObra(obraId).documentos || [];
   if(!docs.length) return `<tr class="empty-row"><td colspan="5">Todavía no hay documentos cargados</td></tr>`;
-  return [...docs].sort((a,b)=>(b.fecha||'').localeCompare(a.fecha||'')).map(d=>`<tr><td>${d.nombre}</td><td>${tipoDocLabel[d.tipo]||d.tipo}</td><td class="mono">${d.fecha||'—'}</td><td><a class="link-btn" href="${d.url}" target="_blank" rel="noopener">Ver →</a></td><td><span class="link-btn danger" onclick="eliminarDocumentoObra('${obraId}','${d.id}')">Quitar</span></td></tr>`).join('');
+  return [...docs].sort((a,b)=>(b.fecha||'').localeCompare(a.fecha||'')).map(d=>`<tr><td>${d.nombre}</td><td>${tipoDocLabel[d.tipo]||d.tipo}</td><td class="mono">${fmtFecha(d.fecha)}</td><td><a class="link-btn" href="${d.url}" target="_blank" rel="noopener">Ver →</a></td><td><span class="link-btn danger" onclick="eliminarDocumentoObra('${obraId}','${d.id}')">Quitar</span></td></tr>`).join('');
 }
 function openModalDocumentoObra(obraId){
   const subeArchivos = isBackendConfigured();
@@ -1474,7 +1479,7 @@ function renderFima(){
   };
   document.getElementById('fund-grid').innerHTML = Object.entries(state.fondos).map(([k,v])=>`<div class="card fund-card"><button class="fund-edit-btn" onclick="openModalEditarFondo('${k}')" title="Editar fondo">✎</button><div class="fund-bar" style="background:${meta[k].color};"></div><div class="fund-name">${fondoLabel[k]}</div><div class="fund-value">${fmt(v)}</div><div class="fund-target">${meta[k].note}</div></div>`).join('');
   const rows = [...state.movimientosFima].sort((a,b)=>b.fecha.localeCompare(a.fecha));
-  document.getElementById('movimientos-fima-body').innerHTML = rows.length ? rows.map(m=>`<tr><td class="mono">${m.fecha}</td><td>${fondoLabel[m.fondo]}</td><td>${m.obraId?`<span class="obra-code">${getObra(m.obraId)?.code||''}</span>`:'—'}</td><td>${m.concepto}</td><td><span class="badge-inout ${m.tipo}">${m.tipo==='in'?'Ingreso':'Egreso'}</span></td><td class="num">${fmt(m.monto)}</td></tr>`).join('') : `<tr class="empty-row"><td colspan="6">Sin movimientos</td></tr>`;
+  document.getElementById('movimientos-fima-body').innerHTML = rows.length ? rows.map(m=>`<tr><td class="mono">${fmtFecha(m.fecha)}</td><td>${fondoLabel[m.fondo]}</td><td>${m.obraId?`<span class="obra-code">${getObra(m.obraId)?.code||''}</span>`:'—'}</td><td>${m.concepto}</td><td><span class="badge-inout ${m.tipo}">${m.tipo==='in'?'Ingreso':'Egreso'}</span></td><td class="num">${fmt(m.monto)}</td></tr>`).join('') : `<tr class="empty-row"><td colspan="6">Sin movimientos</td></tr>`;
 }
 function openModalEditarFondo(fondo){
   modalEl.innerHTML = `<h3>Editar fondo — ${fondoLabel[fondo]}</h3><div class="modal-sub">Ajustá el monto actual del fondo — por ejemplo, para cargar un saldo inicial</div>
@@ -1511,7 +1516,7 @@ function renderStock(){
   rows.sort((a,b)=>b.fecha.localeCompare(a.fecha));
   document.getElementById('stock-mov-body').innerHTML = rows.length ? rows.map(m=>{
     const item = getStockItem(m.stockId); const obra = m.obraId? getObra(m.obraId):null;
-    return `<tr><td class="mono">${m.fecha}</td><td><span class="tag ${m.tipo==='compra'?'good':'warn'}">${m.tipo==='compra'?'Compra':'Consumo'}</span></td><td>${item?item.nombre:'—'}</td><td class="num">${m.tipo==='compra'?'+':'−'}${m.cantidad}</td><td>${obra?`<span class="obra-code">${obra.code}</span>`:'—'}</td><td class="num">${fmt(m.monto)}</td></tr>`;
+    return `<tr><td class="mono">${fmtFecha(m.fecha)}</td><td><span class="tag ${m.tipo==='compra'?'good':'warn'}">${m.tipo==='compra'?'Compra':'Consumo'}</span></td><td>${item?item.nombre:'—'}</td><td class="num">${m.tipo==='compra'?'+':'−'}${m.cantidad}</td><td>${obra?`<span class="obra-code">${obra.code}</span>`:'—'}</td><td class="num">${fmt(m.monto)}</td></tr>`;
   }).join('') : `<tr class="empty-row"><td colspan="6">Sin movimientos de stock para este filtro</td></tr>`;
 }
 function openModalStockItem(){
@@ -1675,7 +1680,7 @@ function imprimirOrden(id){
       <div class="oc">
         <div class="badge">ORDEN DE COMPRA</div>
         <h1 style="margin-top:8px;">${o.numero}</h1>
-        <div class="sub">Fecha: ${o.fecha}</div>
+        <div class="sub">Fecha: ${fmtFecha(o.fecha)}</div>
         <div class="sub">Estado: ${estadoTxt}</div>
         ${obra?`<div class="sub">Obra Nº: <b>${obra.code}</b></div>`:''}
       </div>
@@ -1738,7 +1743,7 @@ function renderOrdenes(){
     if(o.estado==='rechazada') acciones = o.comentarioDueno ? `<span class="hint">Motivo: ${o.comentarioDueno}</span>` : '';
     if(acciones) acciones += ' · ';
     acciones += `<span class="link-btn" onclick="imprimirOrden('${o.id}')" title="Abrir para imprimir o guardar como PDF">⬇ Descargar OC</span>`;
-    return `<tr><td class="mono">${o.numero}</td><td class="mono">${o.fecha}</td><td>${o.solicitante}</td><td>${ordenDestinoTxt(o)}</td><td>${prov?prov.nombre:'—'}</td><td class="num">${fmt(o.monto)}</td><td><span class="estado-dot ${estadoDot}"></span>${estadoTxt}</td><td>${acciones}</td></tr>`;
+    return `<tr><td class="mono">${o.numero}</td><td class="mono">${fmtFecha(o.fecha)}</td><td>${o.solicitante}</td><td>${ordenDestinoTxt(o)}</td><td>${prov?prov.nombre:'—'}</td><td class="num">${fmt(o.monto)}</td><td><span class="estado-dot ${estadoDot}"></span>${estadoTxt}</td><td>${acciones}</td></tr>`;
   }).join('') : `<tr class="empty-row"><td colspan="8">No hay órdenes de compra en este filtro</td></tr>`;
 }
 function openModalOrdenCompra(id){
@@ -1937,7 +1942,7 @@ function renderPagos(){
 
   if(state.pagosFilter==='fima'){
     const ingresos = state.movimientosFima.filter(m=>m.tipo==='in').sort((a,b)=>b.fecha.localeCompare(a.fecha));
-    document.getElementById('pagos-fima-body').innerHTML = ingresos.length ? ingresos.map(m=>`<tr><td class="mono">${m.fecha}</td><td>${fondoLabel[m.fondo]}</td><td>${m.concepto}</td><td class="num">${fmt(m.monto)}</td></tr>`).join('') : `<tr class="empty-row"><td colspan="4">Todavía no se registraron ingresos a FIMA</td></tr>`;
+    document.getElementById('pagos-fima-body').innerHTML = ingresos.length ? ingresos.map(m=>`<tr><td class="mono">${fmtFecha(m.fecha)}</td><td>${fondoLabel[m.fondo]}</td><td>${m.concepto}</td><td class="num">${fmt(m.monto)}</td></tr>`).join('') : `<tr class="empty-row"><td colspan="4">Todavía no se registraron ingresos a FIMA</td></tr>`;
     return;
   }
   if(state.pagosFilter==='proveedores'){
@@ -1960,7 +1965,7 @@ function renderPagos(){
     const prov = getProveedor(p.proveedorId);
     const provTxt = prov ? `${prov.nombre}${p.numeroFactura?' · '+p.numeroFactura:''}` : '—';
     const conceptoTxt = p.concepto + (p.origenFondo ? `<div class="sub" style="font-size:11px;color:var(--muted);margin-top:2px;">Origen: Fondo FIMA — ${fondoLabel[p.origenFondo]}</div>` : '');
-    return `<tr><td>${destino}</td><td>${conceptoTxt}</td><td>${ocBadge(p.numeroOC)}</td><td>${provTxt}</td><td class="num">${fmt(p.monto)}</td><td class="num">${fmt(pagoSaldo(p))}</td><td class="mono">${p.fechaPago||'—'}</td><td><span class="estado-dot ${estadoDot}"></span>${estadoTxt}</td><td>${action}</td></tr>`;
+    return `<tr><td>${destino}</td><td>${conceptoTxt}</td><td>${ocBadge(p.numeroOC)}</td><td>${provTxt}</td><td class="num">${fmt(p.monto)}</td><td class="num">${fmt(pagoSaldo(p))}</td><td class="mono">${fmtFecha(p.fechaPago)}</td><td><span class="estado-dot ${estadoDot}"></span>${estadoTxt}</td><td>${action}</td></tr>`;
   }).join('') : `<tr class="empty-row"><td colspan="9">No hay pagos registrados</td></tr>`;
 }
 function proveedorDeuda(provId){ return state.pagos.filter(p=>p.proveedorId===provId).reduce((a,p)=>a+pagoSaldo(p),0); }
@@ -2434,14 +2439,14 @@ function renderResultados(){
     <div class="card kpi"><div class="kpi-label">Aportes a FIMA</div><div class="kpi-value">${fmt(totalAportes)}</div><div class="kpi-note">No afecta el resultado (inversión)</div></div>
   `;
 
-  document.getElementById('res-ingresos-body').innerHTML = r.ingresos.length ? r.ingresos.map(i=>`<tr><td class="mono">${i.fecha}</td><td><span class="obra-code">${getObra(i.obraId)?.code||''}</span></td><td>${i.medioPago}</td><td>${i.numeroFactura||'—'}</td><td>${i.numeroCobranza||'—'}</td><td class="num">${fmt(i.monto)}</td></tr>`).join('') : `<tr class="empty-row"><td colspan="6">Sin cobros este mes</td></tr>`;
+  document.getElementById('res-ingresos-body').innerHTML = r.ingresos.length ? r.ingresos.map(i=>`<tr><td class="mono">${fmtFecha(i.fecha)}</td><td><span class="obra-code">${getObra(i.obraId)?.code||''}</span></td><td>${i.medioPago}</td><td>${i.numeroFactura||'—'}</td><td>${i.numeroCobranza||'—'}</td><td class="num">${fmt(i.monto)}</td></tr>`).join('') : `<tr class="empty-row"><td colspan="6">Sin cobros este mes</td></tr>`;
 
   const egresoRows = [
     ...r.egresosPagos.map(ev=>{ const p=ev.pago; const prov=getProveedor(p.proveedorId);
       return {fecha:ev.fecha, categoria: p.tipo==='obra'?catLabel[p.categoria]:(p.tipo==='stock'?'Reposición de stock':(catFijaLabel[p.categoria]||'Costo fijo')), destino: p.obraId?getObra(p.obraId)?.code:(p.tipo==='stock'?'Stock':'Negocio general'), concepto:p.concepto+(prov?' ('+prov.nombre+')':''), monto:ev.monto}; }),
     ...r.egresosJornales.map(m=>({fecha:m.fecha, categoria:'Mano de obra (jornales)', destino:'—', concepto:m.concepto, monto:m.monto})),
   ].sort((a,b)=>a.fecha.localeCompare(b.fecha));
-  document.getElementById('res-egresos-body').innerHTML = egresoRows.length ? egresoRows.map(e=>`<tr><td class="mono">${e.fecha}</td><td>${e.categoria}</td><td>${e.destino}</td><td>${e.concepto}</td><td class="num">${fmt(e.monto)}</td></tr>`).join('') : `<tr class="empty-row"><td colspan="5">Sin egresos pagados este mes</td></tr>`;
+  document.getElementById('res-egresos-body').innerHTML = egresoRows.length ? egresoRows.map(e=>`<tr><td class="mono">${fmtFecha(e.fecha)}</td><td>${e.categoria}</td><td>${e.destino}</td><td>${e.concepto}</td><td class="num">${fmt(e.monto)}</td></tr>`).join('') : `<tr class="empty-row"><td colspan="5">Sin egresos pagados este mes</td></tr>`;
 
   const catColors = {'Materiales':'var(--teal)','Reposición de stock':'var(--copper)','Mano de obra (jornales)':'var(--copper)','Logística':'var(--good)','Estadía de obra':'var(--warn)','Otros no previstos':'var(--bad)','Costo fijo':'var(--ink)',
     'Sueldo':'var(--teal)','Alquiler':'var(--copper)','Seguros':'var(--warn)','Impuestos':'var(--ink)','Servicios (luz/gas/agua/internet)':'var(--good)','Mantenimiento':'var(--bad)','Otros':'var(--muted)'};
@@ -2456,9 +2461,9 @@ function renderResultados(){
       <div class="chart-value">${fmt(monto)}</div>
     </div>`).join('') : `<div class="foot-note" style="margin:0;">Sin egresos este mes para graficar.</div>`;
 
-  document.getElementById('res-fima-body').innerHTML = aportes.length ? aportes.map(m=>`<tr><td class="mono">${m.fecha}</td><td>${fondoLabel[m.fondo]}</td><td>${m.concepto}</td><td class="num">${fmt(m.monto)}</td></tr>`).join('') : `<tr class="empty-row"><td colspan="4">Sin aportes a FIMA este mes</td></tr>`;
+  document.getElementById('res-fima-body').innerHTML = aportes.length ? aportes.map(m=>`<tr><td class="mono">${fmtFecha(m.fecha)}</td><td>${fondoLabel[m.fondo]}</td><td>${m.concepto}</td><td class="num">${fmt(m.monto)}</td></tr>`).join('') : `<tr class="empty-row"><td colspan="4">Sin aportes a FIMA este mes</td></tr>`;
 
-  document.getElementById('res-pendientes-body').innerHTML = pendientes.length ? pendientes.map(p=>`<tr><td class="mono">${p.fechaPago}</td><td>${p.obraId?getObra(p.obraId)?.code:'Negocio general'}</td><td>${p.concepto}${pagoEstado(p)==='parcial'?' (parcial)':''}</td><td class="num">${fmt(pagoSaldo(p))}</td></tr>`).join('') : `<tr class="empty-row"><td colspan="4">Sin pendientes con vencimiento este mes</td></tr>`;
+  document.getElementById('res-pendientes-body').innerHTML = pendientes.length ? pendientes.map(p=>`<tr><td class="mono">${fmtFecha(p.fechaPago)}</td><td>${p.obraId?getObra(p.obraId)?.code:'Negocio general'}</td><td>${p.concepto}${pagoEstado(p)==='parcial'?' (parcial)':''}</td><td class="num">${fmt(pagoSaldo(p))}</td></tr>`).join('') : `<tr class="empty-row"><td colspan="4">Sin pendientes con vencimiento este mes</td></tr>`;
 
   const obrasConSaldo = state.obras.filter(o=>!o.sinCobrosPendientes && (o.ingresos.facturado-o.ingresos.cobrado)>0.01);
   document.getElementById('res-cobros-pendientes-body').innerHTML = obrasConSaldo.length ? obrasConSaldo.map(o=>`<tr><td><span class="obra-code">${o.code}</span></td><td class="num">${fmt(o.ingresos.facturado)}</td><td class="num">${fmt(o.ingresos.cobrado)}</td><td class="num">${fmt(o.ingresos.facturado-o.ingresos.cobrado)}</td></tr>`).join('') : `<tr class="empty-row"><td colspan="4">No hay saldos pendientes de cobro</td></tr>`;
@@ -2491,9 +2496,9 @@ function renderIvaReporte(mes){
     <div class="card kpi"><div class="kpi-label">IVA crédito fiscal</div><div class="kpi-value">${fmt(totalCredito)}</div><div class="kpi-note">${creditoRows.length} factura(s) de compra</div></div>
     <div class="card kpi"><div class="kpi-label">Saldo del mes</div><div class="kpi-value" style="color:${saldo>=0?'var(--bad)':'var(--good)'};">${fmt(Math.abs(saldo))}</div><div class="kpi-note">${saldo>=0?'A pagar':'A favor'}</div></div>
   `;
-  document.getElementById('iva-debito-body').innerHTML = debitoRows.length ? debitoRows.map(fv=>`<tr><td class="mono">${fv.fecha}</td><td><span class="obra-code">${getObra(fv.obraId)?.code||''}</span></td><td class="num">${fmt(fv.montoSinIva)}</td><td class="num">${fmt(fv.iva)}</td><td class="num">${fmt(fv.monto)}</td></tr>`).join('') : `<tr class="empty-row"><td colspan="5">Sin cobros este mes</td></tr>`;
+  document.getElementById('iva-debito-body').innerHTML = debitoRows.length ? debitoRows.map(fv=>`<tr><td class="mono">${fmtFecha(fv.fecha)}</td><td><span class="obra-code">${getObra(fv.obraId)?.code||''}</span></td><td class="num">${fmt(fv.montoSinIva)}</td><td class="num">${fmt(fv.iva)}</td><td class="num">${fmt(fv.monto)}</td></tr>`).join('') : `<tr class="empty-row"><td colspan="5">Sin cobros este mes</td></tr>`;
   document.getElementById('iva-credito-body').innerHTML = creditoRows.length ? creditoRows.map(p=>{ const prov=getProveedor(p.proveedorId); const ivaM=pagoIvaMonto(p);
-    return `<tr><td class="mono">${p.fechaFactura}</td><td>${prov?prov.nombre:'—'}</td><td>${p.concepto}</td><td class="num">${fmt(p.monto-ivaM)}</td><td class="num">${fmt(ivaM)}</td><td class="num">${fmt(p.monto)}</td></tr>`;
+    return `<tr><td class="mono">${fmtFecha(p.fechaFactura)}</td><td>${prov?prov.nombre:'—'}</td><td>${p.concepto}</td><td class="num">${fmt(p.monto-ivaM)}</td><td class="num">${fmt(ivaM)}</td><td class="num">${fmt(p.monto)}</td></tr>`;
   }).join('') : `<tr class="empty-row"><td colspan="6">Sin facturas de compra este mes</td></tr>`;
 }
 

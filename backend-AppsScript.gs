@@ -148,6 +148,18 @@ function parseJsonField_(value, fallback) {
 function toBool_(v) { return v === true || v === 'true' || v === 'TRUE'; }
 function toNumOrNull_(v) { return (v === '' || v === null || v === undefined) ? null : Number(v); }
 function toStrOrNull_(v) { return (v === '' || v === null || v === undefined) ? null : String(v); }
+// Google Sheets auto-detecta como fecha cualquier celda a la que se le
+// escriba un texto tipo "2026-07-27", y a partir de ahí getValues() la
+// devuelve como objeto Date (no como texto) — si ese objeto se convierte a
+// string con String()/concatenación en vez de formatearlo, sale algo como
+// "Mon Jul 27 2026 00:00:00 GMT-0300 (hora estándar de Argentina)". Esta
+// función siempre devuelve "yyyy-MM-dd" limpio, venga la celda como Date o
+// como texto.
+function toDateStr_(v) {
+  if (v === '' || v === null || v === undefined) return null;
+  if (v instanceof Date) return Utilities.formatDate(v, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  return String(v);
+}
 
 /** Convierte todas las hojas al mismo objeto `state` que usa la app. */
 function readState_() {
@@ -165,7 +177,7 @@ function readState_() {
 
   const obras = sheetToRows_(ss.getSheetByName(SHEET_NAMES.obras), SCHEMAS.obras).map(r => ({
     id: r.id, code: r.code, cliente: r.cliente, encargado: r.encargado,
-    fechaInicio: r.fechaInicio, estado: r.estado, sinCobrosPendientes: toBool_(r.sinCobrosPendientes),
+    fechaInicio: toDateStr_(r.fechaInicio), estado: r.estado, sinCobrosPendientes: toBool_(r.sinCobrosPendientes),
     presupuesto: parseJsonField_(r.presupuestoJSON, { materiaPrima: 0, manoObra: 0, logistica: 0, estadia: 0 }),
     presupuestoDetalle: parseJsonField_(r.presupuestoDetalleJSON, null),
     presupuestoResumen: parseJsonField_(r.presupuestoResumenJSON, {}),
@@ -181,14 +193,14 @@ function readState_() {
     concepto: r.concepto, cantidad: Number(r.cantidad) || 0, unitario: Number(r.unitario) || 0,
     ivaAplica: toBool_(r.ivaAplica), monto: Number(r.monto) || 0,
     proveedorId: toStrOrNull_(r.proveedorId), numeroFactura: toStrOrNull_(r.numeroFactura),
-    fechaFactura: toStrOrNull_(r.fechaFactura), formaPago: r.formaPago,
-    fechaPago: toStrOrNull_(r.fechaPago), numeroOC: toStrOrNull_(r.numeroOC),
+    fechaFactura: toDateStr_(r.fechaFactura), formaPago: r.formaPago,
+    fechaPago: toDateStr_(r.fechaPago), numeroOC: toStrOrNull_(r.numeroOC),
     origenFondo: toStrOrNull_(r.origenFondo),
     pagosRealizados: parseJsonField_(r.pagosRealizadosJSON, []),
   }));
 
   const ordenesCompra = sheetToRows_(ss.getSheetByName(SHEET_NAMES.ordenesCompra), SCHEMAS.ordenesCompra).map(r => ({
-    id: r.id, numero: r.numero, fecha: r.fecha, solicitante: r.solicitante, tipo: r.tipo,
+    id: r.id, numero: r.numero, fecha: toDateStr_(r.fecha), solicitante: r.solicitante, tipo: r.tipo,
     obraId: toStrOrNull_(r.obraId), categoria: toStrOrNull_(r.categoria),
     items: parseJsonField_(r.itemsJSON, []), monto: Number(r.monto) || 0, ivaAplica: toBool_(r.ivaAplica),
     proveedorId: toStrOrNull_(r.proveedorId), estado: r.estado,
@@ -203,16 +215,16 @@ function readState_() {
     costoUnitario: Number(r.costoUnitario) || 0,
   }));
   const stockMovimientos = sheetToRows_(ss.getSheetByName(SHEET_NAMES.stockMovimientos), SCHEMAS.stockMovimientos).map(r => ({
-    id: r.id, fecha: r.fecha, tipo: r.tipo, stockId: r.stockId,
+    id: r.id, fecha: toDateStr_(r.fecha), tipo: r.tipo, stockId: r.stockId,
     cantidad: Number(r.cantidad) || 0, obraId: toStrOrNull_(r.obraId), monto: Number(r.monto) || 0,
   }));
   const trabajadores = sheetToRows_(ss.getSheetByName(SHEET_NAMES.trabajadores), SCHEMAS.trabajadores);
   const jornales = sheetToRows_(ss.getSheetByName(SHEET_NAMES.jornales), SCHEMAS.jornales).map(r => ({
     id: r.id, trabajadorId: r.trabajadorId, obraId: toStrOrNull_(r.obraId),
-    semanaInicio: r.semanaInicio, dias: parseJsonField_(r.diasJSON, Array(7).fill('sin_obra')),
+    semanaInicio: toDateStr_(r.semanaInicio), dias: parseJsonField_(r.diasJSON, Array(7).fill('sin_obra')),
   }));
   const movimientosFima = sheetToRows_(ss.getSheetByName(SHEET_NAMES.movimientosFima), SCHEMAS.movimientosFima).map(r => ({
-    fecha: r.fecha, fondo: r.fondo, obraId: toStrOrNull_(r.obraId), concepto: r.concepto,
+    fecha: toDateStr_(r.fecha), fondo: r.fondo, obraId: toStrOrNull_(r.obraId), concepto: r.concepto,
     tipo: r.tipo, monto: Number(r.monto) || 0,
   }));
 
