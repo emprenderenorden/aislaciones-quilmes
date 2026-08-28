@@ -95,7 +95,7 @@
   .num{font-family:'Montserrat',sans-serif;text-align:right;font-variant-numeric:tabular-nums;}
   th.num{text-align:right;}
   .estado-dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:6px;}
-  .estado-dot.good{background:var(--good);} .estado-dot.warn{background:var(--warn);} .estado-dot.bad{background:var(--bad);}
+  .estado-dot.good{background:var(--good);} .estado-dot.warn{background:var(--warn);} .estado-dot.bad{background:var(--bad);} .estado-dot.info{background:var(--teal);}
   .card-table{padding:6px 4px 4px;}
   .subtotal-row td{font-weight:700;background:#FAFBFB;}
   .card-table.dark{background:var(--ink);border-color:var(--ink);}
@@ -621,9 +621,42 @@ function fondoOptionsHTML(selected){ return Object.entries(fondoLabel).map(([k,l
 const fmt = (n)=> '$ ' + Math.round(n||0).toLocaleString('es-AR');
 // Las fechas se guardan/comparan siempre en formato ISO (YYYY-MM-DD); esto
 // solo se usa para MOSTRARLAS como dd/mm/aaaa. Si llega algo que no tiene
-// pinta de fecha ISO (por ejemplo un valor viejo mal guardado) se muestra
-// tal cual en vez de romper la pantalla.
-const fmtFecha = (iso)=>{ if(!iso) return '—'; const m = String(iso).match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? `${m[3]}/${m[2]}/${m[1]}` : String(iso); };
+// pinta de fecha ISO (por ejemplo un valor viejo que quedó mal guardado como
+// "Wed Jul 29 2026 00:00:00 GMT-0300 (...)"), se intenta reinterpretar con
+// el parser de fechas del navegador antes de mostrarlo tal cual.
+const fmtFecha = (iso)=>{
+  if(!iso) return '—';
+  const s = String(iso);
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if(m) return `${m[3]}/${m[2]}/${m[1]}`;
+  const d = new Date(s);
+  if(!isNaN(d.getTime())) return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;
+  return s;
+};
+// Repara en el propio state cualquier fecha que haya quedado guardada como
+// texto largo (ej: "Wed Jul 29 2026 00:00:00 GMT-0300 (...)") en vez de
+// "yyyy-mm-dd" — pasa una sola vez al abrir la app. Solo toca los campos de
+// fecha "sueltos" (no los que van adentro de JSON, esos nunca se corrompen
+// porque Google Sheets no reinterpreta el contenido de una celda con JSON).
+function repararFechaValor_(v){
+  if(!v) return v;
+  const s = String(v);
+  if(/^\d{4}-\d{2}-\d{2}/.test(s)) return s;
+  const d = new Date(s);
+  if(isNaN(d.getTime())) return v;
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+function repararFechasEnState(){
+  let huboCambios = false;
+  const fix = (obj, campo)=>{ const nuevo = repararFechaValor_(obj[campo]); if(nuevo !== obj[campo]){ obj[campo]=nuevo; huboCambios=true; } };
+  state.obras.forEach(o=>fix(o,'fechaInicio'));
+  state.pagos.forEach(p=>{ fix(p,'fechaFactura'); fix(p,'fechaPago'); });
+  state.ordenesCompra.forEach(o=>fix(o,'fecha'));
+  state.stockMovimientos.forEach(m=>fix(m,'fecha'));
+  state.jornales.forEach(j=>fix(j,'semanaInicio'));
+  state.movimientosFima.forEach(m=>fix(m,'fecha'));
+  return huboCambios;
+}
 const today = ()=> new Date().toISOString().slice(0,10);
 let idCounter = 0;
 // Combina hora exacta + contador + azar, para que dos dispositivos distintos
@@ -739,14 +772,24 @@ function subirArchivoDrive(file){
 
 const getObra = (id)=> state.obras.find(o=>o.id===id);
 const getProveedor = (id)=> state.proveedores.find(p=>p.id===id);
-const pagoMontoPagado = (p)=> (p.pagosRealizados||[]).reduce((a,x)=>a+x.monto,0);
+// Un pago con "aplicado:false" es un compromiso a fecha futura (ej: cheque
+// diferido) que todavía no salió de la caja/fondo — por eso no cuenta como
+// plata efectivamente pagada hasta que se aplica (ver reconciliarPagosProgramados).
+const pagoMontoPagado = (p)=> (p.pagosRealizados||[]).filter(x=>x.aplicado!==false).reduce((a,x)=>a+x.monto,0);
 const pagoSaldo = (p)=> Math.max(0, p.monto - pagoMontoPagado(p));
 const pagoEstado = (p)=>{
   const pagado = pagoMontoPagado(p);
   if(pagado >= p.monto && p.monto>0) return 'pagado';
   if(pagado > 0) return 'parcial';
+  if((p.pagosRealizados||[]).some(x=>x.aplicado===false)) return 'programado';
   return p.fechaPago ? 'pendiente' : 'sin_fecha';
 };
+function pagoEstadoInfo(est){
+  if(est==='pagado') return {dot:'good', txt:'Pagado'};
+  if(est==='parcial') return {dot:'warn', txt:'Parcial'};
+  if(est==='programado') return {dot:'info', txt:'Programado'};
+  return {dot:'warn', txt:'Pendiente'}; // "pendiente" y "sin_fecha" se muestran igual para no confundir
+}
 const obraRealTotal = (o)=> o.real.materiaPrima+o.real.manoObra+o.real.logistica+o.real.estadia+o.real.otros;
 const obraPresTotal = (o)=> o.presupuesto.materiaPrima+o.presupuesto.manoObra+o.presupuesto.logistica+o.presupuesto.estadia;
 const liquidezTotal = ()=> state.caja + Object.values(state.fondos).reduce((a,b)=>a+b,0);
@@ -817,7 +860,7 @@ function renderObraLista(){
 function renderDashboard(){
   const gananciaProy = state.obras.reduce((a,o)=> a + ((o.presupuestoResumen.beneficio||0) - (o.presupuestoResumen.descuento||0)), 0);
   const gananciaReal = state.obras.reduce((a,o)=> a + (o.ingresos.cobrado - obraRealTotal(o)), 0);
-  const pendientes = state.pagos.filter(p=>pagoEstado(p)!=='pagado');
+  const pendientes = state.pagos.filter(p=>pagoEstado(p)!=='pagado' && pagoEstado(p)!=='programado');
   const pendientesTotal = pendientes.reduce((a,p)=>a+pagoSaldo(p),0);
   document.getElementById('kpi-row').innerHTML = `
     <div class="card kpi"><div class="kpi-label">Liquidez disponible</div><div class="kpi-value">${fmt(liquidezTotal())}</div><div class="kpi-note">Caja + saldos FIMA</div></div>
@@ -833,8 +876,12 @@ function renderDashboard(){
       <td><div class="layerbar-wrap"><div class="layerbar"><div class="fill ${fillClass}" style="width:${Math.min(pct,100)}%;"></div></div><div class="layerbar-labels"><span>${pct}%</span></div></div></td>
       <td><span class="estado-dot ${fillClass}"></span>${o.estado}</td><td><span class="link-btn" onclick="goToObra('${o.id}')">Ver detalle →</span></td></tr>`;
   }).join('') || `<tr class="empty-row"><td colspan="5">No hay obras cargadas</td></tr>`;
-  const pend = state.pagos.filter(p=>pagoEstado(p)==='pendiente'||pagoEstado(p)==='parcial').sort((a,b)=>(a.fechaPago||'').localeCompare(b.fechaPago||''));
-  document.getElementById('vencimientos-body').innerHTML = pend.length ? pend.map(p=>`<tr><td class="mono">${fmtFecha(p.fechaPago)}</td><td>${p.obraId?`<span class="obra-code">${getObra(p.obraId).code}</span>`:'—'}</td><td>${p.concepto}${pagoEstado(p)==='parcial'?' <span class="tag warn">parcial</span>':''}</td><td class="num">${fmt(pagoSaldo(p))}</td><td><span class="tag warn">Pendiente</span></td></tr>`).join('') : `<tr class="empty-row"><td colspan="5">No hay pagos con fecha pendiente</td></tr>`;
+  const pend = state.pagos.filter(p=>['pendiente','parcial','programado'].includes(pagoEstado(p))).sort((a,b)=>(a.fechaPago||'').localeCompare(b.fechaPago||''));
+  document.getElementById('vencimientos-body').innerHTML = pend.length ? pend.map(p=>{
+    const est = pagoEstado(p);
+    const tagTxt = est==='parcial'?'parcial':(est==='programado'?'programado':'');
+    return `<tr><td class="mono">${fmtFecha(p.fechaPago)}</td><td>${p.obraId?`<span class="obra-code">${getObra(p.obraId).code}</span>`:'—'}</td><td>${p.concepto}${tagTxt?` <span class="tag warn">${tagTxt}</span>`:''}</td><td class="num">${fmt(pagoSaldo(p))}</td><td><span class="tag warn">${est==='programado'?'Programado':'Pendiente'}</span></td></tr>`;
+  }).join('') : `<tr class="empty-row"><td colspan="5">No hay pagos con fecha pendiente</td></tr>`;
 }
 
 /* ======================= RENDER: OBRA ======================= */
@@ -974,11 +1021,10 @@ function obraPagosRows(obraId){
   const catFiltro = state.obraGastosCategoriaFilter;
   const pagoRows = state.pagos.filter(p=>p.obraId===obraId && (catFiltro==='todas' || p.categoria===catFiltro)).map(p=>{
     const est = pagoEstado(p);
-    const estadoDot = est==='pagado'?'good':(est==='parcial'?'warn':'warn');
-    const estadoTxt = est==='pagado'?'Pagado':(est==='parcial'?'Parcial':(est==='sin_fecha'?'Sin fecha':'Pendiente'));
+    const {dot:estadoDot, txt:estadoTxt} = pagoEstadoInfo(est);
     let action = (!state.ordenesCompra.some(oc=>oc.pagoId===p.id) && !p.origenFondo) ? `<span class="link-btn" onclick="openModalCompra(null,'${p.id}')">Editar</span>` : '';
     if(est!=='pagado') action += `${action?' · ':''}<span class="link-btn" onclick="openModalFinalizarPago('${p.id}')">Registrar pago →</span>`;
-    if(est==='pagado'||est==='parcial') action += `${action?' · ':''}<span class="link-btn danger" onclick="revertirPago('${p.id}')">Revertir a pendiente</span>`;
+    if(est==='pagado'||est==='parcial'||est==='programado') action += `${action?' · ':''}<span class="link-btn danger" onclick="revertirPago('${p.id}')">${est==='programado'?'Cancelar programado':'Revertir a pendiente'}</span>`;
     action += `${action?' · ':''}<span class="link-btn danger" onclick="eliminarGasto('${p.id}')">Eliminar</span>`;
     const prov = getProveedor(p.proveedorId);
     const provTxt = prov ? `${prov.nombre}${p.numeroFactura?' · '+p.numeroFactura:''}` : '—';
@@ -1955,11 +2001,10 @@ function renderPagos(){
   rows = [...rows].sort((a,b)=>(b.fechaPago||'').localeCompare(a.fechaPago||''));
   document.getElementById('pagos-body').innerHTML = rows.length ? rows.map(p=>{
     const est = pagoEstado(p);
-    const estadoDot = est==='pagado'?'good':'warn';
-    const estadoTxt = est==='pagado'?'Pagado':(est==='parcial'?'Parcial':(est==='sin_fecha'?'Sin fecha':'Pendiente'));
+    const {dot:estadoDot, txt:estadoTxt} = pagoEstadoInfo(est);
     let action = (!state.ordenesCompra.some(oc=>oc.pagoId===p.id) && !p.origenFondo) ? `<span class="link-btn" onclick="openModalCompra(null,'${p.id}')">Editar</span>` : '';
     if(est!=='pagado') action += `${action?' · ':''}<span class="link-btn" onclick="openModalFinalizarPago('${p.id}')">Registrar pago →</span>`;
-    if(est==='pagado'||est==='parcial') action += `${action?' · ':''}<span class="link-btn danger" onclick="revertirPago('${p.id}')">Revertir a pendiente</span>`;
+    if(est==='pagado'||est==='parcial'||est==='programado') action += `${action?' · ':''}<span class="link-btn danger" onclick="revertirPago('${p.id}')">${est==='programado'?'Cancelar programado':'Revertir a pendiente'}</span>`;
     action += `${action?' · ':''}<span class="link-btn danger" onclick="eliminarGasto('${p.id}')">Eliminar</span>`;
     const destino = p.obraId ? `<span class="link-btn" onclick="goToObra('${p.obraId}')"><span class="obra-code">${getObra(p.obraId)?.code||''}</span></span>` : (p.tipo==='stock' ? 'Stock' : 'Negocio general');
     const prov = getProveedor(p.proveedorId);
@@ -1986,8 +2031,7 @@ function renderProveedorDetalle(id){
   const facturas = state.pagos.filter(p=>p.proveedorId===id).sort((a,b)=>(a.fechaPago||'').localeCompare(b.fechaPago||''));
   document.getElementById('proveedor-detalle-body').innerHTML = facturas.length ? facturas.map(p=>{
     const est = pagoEstado(p);
-    const estadoDot = est==='pagado'?'good':'warn';
-    const estadoTxt = est==='pagado'?'Pagado':(est==='parcial'?'Parcial':(est==='sin_fecha'?'Sin fecha':'Pendiente'));
+    const {dot:estadoDot, txt:estadoTxt} = pagoEstadoInfo(est);
     const destino = p.obraId ? `<span class="obra-code">${getObra(p.obraId)?.code||''}</span>` : (p.tipo==='stock'?'Stock':'Negocio general');
     return `<tr><td>${p.numeroFactura||'—'}</td><td>${p.concepto}</td><td>${ocBadge(p.numeroOC)}</td><td>${destino}</td><td class="num">${fmt(p.monto)}</td><td class="num">${fmt(pagoMontoPagado(p))}</td><td class="num">${fmt(pagoSaldo(p))}</td><td><span class="estado-dot ${estadoDot}"></span>${estadoTxt}</td></tr>`;
   }).join('') : `<tr class="empty-row"><td colspan="8">Este proveedor todavía no tiene facturas registradas</td></tr>`;
@@ -2281,6 +2325,7 @@ function openModalFinalizarPago(pagoId){
       <div class="field"><label>Fecha de pago</label><input id="f-fecha" type="date" value="${p.fechaPago||today()}"></div>
       <div class="field span2 hidden" id="wrap-fondo"><label>Fondo que paga</label><select id="f-fondo">${fondoOptionsHTML()}</select></div>
     </div>
+    <div class="modal-sub" style="margin-top:6px;">Si la fecha es futura (ej: un cheque diferido), queda "Programado": no se descuenta la plata todavía, recién se aplica sola cuando llegue esa fecha.</div>
     <div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" onclick="submitFinalizarPago('${pagoId}')">Registrar pago</button></div>`;
   overlay.classList.add('open');
   onMedioPagoChange();
@@ -2294,29 +2339,58 @@ function submitFinalizarPago(pagoId){
   const formaPago = document.getElementById('f-forma').value;
   const fecha = document.getElementById('f-fecha').value || today();
   const fondo = formaPago==='FIMA' ? document.getElementById('f-fondo').value : null;
+  const esFutura = fecha > today();
   p.formaPago = formaPago;
   p.fechaPago = fecha;
   p.pagosRealizados = p.pagosRealizados||[];
-  p.pagosRealizados.push({fecha, monto, fondo, formaPago});
-  if(fondo){
-    state.fondos[fondo] -= monto;
-    state.movimientosFima.push({fecha, fondo, obraId:p.obraId, concepto:p.concepto, tipo:'out', monto});
-    p.origenFondo = fondo;
-  } else {
-    state.caja -= monto;
+  p.pagosRealizados.push({fecha, monto, fondo, formaPago, aplicado: !esFutura});
+  if(fondo) p.origenFondo = fondo;
+  if(!esFutura){
+    if(fondo){
+      state.fondos[fondo] -= monto;
+      state.movimientosFima.push({fecha, fondo, obraId:p.obraId, concepto:p.concepto, tipo:'out', monto});
+    } else {
+      state.caja -= monto;
+    }
   }
   closeModal(); renderAll();
+}
+// Pagos con fecha futura (ej: cheques diferidos) quedan "programados": el
+// compromiso queda anotado pero la caja/fondo recién se descuenta cuando
+// llega la fecha — ver reconciliarPagosProgramados(), que corre al abrir la app.
+function reconciliarPagosProgramados(){
+  let huboCambios = false;
+  const hoy = today();
+  state.pagos.forEach(p=>{
+    (p.pagosRealizados||[]).forEach(pr=>{
+      if(pr.aplicado===false && pr.fecha<=hoy){
+        if(pr.fondo){
+          state.fondos[pr.fondo] -= pr.monto;
+          state.movimientosFima.push({fecha:pr.fecha, fondo:pr.fondo, obraId:p.obraId, concepto:p.concepto, tipo:'out', monto:pr.monto});
+        } else {
+          state.caja -= pr.monto;
+        }
+        pr.aplicado = true;
+        huboCambios = true;
+      }
+    });
+  });
+  return huboCambios;
 }
 function revertirPago(pagoId){
   const p = state.pagos.find(x=>x.id===pagoId);
   if(!p || !(p.pagosRealizados||[]).length) return;
-  if(!confirm(`¿Revertir "${p.concepto}" a pendiente? Se le devuelve la plata registrada a la caja o al fondo FIMA correspondiente, y el gasto vuelve a quedar sin fecha de pago.`)) return;
-  p.pagosRealizados.forEach(pr=>{
+  const aplicados = p.pagosRealizados.filter(pr=>pr.aplicado!==false);
+  const mensaje = aplicados.length
+    ? `¿Revertir "${p.concepto}" a pendiente? Se le devuelve la plata registrada a la caja o al fondo FIMA correspondiente, y el gasto vuelve a quedar sin fecha de pago.`
+    : `¿Cancelar el pago programado de "${p.concepto}"? Todavía no se descontó plata (tenía fecha futura), así que solo se borra la programación.`;
+  if(!confirm(mensaje)) return;
+  aplicados.forEach(pr=>{
     if(pr.fondo) state.fondos[pr.fondo] += pr.monto;
     else state.caja += pr.monto;
   });
   state.movimientosFima = state.movimientosFima.filter(m=>{
-    return !p.pagosRealizados.some(pr=>pr.fondo && m.tipo==='out' && m.fondo===pr.fondo && m.obraId===p.obraId && m.concepto===p.concepto && m.monto===pr.monto);
+    return !aplicados.some(pr=>pr.fondo && m.tipo==='out' && m.fondo===pr.fondo && m.obraId===p.obraId && m.concepto===p.concepto && m.monto===pr.monto);
   });
   p.pagosRealizados = [];
   p.fechaPago = null;
@@ -2394,7 +2468,9 @@ const mesNombres = {'01':'Enero','02':'Febrero','03':'Marzo','04':'Abril','05':'
 function prevMonthStr(m){ const [y,mo]=m.split('-').map(Number); const d=new Date(y,mo-2,1); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'); }
 function allPagoEventos(){
   const out=[];
-  state.pagos.forEach(p=>(p.pagosRealizados||[]).forEach(ev=>out.push({...ev, pago:p})));
+  // Los pagos "programados" (fecha futura, todavía no aplicados) no cuentan
+  // como egreso real hasta que se aplican de verdad.
+  state.pagos.forEach(p=>(p.pagosRealizados||[]).filter(ev=>ev.aplicado!==false).forEach(ev=>out.push({...ev, pago:p})));
   return out;
 }
 function allIngresosList(){ const out=[]; state.obras.forEach(o=>(o.ingresosList||[]).forEach(i=>out.push({...i, obraId:o.id}))); return out; }
@@ -2505,6 +2581,11 @@ function renderIvaReporte(mes){
 function renderAll(){ renderDashboard(); renderObraLista(); if(!document.getElementById('obra-sub-detalle').classList.contains('hidden')) renderObraDetail(); renderJornales(); renderOrdenes(); renderFima(); renderStock(); renderPagos(); renderResultados(); scheduleSave(); }
 (async function bootstrap(){
   await loadState();
+  // Dos correcciones automáticas antes de mostrar nada: reparar fechas viejas
+  // que hayan quedado mal guardadas, y aplicar los pagos "programados" (fecha
+  // futura, ej. cheques diferidos) cuya fecha ya llegó.
+  const huboReparacionFechas = repararFechasEnState();
+  const huboMaduraciones = reconciliarPagosProgramados();
   showObraSubview('lista');
   renderAll();
   // La primera vez que se renderiza es lo que se acaba de leer del Sheet:
@@ -2512,6 +2593,7 @@ function renderAll(){ renderDashboard(); renderObraLista(); if(!document.getElem
   // reflejan ediciones reales — así abrir la app en varios dispositivos a
   // la vez no genera avisos de "conflicto" sin que nadie haya cambiado nada.
   bootCompleto = true;
+  if(huboReparacionFechas || huboMaduraciones) saveState();
   const overlay = document.getElementById('loading-overlay');
   if(overlay){ overlay.style.opacity='0'; setTimeout(()=>overlay.remove(), 300); }
   const initialView = location.hash.slice(1);
