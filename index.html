@@ -447,6 +447,7 @@
         <div class="field"><label id="fima-filtro-subcat-label">Subcategoría</label><select id="fima-filtro-subcat" class="cell-input" onchange="renderFima()"><option value="todas">Todas</option></select></div>
       </div>
     </div>
+    <div class="cat-grid" id="fima-subcat-grid" style="margin-bottom:16px;"></div>
     <div class="card card-table"><table><thead><tr><th>Fecha</th><th>Fondo</th><th>Subcategoría / Obra</th><th>Concepto</th><th></th><th class="num">Monto</th></tr></thead><tbody id="movimientos-fima-body"></tbody></table></div>
   </div>
 
@@ -1820,21 +1821,46 @@ function renderFima(){
     const curSubcat = subcatSel.value;
     if(fondoFiltro==='obras'){
       subcatLabel.textContent = 'Obra';
-      subcatSel.innerHTML = `<option value="todas">Todas</option>` + state.obras.map(o=>`<option value="${o.id}">${o.code}</option>`).join('');
+      subcatSel.innerHTML = `<option value="todas">Todas</option>` + state.obras.map(o=>`<option value="${o.id}">${o.code}</option>`).join('') + `<option value="__sin__">Sin obra asignada</option>`;
     } else {
       subcatLabel.textContent = 'Subcategoría';
       const relevantes = fondoFiltro==='todos' ? state.movimientosFima : state.movimientosFima.filter(m=>m.fondo===fondoFiltro);
       const subcats = [...new Set(relevantes.map(m=>m.subcategoria).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
-      subcatSel.innerHTML = `<option value="todas">Todas</option>` + subcats.map(s=>`<option value="${s}">${s}</option>`).join('');
+      subcatSel.innerHTML = `<option value="todas">Todas</option>` + subcats.map(s=>`<option value="${s}">${s}</option>`).join('') + `<option value="__sin__">Sin categorizar</option>`;
     }
     if([...subcatSel.options].some(o=>o.value===curSubcat)) subcatSel.value = curSubcat;
   }
   const subcatFiltro = subcatSel ? subcatSel.value : 'todas';
 
+  // Cards de saldo por subcategoría (u obra) dentro del fondo elegido —
+  // siempre reflejan TODOS los movimientos del fondo, no el filtro de
+  // subcategoría/obra ya aplicado, para dar una vista completa del fondo.
+  const subcatGridEl = document.getElementById('fima-subcat-grid');
+  if(subcatGridEl){
+    if(fondoFiltro==='todos'){
+      subcatGridEl.innerHTML = '';
+    } else {
+      const esObras = fondoFiltro==='obras';
+      const movsFondo = state.movimientosFima.filter(m=>m.fondo===fondoFiltro);
+      const grupos = {};
+      movsFondo.forEach(m=>{
+        const key = esObras ? (m.obraId||'__sin__') : (m.subcategoria||'__sin__');
+        if(!grupos[key]) grupos[key] = { label: key==='__sin__' ? (esObras?'Sin obra asignada':'Sin categorizar') : (esObras ? (getObra(key)?.code||key) : key), saldo:0 };
+        grupos[key].saldo += (m.tipo==='in'? m.monto : -m.monto);
+      });
+      const entries = Object.entries(grupos).sort((a,b)=>{
+        if(a[0]==='__sin__') return 1; if(b[0]==='__sin__') return -1;
+        return a[1].label.localeCompare(b[1].label);
+      });
+      subcatGridEl.innerHTML = entries.length ? entries.map(([key,g])=>`<div class="card cat-card" style="cursor:pointer;" onclick="setFimaSubcatFiltro('${key}')"><div class="cat-name">${g.label}</div><div class="fund-value" style="font-size:17px;margin-top:6px;">${fmt(g.saldo)}</div></div>`).join('') : `<div class="foot-note">Todavía no hay movimientos en este fondo</div>`;
+    }
+  }
+
   let rows = [...state.movimientosFima];
   if(fondoFiltro!=='todos') rows = rows.filter(m=>m.fondo===fondoFiltro);
   if(subcatFiltro!=='todas'){
-    rows = fondoFiltro==='obras' ? rows.filter(m=>m.obraId===subcatFiltro) : rows.filter(m=>m.subcategoria===subcatFiltro);
+    if(fondoFiltro==='obras') rows = rows.filter(m=> subcatFiltro==='__sin__' ? !m.obraId : m.obraId===subcatFiltro);
+    else rows = rows.filter(m=> subcatFiltro==='__sin__' ? !m.subcategoria : m.subcategoria===subcatFiltro);
   }
   rows.sort((a,b)=>b.fecha.localeCompare(a.fecha));
   const subcatOObraTag = (m)=>{
@@ -1843,6 +1869,10 @@ function renderFima(){
     return '—';
   };
   document.getElementById('movimientos-fima-body').innerHTML = rows.length ? rows.map(m=>`<tr><td class="mono">${fmtFecha(m.fecha)}</td><td>${fondoLabel[m.fondo]}</td><td>${subcatOObraTag(m)}</td><td>${m.concepto}</td><td><span class="badge-inout ${m.tipo}">${m.tipo==='in'?'Ingreso':'Egreso'}</span></td><td class="num">${fmt(m.monto)}</td></tr>`).join('') : `<tr class="empty-row"><td colspan="6">Sin movimientos para este filtro</td></tr>`;
+}
+function setFimaSubcatFiltro(value){
+  document.getElementById('fima-filtro-subcat').value = value;
+  renderFima();
 }
 function openModalEditarFondo(fondo){
   modalEl.innerHTML = `<h3>Editar fondo — ${fondoLabel[fondo]}</h3><div class="modal-sub">Ajustá el monto actual del fondo — por ejemplo, para cargar un saldo inicial</div>

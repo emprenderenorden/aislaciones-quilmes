@@ -91,4 +91,9 @@ Una vez desplegado, tildar los ítems de arriba o borrar la sección.
   subcategoría, se elige la obra (usa el campo `obraId` que ya existía).
   La tabla de Movimientos de FIMA suma filtros por Fondo y por
   Subcategoría (u Obra, según el fondo elegido), y la columna "Obra" pasó
-  a llamarse "Subcategoría / Obra".
+  a llamarse "Subcategoría / Obra". Al elegir un fondo en el filtro,
+  aparecen cards con el saldo (ingresos − egresos) de cada subcategoría
+  usada en ese fondo (u obra, si el fondo es Obras), más una card "Sin
+  categorizar" / "Sin obra asignada" para lo que quedó sin esa etiqueta —
+  tocar una card aplica ese filtro. No necesitó cambios de backend (usa
+  los mismos campos ya agregados).
