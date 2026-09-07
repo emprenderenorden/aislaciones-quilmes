@@ -723,6 +723,7 @@ function sueldoDiarioTrabajador(trabajador, yyyyMM){
 }
 function mondayOf(iso){
   const d = new Date(iso+'T00:00:00');
+  if(isNaN(d.getTime())) return today();
   const dow = d.getDay();
   const diff = dow===0 ? -6 : 1-dow;
   d.setDate(d.getDate()+diff);
@@ -1551,7 +1552,7 @@ function handleImportExcel(evt){
 /* ======================= JORNALES ======================= */
 const CURRENT_WEEK = '2026-07-27';
 let viewedWeek = CURRENT_WEEK;
-function addDays(iso,n){ const d=new Date(iso+'T00:00:00'); d.setDate(d.getDate()+n); return d.toISOString().slice(0,10); }
+function addDays(iso,n){ const d=new Date(iso+'T00:00:00'); if(isNaN(d.getTime())) return today(); d.setDate(d.getDate()+n); return d.toISOString().slice(0,10); }
 function weekLabel(startIso){
   const start = new Date(startIso+'T00:00:00'); const end = new Date(start); end.setDate(end.getDate()+6);
   const fmtD = (d)=> String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0');
