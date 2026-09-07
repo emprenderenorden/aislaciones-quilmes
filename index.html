@@ -131,6 +131,8 @@
   .day-box.trabajado{background:var(--good);border-color:var(--good);}
   .day-box.ausente{background:var(--bad);border-color:var(--bad);}
   .day-box.sin_obra{background:var(--muted-2);border-color:var(--muted-2);opacity:.4;}
+  .day-box.disabled{background:transparent;border-color:var(--line);opacity:.2;cursor:not-allowed;}
+  .day-obra-tag{width:100%;margin-top:4px;font-size:10px;padding:2px 3px;}
 
   .fund-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:8px;}
   .fund-card{position:relative;overflow:hidden;}
@@ -392,7 +394,7 @@
   <!-- ============ JORNALES ============ -->
   <div class="view" id="view-jornales">
     <div class="topbar">
-      <div><h1>Jornales</h1><div class="sub">Control de asistencia del personal — la mano de obra ahora se maneja como costo fijo, acá no se cargan montos</div></div>
+      <div><h1>Jornales</h1><div class="sub">Asistencia, sueldos y horas extra del personal</div></div>
       <div class="topbar-actions"><button class="btn btn-primary" onclick="openModalTrabajador(null)">+ Agregar trabajador</button></div>
     </div>
     <div class="week-nav">
@@ -402,21 +404,21 @@
       <span class="link-btn" style="margin-left:6px;" onclick="goToCurrentWeek()">Ir a hoy</span>
     </div>
     <div class="card card-table"><table>
-      <thead><tr><th>Personal</th><th>Puesto</th><th>Obra</th><th>L</th><th>M</th><th>M</th><th>J</th><th>V</th><th>S</th><th>D</th><th class="num">Trabajados</th><th class="num">Ausentes</th><th class="num">Sin obra</th></tr></thead>
+      <thead><tr><th>Personal</th><th>Puesto</th><th>L</th><th>M</th><th>M</th><th>J</th><th>V</th><th>S</th><th>D</th><th class="num">Trabajados</th><th class="num">Ausentes</th><th class="num">Sin obra</th></tr></thead>
       <tbody id="jornales-body"></tbody>
     </table></div>
 
-    <div class="section-title"><h2>Personal</h2><span class="hint">Resumen por período — desde/hasta</span></div>
+    <div class="section-title"><h2>Personal</h2><span class="hint">Resumen del mes — días, sueldo diario y sueldo a cobrar</span></div>
     <div class="card" style="margin-bottom:16px;">
       <div class="form-grid">
-        <div class="field"><label>Desde</label><input id="jh-desde" type="date" onchange="renderJornalesHistorial()"></div>
-        <div class="field"><label>Hasta</label><input id="jh-hasta" type="date" onchange="renderJornalesHistorial()"></div>
+        <div class="field"><label>Mes</label><input id="jh-mes" type="month" onchange="renderJornalesHistorial()"></div>
         <div class="field"><label>Personal</label><select id="jh-persona" onchange="renderJornalesHistorial()"><option value="todos">Todos</option></select></div>
+        <div class="field"></div>
         <div class="field"></div>
       </div>
     </div>
     <div class="card card-table"><table>
-      <thead><tr><th>Personal</th><th>Puesto</th><th class="num">Días trabajados</th><th class="num">Días ausentes</th><th class="num">Días sin obra</th><th></th></tr></thead>
+      <thead><tr><th>Personal</th><th>Puesto</th><th class="num">Sueldo mensual</th><th class="num">Sueldo diario</th><th class="num">Días trabajados</th><th class="num">Días ausentes</th><th class="num">Horas extra</th><th class="num">Sueldo a cobrar</th><th></th></tr></thead>
       <tbody id="jornales-historial-body"></tbody>
     </table></div>
   </div>
@@ -657,7 +659,48 @@ function repararFechasEnState(){
   state.movimientosFima.forEach(m=>fix(m,'fecha'));
   return huboCambios;
 }
+// Migra los días de jornales del formato viejo (un string por día + una sola
+// obra por semana para toda la fila) al formato nuevo (cada día guarda su
+// propio {estado, obraId}), para poder cargar días de distintas obras en la
+// misma semana. Corre una sola vez al abrir la app; si no hay nada viejo por
+// migrar, no hace nada.
+function migrarJornalesPorDia(){
+  let huboCambios = false;
+  state.jornales.forEach(row=>{
+    const diasViejos = row.dias || [];
+    row.dias = diasViejos.map(d=>{
+      if(d && typeof d === 'object') return d;
+      huboCambios = true;
+      const estado = d || 'sin_obra';
+      return { estado, obraId: estado==='trabajado' ? (row.obraId||null) : null };
+    });
+    while(row.dias.length<7) row.dias.push({estado:'sin_obra', obraId:null});
+    if('obraId' in row){ delete row.obraId; huboCambios = true; }
+  });
+  return huboCambios;
+}
 const today = ()=> new Date().toISOString().slice(0,10);
+const VALOR_HORA_EXTRA = 10000;
+function esHabil_(y,m0,d){ const wd = new Date(y,m0,d).getDay(); return wd>=1 && wd<=5; }
+function diasHabilesDelMes(yyyyMM){
+  const [y,m] = yyyyMM.split('-').map(Number);
+  const ultimoDia = new Date(y, m, 0).getDate();
+  let count = 0;
+  for(let d=1; d<=ultimoDia; d++){ if(esHabil_(y, m-1, d)) count++; }
+  return count;
+}
+function sueldoDiarioTrabajador(trabajador, yyyyMM){
+  if(!trabajador) return 0;
+  const habiles = diasHabilesDelMes(yyyyMM);
+  return habiles>0 ? (trabajador.sueldoMensual||0)/habiles : 0;
+}
+function mondayOf(iso){
+  const d = new Date(iso+'T00:00:00');
+  const dow = d.getDay();
+  const diff = dow===0 ? -6 : 1-dow;
+  d.setDate(d.getDate()+diff);
+  return d.toISOString().slice(0,10);
+}
 let idCounter = 0;
 // Combina hora exacta + contador + azar, para que dos dispositivos distintos
 // nunca generen el mismo id aunque creen algo al mismo tiempo (a diferencia
@@ -790,7 +833,8 @@ function pagoEstadoInfo(est){
   if(est==='programado') return {dot:'info', txt:'Programado'};
   return {dot:'warn', txt:'Pendiente'}; // "pendiente" y "sin_fecha" se muestran igual para no confundir
 }
-const obraRealTotal = (o)=> o.real.materiaPrima+o.real.manoObra+o.real.logistica+o.real.estadia+o.real.otros;
+const obraManoObraReal = (o)=> (o.real.manoObra||0) + obraJornalesCostoReal(o);
+const obraRealTotal = (o)=> o.real.materiaPrima+obraManoObraReal(o)+o.real.logistica+o.real.estadia+o.real.otros;
 const obraPresTotal = (o)=> o.presupuesto.materiaPrima+o.presupuesto.manoObra+o.presupuesto.logistica+o.presupuesto.estadia;
 const liquidezTotal = ()=> state.caja + Object.values(state.fondos).reduce((a,b)=>a+b,0);
 
@@ -919,7 +963,7 @@ function renderObraDetail(){
   const logItems = (o.presupuestoDetalle && o.presupuestoDetalle.logItems) || [];
   const combustiblePres = logItems.filter(i=>/combustible|nafta|gasoil|gnc/i.test(i.detalle||'')).reduce((a,i)=>a+i.cantidad*i.unitario,0);
   const telepasePres = logItems.filter(i=>!/combustible|nafta|gasoil|gnc/i.test(i.detalle||'')).reduce((a,i)=>a+i.cantidad*i.unitario,0);
-  const catCards = cats.map(([key,icon])=>catCardHTML(catLabel[key], icon, o.presupuesto[key], o.real[key])).join('')
+  const catCards = cats.map(([key,icon])=>catCardHTML(catLabel[key], icon, o.presupuesto[key], key==='manoObra' ? obraManoObraReal(o) : o.real[key])).join('')
     + catCardHTML('Combustible', 'C', combustiblePres, combustibleReal)
     + catCardHTML('Telepase', 'T', telepasePres, telepaseReal)
     + `<div class="card cat-card"><div class="cat-name"><div class="cat-icon">+</div>Otros no previstos</div>
@@ -950,6 +994,8 @@ function renderObraDetail(){
         <div style="font-size:12.5px;color:var(--muted);">Cobrado ${fmt(o.ingresos.cobrado)} − Costos reales ${fmt(realTotal)}</div>
       </div>
     </div>
+
+    ${renderObraJornalesCard(o)}
 
     <div class="section-title"><h2>Costos por categoría</h2><span class="hint">Presupuestado vs. real</span></div>
     <div class="cat-grid">${catCards}</div>
@@ -1001,7 +1047,7 @@ function renderObraDetail(){
       <thead><tr><th>Categoría</th><th class="num">Presupuestado</th><th class="num">Real</th><th class="num">Diferencia</th></tr></thead>
       <tbody>
         ${diffRow('Materiales', o.presupuesto.materiaPrima, o.real.materiaPrima)}
-        ${diffRow('Mano de obra', o.presupuesto.manoObra, o.real.manoObra)}
+        ${diffRow('Mano de obra', o.presupuesto.manoObra, obraManoObraReal(o))}
         ${diffRow('Logística', o.presupuesto.logistica, o.real.logistica)}
         ${diffRow('Estadía de obra', o.presupuesto.estadia, o.real.estadia)}
         ${diffRow('Otros no previstos', 0, o.real.otros)}
@@ -1124,7 +1170,7 @@ function eliminarObra(id){
   // Movimientos de FIMA y jornales: ya representan plata movida o asistencia
   // real, no se borran — solo se desvinculan de la obra eliminada.
   state.movimientosFima.forEach(m=>{ if(m.obraId===id) m.obraId=null; });
-  state.jornales.forEach(j=>{ if(j.obraId===id) j.obraId=null; });
+  state.jornales.forEach(j=>{ j.dias.forEach(cell=>{ if(cell.obraId===id){ cell.obraId=null; } }); });
 
   state.obras = state.obras.filter(x=>x.id!==id);
   state.selectedObraId = state.obras[0] ? state.obras[0].id : null;
@@ -1302,7 +1348,8 @@ function savePresupuesto(){
     const facturasVenta = [{id:newId('fv'), fecha:fechaFactura, montoSinIva:c.totalPresupuesto, iva:c.ivaARS, monto:c.totalConIva}];
     state.obras.push({ id, code, cliente, encargado, fechaInicio:fecha, estado:estadoInicial,
       presupuestoDetalle:detalle, presupuesto, presupuestoResumen,
-      real, ingresos:{facturado:c.totalConIva, cobrado}, ingresosList, facturasVenta, documentos:[] });
+      real, ingresos:{facturado:c.totalConIva, cobrado}, ingresosList, facturasVenta, documentos:[],
+      jornalesConfig: {asignados:[], horasExtra:{}} });
     if(ir){
       ['materiaPrima','manoObra','logistica','estadia','otros'].forEach(cat=>{
         const monto = real[cat];
@@ -1427,32 +1474,51 @@ const DIA_ORDEN = ['sin_obra','trabajado','ausente'];
 const diaEstadoLabel = {trabajado:'Trabajado', sin_obra:'Sin obra asignada', ausente:'Ausente'};
 function changeWeek(delta){ viewedWeek = addDays(viewedWeek, delta*7); renderJornales(); }
 function goToCurrentWeek(){ viewedWeek = CURRENT_WEEK; renderJornales(); }
+// Cada día de jornales guarda su propio {estado, obraId} — un trabajador
+// puede haber trabajado en distintas obras en la misma semana. El objeto
+// jornales ya no tiene una obra "de la fila": la obra vive en cada día.
 function ensureJornalRow(trabajadorId, semanaInicio){
   let row = state.jornales.find(j=>j.trabajadorId===trabajadorId && j.semanaInicio===semanaInicio);
-  if(!row){ row = {id:newId('j'), trabajadorId, obraId:null, semanaInicio, dias:Array(7).fill('sin_obra')}; state.jornales.push(row); }
+  if(!row){ row = {id:newId('j'), trabajadorId, semanaInicio, dias:Array(7).fill(0).map(()=>({estado:'sin_obra', obraId:null}))}; state.jornales.push(row); }
   return row;
 }
 function cycleDia(trabajadorId, semanaInicio, dayIdx){
   const row = ensureJornalRow(trabajadorId, semanaInicio);
-  const cur = DIA_ORDEN.indexOf(row.dias[dayIdx]);
-  row.dias[dayIdx] = DIA_ORDEN[(cur+1)%DIA_ORDEN.length];
+  const cur = DIA_ORDEN.indexOf(row.dias[dayIdx].estado);
+  const next = DIA_ORDEN[(cur+1)%DIA_ORDEN.length];
+  row.dias[dayIdx] = { estado: next, obraId: next==='trabajado' ? row.dias[dayIdx].obraId : null };
   renderJornales();
 }
-function setJornalObra(trabajadorId, semanaInicio, obraId){
-  ensureJornalRow(trabajadorId, semanaInicio).obraId = obraId || null;
+function setDiaObra(trabajadorId, semanaInicio, dayIdx, obraId){
+  ensureJornalRow(trabajadorId, semanaInicio).dias[dayIdx].obraId = obraId || null;
   renderJornales();
 }
-function contarDias(dias, estado){ return dias.filter(d=>d===estado).length; }
+// Cicla el día pero "apropiándolo" para esta obra en particular — se usa
+// desde el cuadro de jornales dentro de la obra: el primer click marca
+// trabajado en ESTA obra (aunque ese día ya estuviera en otra obra), el
+// segundo lo pasa a ausente, el tercero lo deja libre.
+function cycleDiaObra(trabajadorId, semanaInicio, dayIdx, obraId){
+  const row = ensureJornalRow(trabajadorId, semanaInicio);
+  const cell = row.dias[dayIdx];
+  if(cell.estado==='trabajado' && cell.obraId===obraId){ row.dias[dayIdx] = {estado:'ausente', obraId:null}; }
+  else if(cell.estado==='ausente'){ row.dias[dayIdx] = {estado:'sin_obra', obraId:null}; }
+  else { row.dias[dayIdx] = {estado:'trabajado', obraId}; }
+  renderAll();
+}
+function contarDias(dias, estado){ return dias.filter(d=>d.estado===estado).length; }
 function renderJornales(){
   document.getElementById('current-week-label').textContent = weekLabel(viewedWeek);
   document.getElementById('jornales-body').innerHTML = state.trabajadores.length ? state.trabajadores.map(t=>{
     const row = state.jornales.find(j=>j.trabajadorId===t.id && j.semanaInicio===viewedWeek);
-    const dias = row ? row.dias : Array(7).fill('sin_obra');
-    const obraId = row ? row.obraId : null;
-    const obraOptions = `<option value="">— Sin obra —</option>` + state.obras.map(o=>`<option value="${o.id}" ${obraId===o.id?'selected':''}>${o.code}</option>`).join('');
-    const dayCells = dias.map((d,i)=>`<td><div class="day-box ${d}" title="${diaEstadoLabel[d]}" onclick="cycleDia('${t.id}','${viewedWeek}',${i})"></div></td>`).join('');
-    return `<tr><td style="font-weight:600;">${t.nombre}</td><td>${t.puesto}</td><td><select class="cell-input" onchange="setJornalObra('${t.id}','${viewedWeek}',this.value)">${obraOptions}</select></td>${dayCells}<td class="num">${contarDias(dias,'trabajado')}</td><td class="num">${contarDias(dias,'ausente')}</td><td class="num">${contarDias(dias,'sin_obra')}</td></tr>`;
-  }).join('') : `<tr class="empty-row"><td colspan="13">Todavía no hay personal cargado — usá "+ Agregar trabajador"</td></tr>`;
+    const dias = row ? row.dias : Array(7).fill(0).map(()=>({estado:'sin_obra', obraId:null}));
+    const dayCells = dias.map((cell,i)=>{
+      const obraTag = cell.estado==='trabajado' ? `<select class="cell-input day-obra-tag" onchange="setDiaObra('${t.id}','${viewedWeek}',${i},this.value)">
+          <option value="">— Obra —</option>${state.obras.map(o=>`<option value="${o.id}" ${cell.obraId===o.id?'selected':''}>${o.code}</option>`).join('')}
+        </select>` : '';
+      return `<td><div class="day-box ${cell.estado}" title="${diaEstadoLabel[cell.estado]}" onclick="cycleDia('${t.id}','${viewedWeek}',${i})"></div>${obraTag}</td>`;
+    }).join('');
+    return `<tr><td style="font-weight:600;">${t.nombre}</td><td>${t.puesto}</td>${dayCells}<td class="num">${contarDias(dias,'trabajado')}</td><td class="num">${contarDias(dias,'ausente')}</td><td class="num">${contarDias(dias,'sin_obra')}</td></tr>`;
+  }).join('') : `<tr class="empty-row"><td colspan="12">Todavía no hay personal cargado — usá "+ Agregar trabajador"</td></tr>`;
   populateJornalesFiltros();
   renderJornalesHistorial();
 }
@@ -1462,35 +1528,60 @@ function populateJornalesFiltros(){
   const curPersona = personaSel.value;
   personaSel.innerHTML = `<option value="todos">Todos</option>` + state.trabajadores.map(t=>`<option value="${t.id}">${t.nombre}</option>`).join('');
   if([...personaSel.options].some(o=>o.value===curPersona)) personaSel.value = curPersona;
-  const desdeEl = document.getElementById('jh-desde'), hastaEl = document.getElementById('jh-hasta');
-  if(desdeEl && !desdeEl.value && state.jornales.length){ desdeEl.value = [...state.jornales].map(j=>j.semanaInicio).sort()[0]; }
-  if(hastaEl && !hastaEl.value){ hastaEl.value = today(); }
+  const mesEl = document.getElementById('jh-mes');
+  if(mesEl && !mesEl.value){ mesEl.value = today().slice(0,7); }
+}
+// Cuenta, para un trabajador y un mes calendario (yyyy-mm), cuántos días
+// puntuales (no semanas enteras) cayeron trabajados/ausentes/sin obra —
+// recorre cada semana cargada y ubica la fecha real de cada día.
+function diasDelMes(trabajadorId, mes){
+  const res = {trabajado:0, ausente:0, sin_obra:0};
+  state.jornales.forEach(row=>{
+    if(row.trabajadorId!==trabajadorId) return;
+    row.dias.forEach((cell,i)=>{
+      if(addDays(row.semanaInicio, i).slice(0,7)!==mes) return;
+      res[cell.estado]++;
+    });
+  });
+  return res;
+}
+// Horas extra del mes: se cargan como un total por trabajador dentro de
+// cada obra (no por fecha puntual), así que se atribuyen al mes de la
+// fecha de inicio de esa obra.
+function horasExtraDelMes(trabajadorId, mes){
+  let total = 0;
+  state.obras.forEach(o=>{
+    if(!o.fechaInicio || o.fechaInicio.slice(0,7)!==mes) return;
+    const h = o.jornalesConfig && o.jornalesConfig.horasExtra && o.jornalesConfig.horasExtra[trabajadorId];
+    if(h) total += Number(h)||0;
+  });
+  return total;
+}
+function sueldoACobrar(trabajador, mes){
+  const diario = sueldoDiarioTrabajador(trabajador, mes);
+  const {ausente} = diasDelMes(trabajador.id, mes);
+  const horasExtra = horasExtraDelMes(trabajador.id, mes);
+  return Math.max(0, (trabajador.sueldoMensual||0) - ausente*diario) + horasExtra*VALOR_HORA_EXTRA;
 }
 function renderJornalesHistorial(){
-  const desde = document.getElementById('jh-desde')?.value||'';
-  const hasta = document.getElementById('jh-hasta')?.value||'';
+  const mes = document.getElementById('jh-mes')?.value || today().slice(0,7);
   const personaId = document.getElementById('jh-persona')?.value||'todos';
-  let rows = [...state.jornales];
-  if(desde) rows = rows.filter(j=>j.semanaInicio>=desde);
-  if(hasta) rows = rows.filter(j=>j.semanaInicio<=hasta);
-  if(personaId!=='todos') rows = rows.filter(j=>j.trabajadorId===personaId);
-
-  const porTrabajador = {};
-  state.trabajadores.forEach(t=>{ porTrabajador[t.id] = {trabajado:0, ausente:0, sin_obra:0}; });
-  rows.forEach(j=>{ j.dias.forEach(d=>{ if(porTrabajador[j.trabajadorId]) porTrabajador[j.trabajadorId][d]++; }); });
-
-  let ids = Object.keys(porTrabajador);
+  let ids = state.trabajadores.map(t=>t.id);
   if(personaId!=='todos') ids = ids.filter(id=>id===personaId);
   ids.sort((a,b)=> getTrabajador(a).nombre.localeCompare(getTrabajador(b).nombre));
 
   const body = document.getElementById('jornales-historial-body');
-  if(!ids.length){ body.innerHTML = `<tr class="empty-row"><td colspan="6">No hay personal cargado</td></tr>`; return; }
-  let granT=0, granA=0, granS=0;
+  if(!ids.length){ body.innerHTML = `<tr class="empty-row"><td colspan="9">No hay personal cargado</td></tr>`; return; }
+  let granT=0, granA=0, granSueldo=0;
   body.innerHTML = ids.map(id=>{
-    const t = getTrabajador(id), s = porTrabajador[id];
-    granT+=s.trabajado; granA+=s.ausente; granS+=s.sin_obra;
-    return `<tr><td style="font-weight:600;">${t.nombre}</td><td>${t.puesto}</td><td class="num">${s.trabajado}</td><td class="num">${s.ausente}</td><td class="num">${s.sin_obra}</td><td><span class="link-btn" onclick="openModalTrabajador('${id}')">Editar</span></td></tr>`;
-  }).join('') + `<tr class="subtotal-row"><td colspan="2">Total general</td><td class="num">${granT}</td><td class="num">${granA}</td><td class="num">${granS}</td><td></td></tr>`;
+    const t = getTrabajador(id);
+    const {trabajado, ausente} = diasDelMes(id, mes);
+    const diario = sueldoDiarioTrabajador(t, mes);
+    const horasExtra = horasExtraDelMes(id, mes);
+    const sueldo = sueldoACobrar(t, mes);
+    granT+=trabajado; granA+=ausente; granSueldo+=sueldo;
+    return `<tr><td style="font-weight:600;">${t.nombre}</td><td>${t.puesto}</td><td class="num">${fmt(t.sueldoMensual||0)}</td><td class="num">${fmt(diario)}</td><td class="num">${trabajado}</td><td class="num">${ausente}</td><td class="num">${horasExtra}</td><td class="num">${fmt(sueldo)}</td><td><span class="link-btn" onclick="openModalTrabajador('${id}')">Editar</span></td></tr>`;
+  }).join('') + `<tr class="subtotal-row"><td colspan="4">Total general</td><td class="num">${granT}</td><td class="num">${granA}</td><td></td><td class="num">${fmt(granSueldo)}</td><td></td></tr>`;
 }
 function openModalTrabajador(id){
   const existing = id ? getTrabajador(id) : null;
@@ -1498,7 +1589,8 @@ function openModalTrabajador(id){
   modalEl.innerHTML = `<h3>${existing?'Editar trabajador':'Agregar trabajador'}</h3>
     <div class="form-grid">
       <div class="field span2"><label>Nombre</label><input id="f-trab-nombre" placeholder="Nombre y apellido" value="${existing?existing.nombre:''}"></div>
-      <div class="field span2"><label>Puesto</label><select id="f-trab-puesto">${puestos.map(p=>`<option ${existing&&existing.puesto===p?'selected':''}>${p}</option>`).join('')}</select></div>
+      <div class="field"><label>Puesto</label><select id="f-trab-puesto">${puestos.map(p=>`<option ${existing&&existing.puesto===p?'selected':''}>${p}</option>`).join('')}</select></div>
+      <div class="field"><label>Sueldo mensual</label><input id="f-trab-sueldo" class="cell-input mono-in" type="number" min="0" value="${existing?(existing.sueldoMensual||0):0}"></div>
     </div>
     <div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" onclick="submitTrabajador('${id||''}')">${existing?'Guardar cambios':'Agregar'}</button></div>`;
   overlay.classList.add('open');
@@ -1507,9 +1599,112 @@ function submitTrabajador(id){
   const nombre = document.getElementById('f-trab-nombre').value.trim();
   if(!nombre){ alert('Ingresá el nombre del trabajador.'); return; }
   const puesto = document.getElementById('f-trab-puesto').value;
-  if(id){ Object.assign(getTrabajador(id), {nombre, puesto}); }
-  else { state.trabajadores.push({id:newId('t'), nombre, puesto}); }
+  const sueldoMensual = +document.getElementById('f-trab-sueldo').value || 0;
+  if(id){ Object.assign(getTrabajador(id), {nombre, puesto, sueldoMensual}); }
+  else { state.trabajadores.push({id:newId('t'), nombre, puesto, sueldoMensual}); }
   closeModal(); renderAll();
+}
+
+/* ======================= JORNALES DENTRO DE LA OBRA ======================= */
+// Cuánto cuestan realmente, en sueldos, los días que se marcaron "trabajado"
+// para esta obra + las horas extra cargadas — se suma al costo real de Mano
+// de obra de la obra (resultado/comparativo), pero no genera ningún gasto ni
+// movimiento de FIMA: el pago del sueldo se sigue gestionando aparte, como
+// costo fijo.
+function obraJornalesCostoReal(obra){
+  let total = 0;
+  state.jornales.forEach(row=>{
+    row.dias.forEach((cell,i)=>{
+      if(cell.estado!=='trabajado' || cell.obraId!==obra.id) return;
+      const trabajador = getTrabajador(row.trabajadorId);
+      if(!trabajador) return;
+      const fecha = addDays(row.semanaInicio, i);
+      total += sueldoDiarioTrabajador(trabajador, fecha.slice(0,7));
+    });
+  });
+  const horasExtra = (obra.jornalesConfig && obra.jornalesConfig.horasExtra) || {};
+  Object.values(horasExtra).forEach(h=>{ total += (Number(h)||0) * VALOR_HORA_EXTRA; });
+  return total;
+}
+let obraJornalesWeek = {};
+function obraJornalesWeekStart(obra){ return mondayOf(obra.fechaInicio); }
+function getObraJornalesViewedWeek(obra){
+  if(!obraJornalesWeek[obra.id]) obraJornalesWeek[obra.id] = obraJornalesWeekStart(obra);
+  return obraJornalesWeek[obra.id];
+}
+function changeObraJornalesWeek(obraId, delta){
+  const o = getObra(obraId);
+  const minWeek = obraJornalesWeekStart(o);
+  let w = addDays(getObraJornalesViewedWeek(o), delta*7);
+  if(w<minWeek) w = minWeek;
+  obraJornalesWeek[obraId] = w;
+  renderObraDetail();
+}
+function asignarTrabajadorObra(obraId, trabajadorId){
+  if(!trabajadorId) return;
+  const o = getObra(obraId);
+  o.jornalesConfig = o.jornalesConfig || {asignados:[], horasExtra:{}};
+  if(!o.jornalesConfig.asignados.includes(trabajadorId)) o.jornalesConfig.asignados.push(trabajadorId);
+  renderAll();
+}
+function quitarTrabajadorObra(obraId, trabajadorId){
+  const o = getObra(obraId);
+  if(!o.jornalesConfig) return;
+  o.jornalesConfig.asignados = (o.jornalesConfig.asignados||[]).filter(id=>id!==trabajadorId);
+  renderAll();
+}
+function setHorasExtraObra(obraId, trabajadorId, valor){
+  const o = getObra(obraId);
+  o.jornalesConfig = o.jornalesConfig || {asignados:[], horasExtra:{}};
+  o.jornalesConfig.horasExtra[trabajadorId] = Math.max(0, +valor||0);
+  renderAll();
+}
+function renderObraJornalesCard(o){
+  const cfg = o.jornalesConfig = o.jornalesConfig || {asignados:[], horasExtra:{}};
+  const viewedWeek = getObraJornalesViewedWeek(o);
+  const minWeek = obraJornalesWeekStart(o);
+  const asignados = cfg.asignados || [];
+  const disponibles = state.trabajadores.filter(t=>!asignados.includes(t.id));
+  const filas = asignados.map(tid=>{
+    const t = getTrabajador(tid);
+    if(!t) return '';
+    const row = state.jornales.find(j=>j.trabajadorId===tid && j.semanaInicio===viewedWeek) || {dias:Array(7).fill(0).map(()=>({estado:'sin_obra', obraId:null}))};
+    const dayCells = row.dias.map((cell,i)=>{
+      const fecha = addDays(viewedWeek, i);
+      const habilitado = fecha>=o.fechaInicio;
+      const enEstaObra = cell.estado==='trabajado' && cell.obraId===o.id;
+      const cls = !habilitado ? 'disabled' : (enEstaObra?'trabajado':(cell.estado==='ausente'?'ausente':'sin_obra'));
+      const click = habilitado ? `onclick="cycleDiaObra('${tid}','${viewedWeek}',${i},'${o.id}')"` : '';
+      const titulo = habilitado ? fmtFecha(fecha) : `${fmtFecha(fecha)} — la obra todavía no había iniciado`;
+      return `<td><div class="day-box ${cls}" title="${titulo}" ${click}></div></td>`;
+    }).join('');
+    const trabajados = row.dias.filter(c=>c.estado==='trabajado'&&c.obraId===o.id).length;
+    const ausentes = row.dias.filter(c=>c.estado==='ausente').length;
+    const horasExtra = cfg.horasExtra[tid] || 0;
+    return `<tr><td style="font-weight:600;">${t.nombre}</td><td>${t.puesto}</td>${dayCells}<td class="num">${trabajados}</td><td class="num">${ausentes}</td><td><input class="cell-input mono-in" type="number" min="0" style="width:80px;" value="${horasExtra}" onchange="setHorasExtraObra('${o.id}','${tid}',this.value)"></td><td><span class="link-btn danger" onclick="quitarTrabajadorObra('${o.id}','${tid}')">Quitar</span></td></tr>`;
+  }).join('');
+  return `
+    <div class="section-title"><h2>Jornales de la obra</h2><span class="hint">Se ve también en Jornales, con el número de esta obra</span></div>
+    <div class="card" style="margin-bottom:12px;">
+      <div class="form-grid">
+        <div class="field"><label>Asignar trabajador</label>
+          <select class="cell-input" onchange="if(this.value){ asignarTrabajadorObra('${o.id}', this.value); this.value=''; }">
+            <option value="">— Elegir —</option>
+            ${disponibles.map(t=>`<option value="${t.id}">${t.nombre}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+    </div>
+    <div class="week-nav">
+      <button class="nav-arrow" onclick="changeObraJornalesWeek('${o.id}',-1)" ${viewedWeek<=minWeek?'disabled':''}>‹</button>
+      <span class="week-label">${weekLabel(viewedWeek)}</span>
+      <button class="nav-arrow" onclick="changeObraJornalesWeek('${o.id}',1)">›</button>
+    </div>
+    <div class="card card-table"><table>
+      <thead><tr><th>Personal</th><th>Puesto</th><th>L</th><th>M</th><th>M</th><th>J</th><th>V</th><th>S</th><th>D</th><th class="num">Trabajados</th><th class="num">Ausentes</th><th>Horas extra</th><th></th></tr></thead>
+      <tbody>${filas || `<tr class="empty-row"><td colspan="13">Todavía no hay trabajadores asignados a esta obra</td></tr>`}</tbody>
+    </table></div>
+  `;
 }
 
 /* ======================= FIMA ======================= */
@@ -2586,6 +2781,7 @@ function renderAll(){ renderDashboard(); renderObraLista(); if(!document.getElem
   // futura, ej. cheques diferidos) cuya fecha ya llegó.
   const huboReparacionFechas = repararFechasEnState();
   const huboMaduraciones = reconciliarPagosProgramados();
+  const huboMigracionJornales = migrarJornalesPorDia();
   showObraSubview('lista');
   renderAll();
   // La primera vez que se renderiza es lo que se acaba de leer del Sheet:
@@ -2593,7 +2789,7 @@ function renderAll(){ renderDashboard(); renderObraLista(); if(!document.getElem
   // reflejan ediciones reales — así abrir la app en varios dispositivos a
   // la vez no genera avisos de "conflicto" sin que nadie haya cambiado nada.
   bootCompleto = true;
-  if(huboReparacionFechas || huboMaduraciones) saveState();
+  if(huboReparacionFechas || huboMaduraciones || huboMigracionJornales) saveState();
   const overlay = document.getElementById('loading-overlay');
   if(overlay){ overlay.style.opacity='0'; setTimeout(()=>overlay.remove(), 300); }
   const initialView = location.hash.slice(1);
