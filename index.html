@@ -1681,8 +1681,33 @@ function openModalTrabajador(id){
       <div class="field"><label>Puesto</label><select id="f-trab-puesto">${puestos.map(p=>`<option ${existing&&existing.puesto===p?'selected':''}>${p}</option>`).join('')}</select></div>
       <div class="field"><label>Sueldo mensual</label><input id="f-trab-sueldo" class="cell-input mono-in" type="number" min="0" value="${existing?(existing.sueldoMensual||0):0}"></div>
     </div>
-    <div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" onclick="submitTrabajador('${id||''}')">${existing?'Guardar cambios':'Agregar'}</button></div>`;
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal()">Cancelar</button>
+      ${existing?`<button class="btn btn-ghost" style="color:var(--bad);border-color:var(--bad);" onclick="eliminarTrabajador('${id}')">Eliminar trabajador</button>`:''}
+      <button class="btn btn-primary" onclick="submitTrabajador('${id||''}')">${existing?'Guardar cambios':'Agregar'}</button>
+    </div>`;
   overlay.classList.add('open');
+}
+// Borra al trabajador y todo su historial de jornales (días cargados en
+// cualquier obra) — también lo saca de la asignación y horas extra de las
+// obras donde estuviera asignado. Baja el costo real de Mano de obra de
+// esas obras si tenían días suyos contabilizados.
+function eliminarTrabajador(id){
+  const t = getTrabajador(id);
+  if(!t) return;
+  const tieneJornales = state.jornales.some(j=>j.trabajadorId===id && j.dias.some(d=>d.estado!=='sin_obra'));
+  const advertencia = tieneJornales
+    ? `El trabajador "${t.nombre}" ya tiene días cargados en Jornales (trabajados o ausentes) en una o más obras. Al eliminarlo se borra también todo ese historial, y puede bajar el costo real de Mano de obra de esas obras. Esta acción no se puede deshacer.\n\n¿Eliminar igual a "${t.nombre}"?`
+    : `¿Eliminar al trabajador "${t.nombre}"? Esta acción no se puede deshacer.`;
+  if(!confirm(advertencia)) return;
+  state.jornales = state.jornales.filter(j=>j.trabajadorId!==id);
+  state.obras.forEach(o=>{
+    if(!o.jornalesConfig) return;
+    o.jornalesConfig.asignados = (o.jornalesConfig.asignados||[]).filter(tid=>tid!==id);
+    if(o.jornalesConfig.horasExtra) delete o.jornalesConfig.horasExtra[id];
+  });
+  state.trabajadores = state.trabajadores.filter(x=>x.id!==id);
+  closeModal(); renderAll();
 }
 function submitTrabajador(id){
   const nombre = document.getElementById('f-trab-nombre').value.trim();

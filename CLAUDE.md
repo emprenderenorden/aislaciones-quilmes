@@ -97,3 +97,18 @@ Una vez desplegado, tildar los ítems de arriba o borrar la sección.
   categorizar" / "Sin obra asignada" para lo que quedó sin esa etiqueta —
   tocar una card aplica ese filtro. No necesitó cambios de backend (usa
   los mismos campos ya agregados).
+- **Fix: no colgar la app con una fila de jornales con fecha inválida.**
+  `addDays()`/`mondayOf()` tiraban un error si la fecha de entrada no era
+  parseable, y como eso pasaba durante el render inicial, la pantalla de
+  "Cargando datos…" quedaba trabada para siempre. Ahora devuelven la
+  fecha de hoy como resguardo en vez de tirar el error.
+- **Eliminar trabajador.** No existía forma de borrar un trabajador — solo
+  "Quitar" de una obra puntual (que no lo borraba, solo lo desasignaba de
+  esa obra, por eso parecía que "volvía a aparecer"). Ahora, al editar un
+  trabajador en Jornales, hay un botón "Eliminar trabajador" que lo borra
+  del todo: se saca de la lista de Jornales, de la asignación/horas extra
+  de cualquier obra, y **también se borra todo su historial de días
+  cargados** (trabajados/ausentes) en cualquier obra — esto puede bajar
+  el costo real de Mano de obra de obras que ya tenían esos días
+  contabilizados (decisión tomada a pedido: se prefirió borrar todo el
+  historial en vez de conservarlo).
