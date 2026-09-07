@@ -55,7 +55,7 @@ const SCHEMAS = {
   obras: ['id', 'code', 'cliente', 'encargado', 'fechaInicio', 'estado',
     'presupuestoJSON', 'presupuestoDetalleJSON', 'presupuestoResumenJSON',
     'realJSON', 'ingresosJSON', 'ingresosListJSON', 'facturasVentaJSON', 'documentosJSON',
-    'sinCobrosPendientes', 'jornalesConfigJSON'],
+    'sinCobrosPendientes', 'jornalesConfigJSON', 'comisionOverrideJSON'],
   pagos: ['id', 'tipo', 'obraId', 'categoria', 'concepto', 'cantidad', 'unitario',
     'ivaAplica', 'monto', 'proveedorId', 'numeroFactura', 'fechaFactura', 'formaPago',
     'fechaPago', 'numeroOC', 'origenFondo', 'pagosRealizadosJSON'],
@@ -187,6 +187,7 @@ function readState_() {
     facturasVenta: parseJsonField_(r.facturasVentaJSON, []),
     documentos: parseJsonField_(r.documentosJSON, []),
     jornalesConfig: parseJsonField_(r.jornalesConfigJSON, { asignados: [], horasExtra: {} }),
+    comisionOverride: parseJsonField_(r.comisionOverrideJSON, null),
   }));
 
   const pagos = sheetToRows_(ss.getSheetByName(SHEET_NAMES.pagos), SCHEMAS.pagos).map(r => ({
@@ -271,6 +272,7 @@ function writeState_(state) {
     JSON.stringify(o.facturasVenta || []), JSON.stringify(o.documentos || []),
     o.sinCobrosPendientes ? 'TRUE' : 'FALSE',
     JSON.stringify(o.jornalesConfig || { asignados: [], horasExtra: {} }),
+    JSON.stringify(o.comisionOverride || null),
   ]);
 
   writeRows_(ss.getSheetByName(SHEET_NAMES.pagos), SCHEMAS.pagos, state.pagos || [], p => [

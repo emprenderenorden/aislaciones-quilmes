@@ -37,6 +37,8 @@ redeploy, los campos nuevos no se guardan en el Sheet (se pierden al recargar):
 - [ ] `obras`: campo `jornalesConfigJSON` (asignación de trabajadores +
       horas extra por obra).
 - [ ] `stock`: campos `categoria` y `stockMinimo` (ver más abajo).
+- [ ] `obras`: campo `comisionOverrideJSON` (comisión del vendedor editable
+      puntualmente en la obra, ver más abajo).
 
 Cuando se haga el redeploy: pegar todo `backend-AppsScript.gs` en el editor
 de Apps Script del Sheet, guardar, y crear una nueva implementación (o
@@ -61,3 +63,23 @@ Una vez desplegado, tildar los ítems de arriba o borrar la sección.
   vía un link "Editar" por fila, y una alerta ("Bajo stock" en la fila +
   contador arriba de la tabla) cuando el stock actual queda por debajo del
   mínimo cargado.
+- **Presupuesto: dólar de referencia, cargas sociales y comisión reordenada.**
+  - El "Subtotal presupuesto" ahora también se muestra en USD (según la
+    cotización de referencia cargada), tanto en el presupuesto como en la
+    card "Presupuesto → Facturación" de la obra.
+  - Se sacó "931 x persona" de la tabla de roles de Mano de obra (y del
+    combo de puesto de trabajador en Jornales) y se agregó "Cargas
+    sociales ($)" — un monto único para toda la obra, no por día.
+  - Nueva cascada de cálculo: Costos → +Beneficio → +Impuestos → Subtotal
+    presupuesto → −Descuento (sobre este subtotal, sin IVA) → **Subtotal
+    previo de comisiones** → +Comisión vendedor (% o monto fijo, nuevo
+    selector) → **Presupuesto sin IVA** → +IVA → **Presupuesto con IVA**.
+    La comisión se suma aparte y ya NO resta de "Ganancia neta a
+    repartir" (que ahora es simplemente Beneficio − Descuento) — no le
+    come nada a los socios (AL/JL/AQ), la termina pagando el cliente.
+  - En la obra real, la comisión se puede editar puntualmente (otro % u
+    otro monto que el presupuestado) con el link "Editar" en la fila
+    "Comisión vendedor" de "Presupuestado vs. real" — no toca el
+    presupuesto original ni lo ya facturado, solo el cálculo real de esa
+    obra. Si el modo es monto fijo, se prorratea según el % efectivamente
+    cobrado.

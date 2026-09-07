@@ -351,7 +351,10 @@
     <div class="section-title"><h2>Mano de obra</h2><span class="hint" id="mo-subtotal">$ 0</span></div>
     <div class="card card-table">
       <table><thead><tr><th>Puesto</th><th class="num">Salario/día</th><th class="num">Nº trabajadores</th><th class="num">Subtotal/día</th></tr></thead><tbody id="mo-roles-body"></tbody></table>
-      <div class="form-grid" style="padding:14px;"><div class="field"><label>Tiempo de obra (días)</label><input id="pb-dias" class="cell-input mono-in" type="number" value="0" oninput="recomputeBuildTotals()"></div></div>
+      <div class="form-grid" style="padding:14px;">
+        <div class="field"><label>Tiempo de obra (días)</label><input id="pb-dias" class="cell-input mono-in" type="number" value="0" oninput="recomputeBuildTotals()"></div>
+        <div class="field"><label>Cargas sociales ($, total de la obra)</label><input id="pb-cargas-sociales" class="cell-input mono-in" type="number" value="0" oninput="recomputeBuildTotals()"></div>
+      </div>
     </div>
 
     <div class="section-title"><h2>Parámetros del presupuesto</h2></div>
@@ -370,10 +373,17 @@
       </div>
     </div>
 
-    <div class="section-title"><h2>Distribución de la ganancia</h2><span class="hint">Vendedor, socios y AQ</span></div>
+    <div class="section-title"><h2>Distribución de la ganancia</h2><span class="hint">Vendedor, socios y AQ — la comisión no resta del beneficio, se suma aparte</span></div>
     <div class="card">
       <div class="form-grid">
-        <div class="field"><label>% Comisión vendedor (s/ total facturado sin IVA)</label><input id="pb-vendedor-pct" class="cell-input mono-in" type="number" step="0.5" value="8" oninput="recomputeBuildTotals()"></div>
+        <div class="field"><label>Comisión vendedor</label>
+          <select id="pb-vendedor-modo" class="cell-input" onchange="document.getElementById('wrap-vendedor-pct').classList.toggle('hidden', this.value!=='pct'); document.getElementById('wrap-vendedor-monto').classList.toggle('hidden', this.value!=='monto'); recomputeBuildTotals();">
+            <option value="pct">Porcentaje (s/ subtotal previo de comisiones)</option>
+            <option value="monto">Monto fijo</option>
+          </select>
+        </div>
+        <div class="field" id="wrap-vendedor-pct"><label>% Comisión vendedor</label><input id="pb-vendedor-pct" class="cell-input mono-in" type="number" step="0.5" value="8" oninput="recomputeBuildTotals()"></div>
+        <div class="field hidden" id="wrap-vendedor-monto"><label>Monto fijo comisión ($)</label><input id="pb-vendedor-monto" class="cell-input mono-in" type="number" step="1000" value="0" oninput="recomputeBuildTotals()"></div>
         <div class="field"></div>
         <div class="field"><label>Nombre socio 1</label><input id="pb-socio1-nombre" class="cell-input" value="AL" oninput="recomputeBuildTotals()"></div>
         <div class="field"><label>% Socio 1 (s/ ganancia neta)</label><input id="pb-socio1-pct" class="cell-input mono-in" type="number" step="0.5" value="10" oninput="recomputeBuildTotals()"></div>
@@ -630,6 +640,7 @@ function catOptionsForTipo(tipo, selected){
 const fondoLabel = {costosFijos:'Costos Fijos', jornales:'Jornales', impuestos:'Impuestos', emergencias:'Emergencias', inversiones:'Inversiones', obras:'Obras', otros:'Otros'};
 function fondoOptionsHTML(selected){ return Object.entries(fondoLabel).map(([k,l])=>`<option value="${k}" ${selected===k?'selected':''}>${l}</option>`).join(''); }
 const fmt = (n)=> '$ ' + Math.round(n||0).toLocaleString('es-AR');
+const fmtUsd = (n)=> 'US$ ' + Math.round(n||0).toLocaleString('en-US');
 // Las fechas se guardan/comparan siempre en formato ISO (YYYY-MM-DD); esto
 // solo se usa para MOSTRARLAS como dd/mm/aaaa. Si llega algo que no tiene
 // pinta de fecha ISO (por ejemplo un valor viejo que quedó mal guardado como
@@ -985,14 +996,19 @@ function renderObraDetail(){
 
   const pd = o.presupuestoDetalle || {};
   const ivaPct = pd.ivaPct ?? 21;
-  const vendedorPct = pd.vendedorPct ?? 0;
+  const co = o.comisionOverride;
+  const vendedorModo = co ? co.modo : (pd.vendedorModo||'pct');
+  const vendedorValor = co ? co.valor : (vendedorModo==='monto' ? (pd.vendedorMonto||0) : (pd.vendedorPct??0));
   const socio1Nombre = pd.socio1Nombre || 'Socio 1', socio1Pct = pd.socio1Pct ?? 0;
   const socio2Nombre = pd.socio2Nombre || 'Socio 2', socio2Pct = pd.socio2Pct ?? 0;
   const facturadoSinIvaReal = o.ingresos.cobrado / (1+ivaPct/100);
-  const comisionVendedorReal = (vendedorPct>=100) ? 0 : facturadoSinIvaReal*(vendedorPct/100)/(1-(vendedorPct/100));
-  const gananciaNetaReal = resultReal - comisionVendedorReal;
+  const cobradoRatio = o.ingresos.facturado>0 ? o.ingresos.cobrado/o.ingresos.facturado : 0;
+  const comisionVendedorReal = vendedorModo==='monto' ? vendedorValor*cobradoRatio : facturadoSinIvaReal*(vendedorValor/100);
+  const gananciaNetaReal = resultReal;
   const socio1Real = gananciaNetaReal*socio1Pct/100, socio2Real = gananciaNetaReal*socio2Pct/100, aqReal = gananciaNetaReal-socio1Real-socio2Real;
   const pr = o.presupuestoResumen;
+  const cotizacion = pd.cotizacion || 0;
+  const usdTag = (n)=> cotizacion>0 ? ` <span style="color:var(--muted);font-size:11.5px;">(${fmtUsd(n/cotizacion)})</span>` : '';
   const diffRow = (label,pres,real)=>`<tr><td>${label}</td><td class="num">${fmt(pres)}</td><td class="num">${fmt(real)}</td><td class="num" style="color:${real-pres>0?'var(--bad)':'var(--good)'};">${real-pres>=0?'+':''}${fmt(real-pres)}</td></tr>`;
 
   document.getElementById('obra-detail-content').innerHTML = `
@@ -1014,11 +1030,13 @@ function renderObraDetail(){
       <div class="summary-line"><span>Costos (materiales + mano de obra)</span><span>${fmt(o.presupuestoResumen.costos)}</span></div>
       <div class="summary-line"><span>+ Beneficio${pd.factor?` (${Math.round(pd.factor*100)}%)`:''}</span><span>${fmt(o.presupuestoResumen.beneficio)}</span></div>
       <div class="summary-line"><span>+ Impuestos (IIBB + débito/crédito)</span><span>${fmt(o.presupuestoResumen.impuestos)}</span></div>
-      <div class="summary-line divider total"><span>Subtotal presupuesto</span><span>${fmt(o.presupuestoResumen.subtotalPresupuesto)}</span></div>
+      <div class="summary-line divider total"><span>Subtotal presupuesto</span><span>${fmt(o.presupuestoResumen.subtotalPresupuesto)}${usdTag(o.presupuestoResumen.subtotalPresupuesto)}</span></div>
       <div class="summary-line sub"><span>− Descuento</span><span>${fmt(o.presupuestoResumen.descuento)}</span></div>
-      <div class="summary-line total"><span>Total presupuesto</span><span>${fmt(o.presupuestoResumen.totalPresupuesto)}</span></div>
+      <div class="summary-line total"><span>Subtotal previo de comisiones</span><span>${fmt(o.presupuestoResumen.subtotalPrevioComisiones ?? o.presupuestoResumen.totalPresupuesto ?? 0)}</span></div>
+      <div class="summary-line sub"><span>+ Comisión vendedor (presupuestada)</span><span>${fmt(o.presupuestoResumen.comisionVendedor||0)}</span></div>
+      <div class="summary-line total"><span>Presupuesto sin IVA</span><span>${fmt(o.presupuestoResumen.presupuestoSinIva ?? o.presupuestoResumen.totalPresupuesto ?? 0)}</span></div>
       <div class="summary-line sub"><span>+ IVA</span><span>${fmt(o.presupuestoResumen.iva)}</span></div>
-      <div class="summary-line grand"><span>Total + IVA (facturado)</span><span>${fmt(o.presupuestoResumen.totalConIva)}</span></div>
+      <div class="summary-line grand"><span>Presupuesto con IVA (facturado)</span><span>${fmt(o.presupuestoResumen.totalConIva)}</span></div>
     </div>
 
     <div class="section-title"><h2>Materiales y gastos reales de la obra</h2><div class="st-actions">
@@ -1063,8 +1081,8 @@ function renderObraDetail(){
         <tr class="subtotal-row">${diffRow('Costos totales', obraPresTotal(o), realTotal).replace('<tr>','').replace('</tr>','')}</tr>
         ${diffRow('Ingresos (facturado / cobrado)', o.ingresos.facturado, o.ingresos.cobrado)}
         <tr class="subtotal-row">${diffRow('Resultado (ganancia)', resultProy, resultReal).replace('<tr>','').replace('</tr>','')}</tr>
-        ${diffRow('Comisión vendedor', pr.comisionVendedor||0, comisionVendedorReal)}
-        ${diffRow('Ganancia neta a repartir', pr.gananciaNeta||0, gananciaNetaReal)}
+        <tr><td>Comisión vendedor${co?' <span class="tag warn">editada</span>':''} <span class="link-btn" style="margin-left:6px;" onclick="openModalComisionObra('${o.id}')">Editar</span></td><td class="num">${fmt(pr.comisionVendedor||0)}</td><td class="num">${fmt(comisionVendedorReal)}</td><td class="num" style="color:${comisionVendedorReal-(pr.comisionVendedor||0)>0?'var(--bad)':'var(--good)'};">${comisionVendedorReal-(pr.comisionVendedor||0)>=0?'+':''}${fmt(comisionVendedorReal-(pr.comisionVendedor||0))}</td></tr>
+        ${diffRow('Ganancia neta a repartir (sin restar comisión)', pr.gananciaNeta||0, gananciaNetaReal)}
         ${diffRow(socio1Nombre, pr.socio1Monto||0, socio1Real)}
         ${diffRow(socio2Nombre, pr.socio2Monto||0, socio2Real)}
         ${diffRow('AQ — empresa (resto)', pr.aqMonto||0, aqReal)}
@@ -1143,6 +1161,41 @@ function volverABorrador(id){ getObra(id).estado='borrador'; renderAll(); }
 function iniciarObra(id){ getObra(id).estado='en curso'; renderAll(); }
 function finalizarObra(id){ getObra(id).estado='finalizada'; renderAll(); }
 function toggleSinCobrosPendientes(id){ const o=getObra(id); o.sinCobrosPendientes = !o.sinCobrosPendientes; renderAll(); }
+// La comisión del vendedor se puede pisar puntualmente en la obra real (otro
+// % u otro monto que el que se cargó al presupuestar) sin tocar el
+// presupuesto original — solo afecta el cálculo de "real" en la tabla
+// Presupuestado vs. real, nunca lo ya facturado.
+function openModalComisionObra(obraId){
+  const o = getObra(obraId);
+  const pd = o.presupuestoDetalle || {};
+  const co = o.comisionOverride;
+  const modo = co ? co.modo : (pd.vendedorModo||'pct');
+  const valor = co ? co.valor : (modo==='monto' ? (pd.vendedorMonto||0) : (pd.vendedorPct??0));
+  modalEl.innerHTML = `<h3>Comisión del vendedor — esta obra</h3><div class="modal-sub">Presupuestada: ${pd.vendedorModo==='monto' ? fmt(pd.vendedorMonto||0)+' (monto fijo)' : (pd.vendedorPct??0)+'%'}. Esto solo afecta el cálculo real de esta obra, no el presupuesto.</div>
+    <div class="form-grid">
+      <div class="field"><label>Modo</label>
+        <select id="f-com-modo" class="cell-input" onchange="document.getElementById('wrap-com-pct').classList.toggle('hidden', this.value!=='pct'); document.getElementById('wrap-com-monto').classList.toggle('hidden', this.value!=='monto');">
+          <option value="pct" ${modo==='pct'?'selected':''}>Porcentaje (s/ facturado real sin IVA)</option>
+          <option value="monto" ${modo==='monto'?'selected':''}>Monto fijo</option>
+        </select>
+      </div>
+      <div class="field ${modo!=='pct'?'hidden':''}" id="wrap-com-pct"><label>% Comisión</label><input id="f-com-pct" class="cell-input mono-in" type="number" step="0.5" value="${modo==='pct'?valor:(pd.vendedorPct??0)}"></div>
+      <div class="field ${modo!=='monto'?'hidden':''}" id="wrap-com-monto"><label>Monto fijo ($)</label><input id="f-com-monto" class="cell-input mono-in" type="number" step="1000" value="${modo==='monto'?valor:(pd.vendedorMonto||0)}"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal()">Cancelar</button>
+      ${co?`<button class="btn btn-ghost" style="color:var(--bad);border-color:var(--bad);" onclick="quitarComisionOverride('${obraId}')">Usar la del presupuesto</button>`:''}
+      <button class="btn btn-primary" onclick="submitComisionObra('${obraId}')">Guardar</button>
+    </div>`;
+  overlay.classList.add('open');
+}
+function submitComisionObra(obraId){
+  const modo = document.getElementById('f-com-modo').value;
+  const valor = modo==='monto' ? (+document.getElementById('f-com-monto').value||0) : (+document.getElementById('f-com-pct').value||0);
+  getObra(obraId).comisionOverride = {modo, valor};
+  closeModal(); renderAll();
+}
+function quitarComisionOverride(obraId){ getObra(obraId).comisionOverride = null; closeModal(); renderAll(); }
 function eliminarObra(id){
   const o = getObra(id);
   if(!o) return;
@@ -1195,7 +1248,7 @@ function freshBuildState(){
     mpItems:[{detalle:'',cantidad:0,unitario:0}],
     logItems:[{detalle:'Combustible (Lts)',cantidad:0,unitario:0},{detalle:'Peajes',cantidad:0,unitario:0}],
     estItems:[{detalle:'Almuerzo',cantidad:0,unitario:0},{detalle:'Cena',cantidad:0,unitario:0},{detalle:'Hospedaje (noche*habitación)',cantidad:0,unitario:0}],
-    moRoles:[{puesto:'Trazador',salario:0,cantidad:0},{puesto:'Montador',salario:0,cantidad:0},{puesto:'Lanero',salario:0,cantidad:0},{puesto:'931 x persona',salario:0,cantidad:0}],
+    moRoles:[{puesto:'Trazador',salario:0,cantidad:0},{puesto:'Montador',salario:0,cantidad:0},{puesto:'Lanero',salario:0,cantidad:0}],
     importedReal:null,
   };
 }
@@ -1204,8 +1257,10 @@ function openPresupuestoBuilder(obraId){
   document.getElementById('pb-code').value=''; document.getElementById('pb-cliente').value=''; document.getElementById('pb-encargado').value='';
   document.getElementById('pb-fecha').value=today(); document.getElementById('pb-fecha-factura').value=today(); document.getElementById('pb-cotizacion').value=1450;
   document.getElementById('pb-benef').value=108; document.getElementById('pb-debcred').value=0.6; document.getElementById('pb-iva').value=21; document.getElementById('pb-descuento').value=0;
-  document.getElementById('pb-dias').value=0;
-  document.getElementById('pb-vendedor-pct').value=8; document.getElementById('pb-socio1-nombre').value='AL'; document.getElementById('pb-socio1-pct').value=10;
+  document.getElementById('pb-dias').value=0; document.getElementById('pb-cargas-sociales').value=0;
+  document.getElementById('pb-vendedor-modo').value='pct'; document.getElementById('pb-vendedor-pct').value=8; document.getElementById('pb-vendedor-monto').value=0;
+  document.getElementById('wrap-vendedor-pct').classList.remove('hidden'); document.getElementById('wrap-vendedor-monto').classList.add('hidden');
+  document.getElementById('pb-socio1-nombre').value='AL'; document.getElementById('pb-socio1-pct').value=10;
   document.getElementById('pb-socio2-nombre').value='JL'; document.getElementById('pb-socio2-pct').value=30;
   document.getElementById('pb-title').textContent = 'Presupuestar obra';
   if(obraId){
@@ -1221,7 +1276,13 @@ function openPresupuestoBuilder(obraId){
       const d = o.presupuestoDetalle;
       buildState.mpItems = d.mpItems.map(i=>({...i})); buildState.logItems = d.logItems.map(i=>({...i})); buildState.estItems = d.estItems.map(i=>({...i})); buildState.moRoles = d.moRoles.map(i=>({...i}));
       document.getElementById('pb-cotizacion').value = d.cotizacion; document.getElementById('pb-benef').value = (d.factor||0)*100; document.getElementById('pb-debcred').value = d.debCredPct; document.getElementById('pb-iva').value = d.ivaPct; document.getElementById('pb-descuento').value = d.descuentoPct; document.getElementById('pb-dias').value = d.dias;
-      document.getElementById('pb-vendedor-pct').value = d.vendedorPct??8; document.getElementById('pb-socio1-nombre').value = d.socio1Nombre||'AL'; document.getElementById('pb-socio1-pct').value = d.socio1Pct??10;
+      document.getElementById('pb-cargas-sociales').value = d.cargasSociales||0;
+      const vendedorModo = d.vendedorModo||'pct';
+      document.getElementById('pb-vendedor-modo').value = vendedorModo;
+      document.getElementById('pb-vendedor-pct').value = d.vendedorPct??8; document.getElementById('pb-vendedor-monto').value = d.vendedorMonto||0;
+      document.getElementById('wrap-vendedor-pct').classList.toggle('hidden', vendedorModo!=='pct');
+      document.getElementById('wrap-vendedor-monto').classList.toggle('hidden', vendedorModo!=='monto');
+      document.getElementById('pb-socio1-nombre').value = d.socio1Nombre||'AL'; document.getElementById('pb-socio1-pct').value = d.socio1Pct??10;
       document.getElementById('pb-socio2-nombre').value = d.socio2Nombre||'JL'; document.getElementById('pb-socio2-pct').value = d.socio2Pct??30;
     }
   }
@@ -1270,8 +1331,9 @@ function recomputeBuildTotals(){
   const materialesARS = mpTotal+logTotal+estTotal;
   const moSubtotalDia = buildState.moRoles.reduce((a,r)=>a+r.salario*r.cantidad,0);
   const dias = +document.getElementById('pb-dias').value||0;
-  const manoObraARS = moSubtotalDia*dias;
-  document.getElementById('mo-subtotal').textContent = `${fmt(moSubtotalDia)} / día × ${dias} días = ${fmt(manoObraARS)}`;
+  const cargasSociales = +document.getElementById('pb-cargas-sociales').value||0;
+  const manoObraARS = moSubtotalDia*dias + cargasSociales;
+  document.getElementById('mo-subtotal').textContent = `${fmt(moSubtotalDia)} / día × ${dias} días + ${fmt(cargasSociales)} cargas sociales = ${fmt(manoObraARS)}`;
   const costosARS = materialesARS+manoObraARS;
   const benefPct = +document.getElementById('pb-benef').value||0;
   const factor = benefPct/100;
@@ -1286,12 +1348,15 @@ function recomputeBuildTotals(){
   const subtotalPresupuesto = costosARS+beneficioARS+impuestosARS;
   const descPct = (+document.getElementById('pb-descuento').value||0)/100;
   const descuentoARS = subtotalPresupuesto*descPct;
-  const totalPresupuesto = subtotalPresupuesto-descuentoARS;
-  const ivaARS = totalPresupuesto*ivaPct;
-  const totalConIva = totalPresupuesto+ivaARS;
+  const subtotalPrevioComisiones = subtotalPresupuesto-descuentoARS;
+  const vendedorModo = document.getElementById('pb-vendedor-modo').value;
   const vendedorPct = +document.getElementById('pb-vendedor-pct').value||0;
-  const comisionVendedor = (vendedorPct>=100) ? 0 : totalPresupuesto*(vendedorPct/100)/(1-(vendedorPct/100));
-  const gananciaNeta = beneficioARS - descuentoARS - comisionVendedor;
+  const vendedorMonto = +document.getElementById('pb-vendedor-monto').value||0;
+  const comisionVendedor = vendedorModo==='monto' ? vendedorMonto : subtotalPrevioComisiones*(vendedorPct/100);
+  const presupuestoSinIva = subtotalPrevioComisiones + comisionVendedor;
+  const ivaARS = presupuestoSinIva*ivaPct;
+  const totalConIva = presupuestoSinIva+ivaARS;
+  const gananciaNeta = beneficioARS - descuentoARS;
   const socio1Nombre = document.getElementById('pb-socio1-nombre').value.trim()||'Socio 1';
   const socio2Nombre = document.getElementById('pb-socio2-nombre').value.trim()||'Socio 2';
   const socio1Pct = +document.getElementById('pb-socio1-pct').value||0;
@@ -1299,22 +1364,26 @@ function recomputeBuildTotals(){
   const socio1Monto = gananciaNeta*socio1Pct/100;
   const socio2Monto = gananciaNeta*socio2Pct/100;
   const aqMonto = gananciaNeta - socio1Monto - socio2Monto;
-  buildState.computed = {materialesARS, manoObraARS, costosARS, beneficioARS, impuestosARS, subtotalPresupuesto, descuentoARS, totalPresupuesto, ivaARS, totalConIva, moSubtotalDia, mpTotal, logTotal, estTotal, comisionVendedor, gananciaNeta, socio1Monto, socio2Monto, aqMonto};
+  const cotizacion = +document.getElementById('pb-cotizacion').value||0;
+  const usd = (n)=> cotizacion>0 ? ` <span style="color:var(--muted);">(${fmtUsd(n/cotizacion)})</span>` : '';
+  buildState.computed = {materialesARS, manoObraARS, cargasSociales, costosARS, beneficioARS, impuestosARS, subtotalPresupuesto, descuentoARS, subtotalPrevioComisiones, vendedorModo, vendedorPct, vendedorMonto, comisionVendedor, presupuestoSinIva, ivaARS, totalConIva, moSubtotalDia, mpTotal, logTotal, estTotal, gananciaNeta, socio1Monto, socio2Monto, aqMonto};
+  const comisionLabel = vendedorModo==='monto' ? `Comisión vendedor (monto fijo)` : `Comisión vendedor (${vendedorPct}% s/ subtotal previo de comisiones)`;
   document.getElementById('pb-summary').innerHTML = `
     <div class="summary-line"><span>Materiales (materia prima + logística + estadía)</span><span class="mono">${fmt(materialesARS)}</span></div>
-    <div class="summary-line"><span>Mano de obra (subtotal/día × días)</span><span class="mono">${fmt(manoObraARS)}</span></div>
+    <div class="summary-line"><span>Mano de obra (subtotal/día × días + cargas sociales)</span><span class="mono">${fmt(manoObraARS)}</span></div>
     <div class="summary-line divider total"><span>Costos</span><span class="mono">${fmt(costosARS)}</span></div>
     <div class="summary-line"><span>+ Beneficio (${benefPct}%)</span><span class="mono">${fmt(beneficioARS)}</span></div>
     <div class="summary-line sub"><span>Débito/crédito</span><span class="mono">${fmt(impDebCred)}</span></div>
     <div class="summary-line sub"><span>IIBB</span><span class="mono">${fmt(impIIBB)}</span></div>
     <div class="summary-line"><span>+ Impuestos</span><span class="mono">${fmt(impuestosARS)}</span></div>
-    <div class="summary-line divider total"><span>Subtotal presupuesto</span><span class="mono">${fmt(subtotalPresupuesto)}</span></div>
-    <div class="summary-line sub"><span>− Descuento</span><span class="mono">${fmt(descuentoARS)}</span></div>
-    <div class="summary-line total"><span>Total presupuesto</span><span class="mono">${fmt(totalPresupuesto)}</span></div>
+    <div class="summary-line divider total"><span>Subtotal presupuesto</span><span class="mono">${fmt(subtotalPresupuesto)}${usd(subtotalPresupuesto)}</span></div>
+    <div class="summary-line sub"><span>− Descuento (${(+document.getElementById('pb-descuento').value||0)}%, s/ subtotal sin IVA)</span><span class="mono">${fmt(descuentoARS)}</span></div>
+    <div class="summary-line total"><span>Subtotal previo de comisiones</span><span class="mono">${fmt(subtotalPrevioComisiones)}</span></div>
+    <div class="summary-line sub"><span>+ ${comisionLabel}</span><span class="mono">${fmt(comisionVendedor)}</span></div>
+    <div class="summary-line total"><span>Presupuesto sin IVA</span><span class="mono">${fmt(presupuestoSinIva)}</span></div>
     <div class="summary-line sub"><span>+ IVA</span><span class="mono">${fmt(ivaARS)}</span></div>
-    <div class="summary-line grand"><span>Total + IVA — lo que se factura</span><span class="mono">${fmt(totalConIva)}</span></div>
-    <div class="summary-line divider" style="margin-top:16px;"><span>Comisión vendedor (${vendedorPct}% s/ total presupuesto)</span><span class="mono">${fmt(comisionVendedor)}</span></div>
-    <div class="summary-line total"><span>Ganancia neta a repartir</span><span class="mono">${fmt(gananciaNeta)}</span></div>
+    <div class="summary-line grand"><span>Presupuesto con IVA — lo que se factura</span><span class="mono">${fmt(totalConIva)}</span></div>
+    <div class="summary-line divider" style="margin-top:16px;"><span>Ganancia neta a repartir (beneficio − descuento, sin restar comisión)</span><span class="mono">${fmt(gananciaNeta)}</span></div>
     <div class="summary-line sub"><span>${socio1Nombre} (${socio1Pct}%)</span><span class="mono">${fmt(socio1Monto)}</span></div>
     <div class="summary-line sub"><span>${socio2Nombre} (${socio2Pct}%)</span><span class="mono">${fmt(socio2Monto)}</span></div>
     <div class="summary-line sub"><span>AQ — empresa (resto)</span><span class="mono">${fmt(aqMonto)}</span></div>
@@ -1331,21 +1400,24 @@ function savePresupuesto(){
   const detalle = {
     mpItems: buildState.mpItems.map(i=>({...i})), logItems: buildState.logItems.map(i=>({...i})), estItems: buildState.estItems.map(i=>({...i})), moRoles: buildState.moRoles.map(i=>({...i})),
     dias: +document.getElementById('pb-dias').value||0, cotizacion: +document.getElementById('pb-cotizacion').value||1450,
+    cargasSociales: +document.getElementById('pb-cargas-sociales').value||0,
     factor: (+document.getElementById('pb-benef').value||0)/100, iibbPct: +document.getElementById('pb-provincia').value||0,
     debCredPct: +document.getElementById('pb-debcred').value||0, ivaPct: +document.getElementById('pb-iva').value||0, descuentoPct: +document.getElementById('pb-descuento').value||0,
-    vendedorPct: +document.getElementById('pb-vendedor-pct').value||0, socio1Nombre: document.getElementById('pb-socio1-nombre').value.trim()||'Socio 1', socio1Pct: +document.getElementById('pb-socio1-pct').value||0,
+    vendedorModo: document.getElementById('pb-vendedor-modo').value, vendedorPct: +document.getElementById('pb-vendedor-pct').value||0, vendedorMonto: +document.getElementById('pb-vendedor-monto').value||0,
+    socio1Nombre: document.getElementById('pb-socio1-nombre').value.trim()||'Socio 1', socio1Pct: +document.getElementById('pb-socio1-pct').value||0,
     socio2Nombre: document.getElementById('pb-socio2-nombre').value.trim()||'Socio 2', socio2Pct: +document.getElementById('pb-socio2-pct').value||0,
   };
   const presupuesto = { materiaPrima: c.mpTotal, manoObra: c.manoObraARS, logistica: c.logTotal, estadia: c.estTotal };
-  const presupuestoResumen = { costos:c.costosARS, beneficio:c.beneficioARS, impuestos:c.impuestosARS, subtotalPresupuesto:c.subtotalPresupuesto, descuento:c.descuentoARS, totalPresupuesto:c.totalPresupuesto, iva:c.ivaARS, totalConIva:c.totalConIva,
-    comisionVendedor:c.comisionVendedor, gananciaNeta:c.gananciaNeta, socio1Monto:c.socio1Monto, socio2Monto:c.socio2Monto, aqMonto:c.aqMonto };
+  const presupuestoResumen = { costos:c.costosARS, beneficio:c.beneficioARS, impuestos:c.impuestosARS, subtotalPresupuesto:c.subtotalPresupuesto, descuento:c.descuentoARS,
+    subtotalPrevioComisiones:c.subtotalPrevioComisiones, comisionVendedor:c.comisionVendedor, presupuestoSinIva:c.presupuestoSinIva, iva:c.ivaARS, totalConIva:c.totalConIva,
+    gananciaNeta:c.gananciaNeta, socio1Monto:c.socio1Monto, socio2Monto:c.socio2Monto, aqMonto:c.aqMonto };
 
   if(buildState.editingObraId){
     const o = getObra(buildState.editingObraId);
     o.code=code; o.cliente=cliente; o.encargado=encargado; o.fechaInicio=fecha;
     o.presupuestoDetalle=detalle; o.presupuesto=presupuesto; o.presupuestoResumen=presupuestoResumen;
     o.ingresos.facturado = c.totalConIva;
-    o.facturasVenta = [{id:newId('fv'), fecha:fechaFactura, montoSinIva:c.totalPresupuesto, iva:c.ivaARS, monto:c.totalConIva}];
+    o.facturasVenta = [{id:newId('fv'), fecha:fechaFactura, montoSinIva:c.presupuestoSinIva, iva:c.ivaARS, monto:c.totalConIva}];
     state.selectedObraId = o.id;
   } else {
     const id = newId('o');
@@ -1354,11 +1426,11 @@ function savePresupuesto(){
     const ingresosList = ir ? ir.ingresosList : [];
     const cobrado = ir ? (ir.cobradoTotal || ingresosList.reduce((a,i)=>a+i.monto,0)) : 0;
     const estadoInicial = ir && (ir.materialesReal>0 || ir.manoObraReal>0 || cobrado>0) ? 'en curso' : 'borrador';
-    const facturasVenta = [{id:newId('fv'), fecha:fechaFactura, montoSinIva:c.totalPresupuesto, iva:c.ivaARS, monto:c.totalConIva}];
+    const facturasVenta = [{id:newId('fv'), fecha:fechaFactura, montoSinIva:c.presupuestoSinIva, iva:c.ivaARS, monto:c.totalConIva}];
     state.obras.push({ id, code, cliente, encargado, fechaInicio:fecha, estado:estadoInicial,
       presupuestoDetalle:detalle, presupuesto, presupuestoResumen,
       real, ingresos:{facturado:c.totalConIva, cobrado}, ingresosList, facturasVenta, documentos:[],
-      jornalesConfig: {asignados:[], horasExtra:{}} });
+      jornalesConfig: {asignados:[], horasExtra:{}}, comisionOverride: null });
     if(ir){
       ['materiaPrima','manoObra','logistica','estadia','otros'].forEach(cat=>{
         const monto = real[cat];
@@ -1594,7 +1666,7 @@ function renderJornalesHistorial(){
 }
 function openModalTrabajador(id){
   const existing = id ? getTrabajador(id) : null;
-  const puestos = ['Trazador','Montador','Lanero','931 x persona'];
+  const puestos = ['Trazador','Montador','Lanero'];
   modalEl.innerHTML = `<h3>${existing?'Editar trabajador':'Agregar trabajador'}</h3>
     <div class="form-grid">
       <div class="field span2"><label>Nombre</label><input id="f-trab-nombre" placeholder="Nombre y apellido" value="${existing?existing.nombre:''}"></div>
