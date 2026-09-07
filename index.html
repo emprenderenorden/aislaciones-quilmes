@@ -513,16 +513,25 @@
       </div>
     </div>
 
-    <div class="section-title"><h2>Materiales en stock</h2><span class="hint">Cantidad y último costo</span></div>
+    <div class="section-title"><h2>Materiales en stock</h2><span class="hint" id="stock-alerta-bajo"></span></div>
     <div class="card" style="margin-bottom:16px;">
       <div class="form-grid">
         <div class="field span2"><label>Buscar material</label><input id="stock-filter-q" placeholder="Nombre del material…" oninput="renderStock()"></div>
+        <div class="field"><label>Categoría</label><select id="stock-filter-categoria" onchange="renderStock()"><option value="todas">Todas</option></select></div>
+        <div class="field"><label>Ordenar por</label>
+          <select id="stock-orden" onchange="renderStock()">
+            <option value="nombre-asc">Nombre (A-Z)</option>
+            <option value="nombre-desc">Nombre (Z-A)</option>
+            <option value="cantidad-desc">Stock actual (mayor a menor)</option>
+            <option value="cantidad-asc">Stock actual (menor a mayor)</option>
+          </select>
+        </div>
       </div>
     </div>
     <div class="card card-table"><table>
-      <thead><tr><th>Material</th><th>Unidad</th><th class="num">Stock actual</th><th class="num">Último costo unitario</th><th class="num">Valor total</th></tr></thead>
+      <thead><tr><th>Material</th><th>Categoría</th><th>Unidad</th><th class="num">Stock actual</th><th class="num">Stock mínimo</th><th class="num">Último costo unitario</th><th class="num">Valor total</th><th></th></tr></thead>
       <tbody id="stock-body"></tbody>
-      <tfoot><tr class="subtotal-row"><td colspan="4">Valor total del stock</td><td class="num" id="stock-valor-total">$ 0</td></tr></tfoot>
+      <tfoot><tr class="subtotal-row"><td colspan="6">Valor total del stock</td><td class="num" id="stock-valor-total">$ 0</td><td></td></tr></tfoot>
     </table></div>
 
     <div class="section-title"><h2>Movimientos de stock</h2><span class="hint">Compras (entradas) y consumo por obra (salidas)</span></div>
@@ -1737,13 +1746,34 @@ function submitEditarFondo(fondo){
 
 /* ======================= STOCK ======================= */
 const getStockItem = (id)=> state.stock.find(s=>s.id===id);
+const stockBajoMinimo = (s)=> (s.stockMinimo||0)>0 && s.cantidad<s.stockMinimo;
+const STOCK_ORDEN_FN = {
+  'nombre-asc': (a,b)=> a.nombre.localeCompare(b.nombre),
+  'nombre-desc': (a,b)=> b.nombre.localeCompare(a.nombre),
+  'cantidad-desc': (a,b)=> b.cantidad-a.cantidad,
+  'cantidad-asc': (a,b)=> a.cantidad-b.cantidad,
+};
 function renderStock(){
   const q = (document.getElementById('stock-filter-q')?.value||'').toLowerCase();
-  const items = state.stock.filter(s=>!q || s.nombre.toLowerCase().includes(q));
-  document.getElementById('stock-body').innerHTML = items.length ? items.map(s=>`
-    <tr><td style="font-weight:600;">${s.nombre}</td><td>${s.unidad}</td><td class="num">${s.cantidad}</td><td class="num">${fmt(s.costoUnitario)}</td><td class="num">${fmt(s.cantidad*s.costoUnitario)}</td></tr>
-  `).join('') : `<tr class="empty-row"><td colspan="5">Ningún material coincide con la búsqueda</td></tr>`;
+  const catSel = document.getElementById('stock-filter-categoria');
+  if(catSel){
+    const curCat = catSel.value;
+    const categorias = [...new Set(state.stock.map(s=>s.categoria).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
+    catSel.innerHTML = `<option value="todas">Todas</option>` + categorias.map(c=>`<option value="${c}">${c}</option>`).join('');
+    if([...catSel.options].some(o=>o.value===curCat)) catSel.value = curCat;
+  }
+  const categoriaFiltro = catSel?catSel.value:'todas';
+  const orden = document.getElementById('stock-orden')?.value || 'nombre-asc';
+  let items = state.stock.filter(s=>!q || s.nombre.toLowerCase().includes(q));
+  if(categoriaFiltro!=='todas') items = items.filter(s=>s.categoria===categoriaFiltro);
+  items = [...items].sort(STOCK_ORDEN_FN[orden] || STOCK_ORDEN_FN['nombre-asc']);
+  document.getElementById('stock-body').innerHTML = items.length ? items.map(s=>{
+    const bajo = stockBajoMinimo(s);
+    return `<tr style="${bajo?'background:var(--bad-soft);':''}"><td style="font-weight:600;">${s.nombre}${bajo?' <span class="tag bad">Bajo stock</span>':''}</td><td>${s.categoria||'—'}</td><td>${s.unidad}</td><td class="num">${s.cantidad}</td><td class="num">${s.stockMinimo||0}</td><td class="num">${fmt(s.costoUnitario)}</td><td class="num">${fmt(s.cantidad*s.costoUnitario)}</td><td><span class="link-btn" onclick="openModalStockItem('${s.id}')">Editar</span></td></tr>`;
+  }).join('') : `<tr class="empty-row"><td colspan="8">Ningún material coincide con la búsqueda</td></tr>`;
   document.getElementById('stock-valor-total').textContent = fmt(items.reduce((a,s)=>a+s.cantidad*s.costoUnitario,0));
+  const cantBajo = state.stock.filter(stockBajoMinimo).length;
+  document.getElementById('stock-alerta-bajo').innerHTML = cantBajo ? `<span class="tag bad">${cantBajo} material${cantBajo>1?'es':''} por debajo del stock mínimo</span>` : '';
 
   const movSel = document.getElementById('stock-mov-material');
   if(movSel){
@@ -1760,23 +1790,29 @@ function renderStock(){
     return `<tr><td class="mono">${fmtFecha(m.fecha)}</td><td><span class="tag ${m.tipo==='compra'?'good':'warn'}">${m.tipo==='compra'?'Compra':'Consumo'}</span></td><td>${item?item.nombre:'—'}</td><td class="num">${m.tipo==='compra'?'+':'−'}${m.cantidad}</td><td>${obra?`<span class="obra-code">${obra.code}</span>`:'—'}</td><td class="num">${fmt(m.monto)}</td></tr>`;
   }).join('') : `<tr class="empty-row"><td colspan="6">Sin movimientos de stock para este filtro</td></tr>`;
 }
-function openModalStockItem(){
-  modalEl.innerHTML = `<h3>Agregar material a stock</h3><div class="modal-sub">Carga inicial del catálogo</div>
+function openModalStockItem(id){
+  const existing = id ? getStockItem(id) : null;
+  modalEl.innerHTML = `<h3>${existing?'Editar material':'Agregar material a stock'}</h3><div class="modal-sub">${existing?'Corregí nombre, cantidad, categoría o cualquier otro dato':'Carga inicial del catálogo'}</div>
     <div class="form-grid">
-      <div class="field span2"><label>Material</label><input id="f-nombre" placeholder="Ej: Lana de vidrio 50mm"></div>
-      <div class="field"><label>Unidad</label><input id="f-unidad" placeholder="m2, rollo, caja…"></div>
-      <div class="field"><label>Cantidad inicial</label><input id="f-cantidad" class="mono-in" type="number" value="0"></div>
-      <div class="field span2"><label>Costo unitario ($)</label><input id="f-costo" class="mono-in" type="number" value="0"></div>
+      <div class="field span2"><label>Material</label><input id="f-nombre" placeholder="Ej: Lana de vidrio 50mm" value="${existing?existing.nombre:''}"></div>
+      <div class="field"><label>Categoría</label><input id="f-categoria" placeholder="Ej: Lanas, Placas, Accesorios…" value="${existing?(existing.categoria||''):''}"></div>
+      <div class="field"><label>Unidad</label><input id="f-unidad" placeholder="m2, rollo, caja…" value="${existing?existing.unidad:''}"></div>
+      <div class="field"><label>${existing?'Stock actual':'Cantidad inicial'}</label><input id="f-cantidad" class="mono-in" type="number" value="${existing?existing.cantidad:0}"></div>
+      <div class="field"><label>Stock mínimo</label><input id="f-stockminimo" class="mono-in" type="number" value="${existing?(existing.stockMinimo||0):0}"></div>
+      <div class="field span2"><label>Costo unitario ($)</label><input id="f-costo" class="mono-in" type="number" value="${existing?existing.costoUnitario:0}"></div>
     </div>
-    <div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" onclick="submitStockItem()">Agregar</button></div>`;
+    <div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" onclick="submitStockItem('${id||''}')">${existing?'Guardar cambios':'Agregar'}</button></div>`;
   overlay.classList.add('open');
 }
-function submitStockItem(){
+function submitStockItem(id){
   const nombre = document.getElementById('f-nombre').value.trim()||'Sin nombre';
+  const categoria = document.getElementById('f-categoria').value.trim();
   const unidad = document.getElementById('f-unidad').value.trim()||'un.';
   const cantidad = +document.getElementById('f-cantidad').value||0;
+  const stockMinimo = Math.max(0, +document.getElementById('f-stockminimo').value||0);
   const costoUnitario = +document.getElementById('f-costo').value||0;
-  state.stock.push({id:newId('s'), nombre, unidad, cantidad, costoUnitario});
+  if(id){ Object.assign(getStockItem(id), {nombre, categoria, unidad, cantidad, stockMinimo, costoUnitario}); }
+  else { state.stock.push({id:newId('s'), nombre, categoria, unidad, cantidad, stockMinimo, costoUnitario}); }
   closeModal(); renderAll();
 }
 function openModalStockCompra(){
@@ -2138,7 +2174,7 @@ function submitEfectivizarOrden(id){
       const share = o.monto>0 ? (it.cantidad*it.unitario)/o.monto : 1/o.items.length;
       const itemMontoNeto = montoNeto*share;
       let item = state.stock.find(s=>s.nombre.toLowerCase()===it.producto.toLowerCase());
-      if(!item){ item = {id:newId('s'), nombre:it.producto, unidad:'un.', cantidad:0, costoUnitario:0}; state.stock.push(item); }
+      if(!item){ item = {id:newId('s'), nombre:it.producto, categoria:'', unidad:'un.', cantidad:0, stockMinimo:0, costoUnitario:0}; state.stock.push(item); }
       item.cantidad += it.cantidad;
       if(it.cantidad>0) item.costoUnitario = itemMontoNeto/it.cantidad;
       state.stockMovimientos.push({id:newId('sm'), fecha: fechaPago||today(), tipo:'compra', stockId:item.id, cantidad:it.cantidad, obraId:null, monto:monto*share});

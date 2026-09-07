@@ -63,7 +63,7 @@ const SCHEMAS = {
     'itemsJSON', 'monto', 'ivaAplica', 'proveedorId', 'estado', 'comentarioDueno', 'pagoId',
     'cotizacionUsd', 'notaMaterial', 'notaGeneral'],
   proveedores: ['id', 'nombre', 'cuit', 'telefono', 'email'],
-  stock: ['id', 'nombre', 'unidad', 'cantidad', 'costoUnitario'],
+  stock: ['id', 'nombre', 'unidad', 'cantidad', 'costoUnitario', 'categoria', 'stockMinimo'],
   stockMovimientos: ['id', 'fecha', 'tipo', 'stockId', 'cantidad', 'obraId', 'monto'],
   trabajadores: ['id', 'nombre', 'puesto', 'sueldoMensual'],
   jornales: ['id', 'trabajadorId', 'obraId', 'semanaInicio', 'diasJSON'],
@@ -214,6 +214,7 @@ function readState_() {
   const stock = sheetToRows_(ss.getSheetByName(SHEET_NAMES.stock), SCHEMAS.stock).map(r => ({
     id: r.id, nombre: r.nombre, unidad: r.unidad, cantidad: Number(r.cantidad) || 0,
     costoUnitario: Number(r.costoUnitario) || 0,
+    categoria: r.categoria || '', stockMinimo: Number(r.stockMinimo) || 0,
   }));
   const stockMovimientos = sheetToRows_(ss.getSheetByName(SHEET_NAMES.stockMovimientos), SCHEMAS.stockMovimientos).map(r => ({
     id: r.id, fecha: toDateStr_(r.fecha), tipo: r.tipo, stockId: r.stockId,
@@ -288,7 +289,7 @@ function writeState_(state) {
     p => [p.id, p.nombre, p.cuit || '', p.telefono || '', p.email || '']);
 
   writeRows_(ss.getSheetByName(SHEET_NAMES.stock), SCHEMAS.stock, state.stock || [],
-    s => [s.id, s.nombre, s.unidad, s.cantidad, s.costoUnitario]);
+    s => [s.id, s.nombre, s.unidad, s.cantidad, s.costoUnitario, s.categoria || '', s.stockMinimo || 0]);
 
   writeRows_(ss.getSheetByName(SHEET_NAMES.stockMovimientos), SCHEMAS.stockMovimientos, state.stockMovimientos || [],
     m => [m.id, m.fecha, m.tipo, m.stockId, m.cantidad, m.obraId, m.monto]);
