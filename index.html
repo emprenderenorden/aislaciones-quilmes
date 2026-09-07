@@ -441,7 +441,13 @@
     </div>
     <div class="fund-grid" id="fund-grid"></div>
     <div class="section-title"><h2>Movimientos</h2><span class="hint">Ingresos y egresos por fondo</span></div>
-    <div class="card card-table"><table><thead><tr><th>Fecha</th><th>Fondo</th><th>Obra</th><th>Concepto</th><th></th><th class="num">Monto</th></tr></thead><tbody id="movimientos-fima-body"></tbody></table></div>
+    <div class="card" style="margin-bottom:16px;">
+      <div class="form-grid">
+        <div class="field"><label>Fondo</label><select id="fima-filtro-fondo" class="cell-input" onchange="renderFima()"><option value="todos">Todos</option></select></div>
+        <div class="field"><label id="fima-filtro-subcat-label">Subcategoría</label><select id="fima-filtro-subcat" class="cell-input" onchange="renderFima()"><option value="todas">Todas</option></select></div>
+      </div>
+    </div>
+    <div class="card card-table"><table><thead><tr><th>Fecha</th><th>Fondo</th><th>Subcategoría / Obra</th><th>Concepto</th><th></th><th class="num">Monto</th></tr></thead><tbody id="movimientos-fima-body"></tbody></table></div>
   </div>
 
   <!-- ============ ÓRDENES DE COMPRA ============ -->
@@ -1800,8 +1806,43 @@ function renderFima(){
     otros:{color:'var(--muted)', note:'gastos varios no clasificados'},
   };
   document.getElementById('fund-grid').innerHTML = Object.entries(state.fondos).map(([k,v])=>`<div class="card fund-card"><button class="fund-edit-btn" onclick="openModalEditarFondo('${k}')" title="Editar fondo">✎</button><div class="fund-bar" style="background:${meta[k].color};"></div><div class="fund-name">${fondoLabel[k]}</div><div class="fund-value">${fmt(v)}</div><div class="fund-target">${meta[k].note}</div></div>`).join('');
-  const rows = [...state.movimientosFima].sort((a,b)=>b.fecha.localeCompare(a.fecha));
-  document.getElementById('movimientos-fima-body').innerHTML = rows.length ? rows.map(m=>`<tr><td class="mono">${fmtFecha(m.fecha)}</td><td>${fondoLabel[m.fondo]}</td><td>${m.obraId?`<span class="obra-code">${getObra(m.obraId)?.code||''}</span>`:'—'}</td><td>${m.concepto}</td><td><span class="badge-inout ${m.tipo}">${m.tipo==='in'?'Ingreso':'Egreso'}</span></td><td class="num">${fmt(m.monto)}</td></tr>`).join('') : `<tr class="empty-row"><td colspan="6">Sin movimientos</td></tr>`;
+
+  const fondoSel = document.getElementById('fima-filtro-fondo');
+  if(fondoSel){
+    const curFondo = fondoSel.value;
+    fondoSel.innerHTML = `<option value="todos">Todos</option>` + fondoOptionsHTML();
+    if([...fondoSel.options].some(o=>o.value===curFondo)) fondoSel.value = curFondo;
+  }
+  const fondoFiltro = fondoSel ? fondoSel.value : 'todos';
+  const subcatLabel = document.getElementById('fima-filtro-subcat-label');
+  const subcatSel = document.getElementById('fima-filtro-subcat');
+  if(subcatLabel && subcatSel){
+    const curSubcat = subcatSel.value;
+    if(fondoFiltro==='obras'){
+      subcatLabel.textContent = 'Obra';
+      subcatSel.innerHTML = `<option value="todas">Todas</option>` + state.obras.map(o=>`<option value="${o.id}">${o.code}</option>`).join('');
+    } else {
+      subcatLabel.textContent = 'Subcategoría';
+      const relevantes = fondoFiltro==='todos' ? state.movimientosFima : state.movimientosFima.filter(m=>m.fondo===fondoFiltro);
+      const subcats = [...new Set(relevantes.map(m=>m.subcategoria).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
+      subcatSel.innerHTML = `<option value="todas">Todas</option>` + subcats.map(s=>`<option value="${s}">${s}</option>`).join('');
+    }
+    if([...subcatSel.options].some(o=>o.value===curSubcat)) subcatSel.value = curSubcat;
+  }
+  const subcatFiltro = subcatSel ? subcatSel.value : 'todas';
+
+  let rows = [...state.movimientosFima];
+  if(fondoFiltro!=='todos') rows = rows.filter(m=>m.fondo===fondoFiltro);
+  if(subcatFiltro!=='todas'){
+    rows = fondoFiltro==='obras' ? rows.filter(m=>m.obraId===subcatFiltro) : rows.filter(m=>m.subcategoria===subcatFiltro);
+  }
+  rows.sort((a,b)=>b.fecha.localeCompare(a.fecha));
+  const subcatOObraTag = (m)=>{
+    if(m.obraId) return `<span class="obra-code">${getObra(m.obraId)?.code||''}</span>`;
+    if(m.subcategoria) return m.subcategoria;
+    return '—';
+  };
+  document.getElementById('movimientos-fima-body').innerHTML = rows.length ? rows.map(m=>`<tr><td class="mono">${fmtFecha(m.fecha)}</td><td>${fondoLabel[m.fondo]}</td><td>${subcatOObraTag(m)}</td><td>${m.concepto}</td><td><span class="badge-inout ${m.tipo}">${m.tipo==='in'?'Ingreso':'Egreso'}</span></td><td class="num">${fmt(m.monto)}</td></tr>`).join('') : `<tr class="empty-row"><td colspan="6">Sin movimientos para este filtro</td></tr>`;
 }
 function openModalEditarFondo(fondo){
   modalEl.innerHTML = `<h3>Editar fondo — ${fondoLabel[fondo]}</h3><div class="modal-sub">Ajustá el monto actual del fondo — por ejemplo, para cargar un saldo inicial</div>
@@ -2727,8 +2768,10 @@ function eliminarGasto(pagoId){
 function openModalMovimientoFima(){
   modalEl.innerHTML = `<h3>Registrar movimiento FIMA</h3><div class="modal-sub">Ingreso o egreso directo de un fondo</div>
     <div class="form-grid">
-      <div class="field"><label>Fondo</label><select id="f-fondo">${fondoOptionsHTML()}</select></div>
+      <div class="field"><label>Fondo</label><select id="f-fondo" onchange="onFimaFondoChange()">${fondoOptionsHTML()}</select></div>
       <div class="field"><label>Tipo</label><select id="f-tipo2" onchange="onFimaTipoChange()"><option value="in">Ingreso</option><option value="out">Egreso</option></select></div>
+      <div class="field" id="wrap-fima-subcat"><label>Subcategoría (opcional)</label><input id="f-fima-subcat" list="fima-subcat-datalist" placeholder="Ej: IIBB, IVA…"><datalist id="fima-subcat-datalist"></datalist></div>
+      <div class="field hidden" id="wrap-fima-obra"><label>Obra</label><select id="f-fima-obra"><option value="">— Elegir —</option>${state.obras.map(o=>`<option value="${o.id}">${o.code}</option>`).join('')}</select></div>
       <div class="field span2"><label>Concepto</label><input id="f-concepto" placeholder="Ej: Transferencia desde caja"></div>
       <div class="field hidden" id="wrap-fima-proveedor"><label>Proveedor</label><select id="f-proveedor" onchange="onProveedorSelectChange(this)">${proveedorOptionsHTML()}</select></div>
       <div class="field hidden span2" id="wrap-proveedor-nuevo"><label>Nombre del nuevo proveedor</label><input id="f-proveedor-nuevo" placeholder="Nombre"></div>
@@ -2743,6 +2786,7 @@ function openModalMovimientoFima(){
     <div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" onclick="submitMovimientoFima()">Registrar</button></div>`;
   overlay.classList.add('open');
   onFimaTipoChange();
+  onFimaFondoChange();
 }
 function onFimaTipoChange(){
   const isOut = document.getElementById('f-tipo2').value==='out';
@@ -2750,12 +2794,29 @@ function onFimaTipoChange(){
   if(isOut) onProveedorSelectChange(document.getElementById('f-proveedor'));
   else { ['wrap-proveedor-nuevo','wrap-proveedor-nuevo-cuit','wrap-proveedor-nuevo-tel','wrap-proveedor-nuevo-mail'].forEach(id=>document.getElementById(id).classList.add('hidden')); }
 }
+// El fondo "Obras" pide elegir la obra (usa el mismo campo obraId que ya
+// tenían los movimientos); el resto de los fondos piden una subcategoría de
+// texto libre, sugerida por autocompletado con lo ya usado en ese fondo.
+const FIMA_SUBCAT_SUGERIDAS = { impuestos: ['IIBB','IVA'] };
+function onFimaFondoChange(){
+  const fondo = document.getElementById('f-fondo').value;
+  const esObras = fondo==='obras';
+  document.getElementById('wrap-fima-subcat').classList.toggle('hidden', esObras);
+  document.getElementById('wrap-fima-obra').classList.toggle('hidden', !esObras);
+  if(!esObras){
+    const usadas = state.movimientosFima.filter(m=>m.fondo===fondo).map(m=>m.subcategoria).filter(Boolean);
+    const opciones = [...new Set([...(FIMA_SUBCAT_SUGERIDAS[fondo]||[]), ...usadas])];
+    document.getElementById('fima-subcat-datalist').innerHTML = opciones.map(o=>`<option value="${o}">`).join('');
+  }
+}
 function submitMovimientoFima(){
   const fondo = document.getElementById('f-fondo').value; const tipo = document.getElementById('f-tipo2').value;
   const concepto = document.getElementById('f-concepto').value.trim()||'Sin detalle'; const monto = +document.getElementById('f-monto').value||0;
   const fecha = document.getElementById('f-fecha').value || today();
+  const obraId = fondo==='obras' ? (document.getElementById('f-fima-obra').value || null) : null;
+  const subcategoria = fondo==='obras' ? null : (document.getElementById('f-fima-subcat').value.trim() || null);
   state.fondos[fondo] += (tipo==='in'? monto:-monto);
-  state.movimientosFima.push({fecha, fondo, obraId:null, concepto, tipo, monto});
+  state.movimientosFima.push({fecha, fondo, obraId, subcategoria, concepto, tipo, monto});
   if(tipo==='out'){
     const proveedorId = resolveProveedorId();
     const numeroFactura = document.getElementById('f-factura').value.trim() || null;

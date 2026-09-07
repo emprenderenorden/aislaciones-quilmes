@@ -67,7 +67,7 @@ const SCHEMAS = {
   stockMovimientos: ['id', 'fecha', 'tipo', 'stockId', 'cantidad', 'obraId', 'monto'],
   trabajadores: ['id', 'nombre', 'puesto', 'sueldoMensual'],
   jornales: ['id', 'trabajadorId', 'obraId', 'semanaInicio', 'diasJSON'],
-  movimientosFima: ['fecha', 'fondo', 'obraId', 'concepto', 'tipo', 'monto'],
+  movimientosFima: ['fecha', 'fondo', 'obraId', 'concepto', 'tipo', 'monto', 'subcategoria'],
   datosEmpresa: ['nombre', 'cuit', 'telefono', 'email', 'direccion', 'localidad',
     'condicionImpositiva', 'condicionesGenerales', 'logoDataUrl'],
 };
@@ -234,7 +234,7 @@ function readState_() {
   }));
   const movimientosFima = sheetToRows_(ss.getSheetByName(SHEET_NAMES.movimientosFima), SCHEMAS.movimientosFima).map(r => ({
     fecha: toDateStr_(r.fecha), fondo: r.fondo, obraId: toStrOrNull_(r.obraId), concepto: r.concepto,
-    tipo: r.tipo, monto: Number(r.monto) || 0,
+    tipo: r.tipo, monto: Number(r.monto) || 0, subcategoria: toStrOrNull_(r.subcategoria),
   }));
 
   const empresaRows = sheetToRows_(ss.getSheetByName(SHEET_NAMES.datosEmpresa), SCHEMAS.datosEmpresa);
@@ -303,7 +303,7 @@ function writeState_(state) {
     j => [j.id, j.trabajadorId, '', j.semanaInicio, JSON.stringify(j.dias || [])]);
 
   writeRows_(ss.getSheetByName(SHEET_NAMES.movimientosFima), SCHEMAS.movimientosFima, state.movimientosFima || [],
-    m => [m.fecha, m.fondo, m.obraId, m.concepto, m.tipo, m.monto]);
+    m => [m.fecha, m.fondo, m.obraId, m.concepto, m.tipo, m.monto, m.subcategoria || '']);
 
   const e = state.datosEmpresa || {};
   writeRows_(ss.getSheetByName(SHEET_NAMES.datosEmpresa), SCHEMAS.datosEmpresa, [e], e => [

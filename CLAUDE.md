@@ -39,6 +39,7 @@ redeploy, los campos nuevos no se guardan en el Sheet (se pierden al recargar):
 - [ ] `stock`: campos `categoria` y `stockMinimo` (ver más abajo).
 - [ ] `obras`: campo `comisionOverrideJSON` (comisión del vendedor editable
       puntualmente en la obra, ver más abajo).
+- [ ] `movimientosFima`: campo `subcategoria` (ver más abajo).
 
 Cuando se haga el redeploy: pegar todo `backend-AppsScript.gs` en el editor
 de Apps Script del Sheet, guardar, y crear una nueva implementación (o
@@ -83,3 +84,11 @@ Una vez desplegado, tildar los ítems de arriba o borrar la sección.
     presupuesto original ni lo ya facturado, solo el cálculo real de esa
     obra. Si el modo es monto fijo, se prorratea según el % efectivamente
     cobrado.
+- **FIMA: subcategorías por fondo.** Al registrar un movimiento (ingreso o
+  egreso) en cualquier fondo, se puede cargar una subcategoría de texto
+  libre (con autocompletado de lo ya usado en ese fondo — para Impuestos
+  sugiere IIBB e IVA). El fondo "Obras" es la excepción: en vez de
+  subcategoría, se elige la obra (usa el campo `obraId` que ya existía).
+  La tabla de Movimientos de FIMA suma filtros por Fondo y por
+  Subcategoría (u Obra, según el fondo elegido), y la columna "Obra" pasó
+  a llamarse "Subcategoría / Obra".
