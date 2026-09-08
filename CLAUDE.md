@@ -184,3 +184,8 @@ Una vez desplegado, tildar los ítems de arriba o borrar la sección.
   mensual de Jornales (debajo de la grilla principal), cada fila de
   trabajador tiene ahora un link "Ver obras" que abre un detalle con
   las obras en las que trabajó ese mes y cuántos días en cada una.
+- **Nuevo: fecha de pago en el detalle de proveedor.** En Pagos →
+  Proveedores → detalle de un proveedor, la tabla de facturas ahora
+  también muestra la columna "Fecha de pago" (antes solo se veía el
+  estado, sin saber cuándo vencía cada pago pendiente) — "—" si todavía
+  no tiene fecha asignada.

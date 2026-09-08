@@ -514,7 +514,7 @@
       </div>
       <div class="card" id="proveedor-detalle-contacto" style="margin-bottom:16px;font-size:12.5px;color:var(--muted);"></div>
       <div class="card card-table"><table>
-        <thead><tr><th>Factura</th><th>Concepto</th><th>Nº OC</th><th>Destino</th><th class="num">Monto</th><th class="num">Pagado</th><th class="num">Saldo</th><th>Estado</th></tr></thead>
+        <thead><tr><th>Factura</th><th>Concepto</th><th>Nº OC</th><th>Destino</th><th class="num">Monto</th><th class="num">Pagado</th><th class="num">Saldo</th><th>Fecha de pago</th><th>Estado</th></tr></thead>
         <tbody id="proveedor-detalle-body"></tbody>
       </table></div>
     </div>
@@ -2557,8 +2557,8 @@ function renderProveedorDetalle(id){
     const est = pagoEstado(p);
     const {dot:estadoDot, txt:estadoTxt} = pagoEstadoInfo(est);
     const destino = p.obraId ? `<span class="obra-code">${getObra(p.obraId)?.code||''}</span>` : (p.tipo==='stock'?'Stock':'Negocio general');
-    return `<tr><td>${p.numeroFactura||'—'}</td><td>${p.concepto}</td><td>${ocBadge(p.numeroOC)}</td><td>${destino}</td><td class="num">${fmt(p.monto)}</td><td class="num">${fmt(pagoMontoPagado(p))}</td><td class="num">${fmt(pagoSaldo(p))}</td><td><span class="estado-dot ${estadoDot}"></span>${estadoTxt}</td></tr>`;
-  }).join('') : `<tr class="empty-row"><td colspan="8">Este proveedor todavía no tiene facturas registradas</td></tr>`;
+    return `<tr><td>${p.numeroFactura||'—'}</td><td>${p.concepto}</td><td>${ocBadge(p.numeroOC)}</td><td>${destino}</td><td class="num">${fmt(p.monto)}</td><td class="num">${fmt(pagoMontoPagado(p))}</td><td class="num">${fmt(pagoSaldo(p))}</td><td class="mono">${p.fechaPago?fmtFecha(p.fechaPago):'—'}</td><td><span class="estado-dot ${estadoDot}"></span>${estadoTxt}</td></tr>`;
+  }).join('') : `<tr class="empty-row"><td colspan="9">Este proveedor todavía no tiene facturas registradas</td></tr>`;
 }
 
 /* ======================= MODALS ======================= */
