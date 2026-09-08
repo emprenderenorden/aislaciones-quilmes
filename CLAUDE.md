@@ -169,3 +169,18 @@ Una vez desplegado, tildar los ítems de arriba o borrar la sección.
   otro dispositivo. Corregido para que llamen a `renderAll()` como el
   resto de la app. Confirmado con un servidor de prueba que ahora sí
   dispara el guardado y el día queda persistido.
+- **Fix: la grilla principal de Jornales mostraba una semana vieja por
+  defecto.** El dueño reportó que al cargar presentismo en una obra
+  (ej. 3 días de un trabajador) no los veía en verde en la grilla
+  principal de Jornales, aunque sí en el cuadro de personal de abajo —
+  parecía que se perdían datos, pero no era así: la semana que se
+  mostraba por defecto (`CURRENT_WEEK`) estaba hardcodeada a una fecha
+  fija (`'2026-07-27'`) que había quedado desactualizada, así que la
+  grilla arrancaba mostrando fines de julio en vez de la semana real.
+  Los datos estaban bien guardados, solo no eran visibles sin navegar
+  manualmente hasta esa semana. Ahora `CURRENT_WEEK` se calcula en base
+  a la fecha de hoy (`mondayOf(today())`) en vez de estar fijo.
+- **Nuevo: resumen de obras trabajadas por trabajador.** En el historial
+  mensual de Jornales (debajo de la grilla principal), cada fila de
+  trabajador tiene ahora un link "Ver obras" que abre un detalle con
+  las obras en las que trabajó ese mes y cuántos días en cada una.

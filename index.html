@@ -1631,7 +1631,7 @@ function handleImportExcel(evt){
 }
 
 /* ======================= JORNALES ======================= */
-const CURRENT_WEEK = '2026-07-27';
+const CURRENT_WEEK = mondayOf(today());
 let viewedWeek = CURRENT_WEEK;
 function addDays(iso,n){ const d=new Date(iso+'T00:00:00'); if(isNaN(d.getTime())) return today(); d.setDate(d.getDate()+n); return d.toISOString().slice(0,10); }
 function weekLabel(startIso){
@@ -1750,8 +1750,40 @@ function renderJornalesHistorial(){
     const horasExtra = horasExtraDelMes(id, mes);
     const sueldo = sueldoACobrar(t, mes);
     granT+=trabajado; granA+=ausente; granSueldo+=sueldo;
-    return `<tr><td style="font-weight:600;">${t.nombre}</td><td>${t.puesto}</td><td class="num">${fmt(t.sueldoMensual||0)}</td><td class="num">${fmt(diario)}</td><td class="num">${trabajado}</td><td class="num">${ausente}</td><td class="num">${horasExtra}</td><td class="num">${fmt(sueldo)}</td><td><span class="link-btn" onclick="openModalTrabajador('${id}')">Editar</span></td></tr>`;
+    return `<tr><td style="font-weight:600;">${t.nombre}</td><td>${t.puesto}</td><td class="num">${fmt(t.sueldoMensual||0)}</td><td class="num">${fmt(diario)}</td><td class="num">${trabajado}</td><td class="num">${ausente}</td><td class="num">${horasExtra}</td><td class="num">${fmt(sueldo)}</td><td><span class="link-btn" onclick="openModalObrasTrabajador('${id}','${mes}')">Ver obras</span> · <span class="link-btn" onclick="openModalTrabajador('${id}')">Editar</span></td></tr>`;
   }).join('') + `<tr class="subtotal-row"><td colspan="4">Total general</td><td class="num">${granT}</td><td class="num">${granA}</td><td></td><td class="num">${fmt(granSueldo)}</td><td></td></tr>`;
+}
+function diasPorObra(trabajadorId, mes){
+  const porObra = {};
+  state.jornales.forEach(row=>{
+    if(row.trabajadorId!==trabajadorId) return;
+    row.dias.forEach((cell,i)=>{
+      if(cell.estado!=='trabajado' || !cell.obraId) return;
+      if(addDays(row.semanaInicio, i).slice(0,7)!==mes) return;
+      porObra[cell.obraId] = (porObra[cell.obraId]||0)+1;
+    });
+  });
+  return porObra;
+}
+const MES_LABELS = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+function mesLabel(mes){
+  const [y,m] = mes.split('-');
+  return `${MES_LABELS[Number(m)-1]} ${y}`;
+}
+function openModalObrasTrabajador(trabajadorId, mes){
+  const t = getTrabajador(trabajadorId);
+  const porObra = diasPorObra(trabajadorId, mes);
+  const entries = Object.entries(porObra).sort((a,b)=>b[1]-a[1]);
+  const filas = entries.map(([obraId,dias])=>{
+    const o = getObra(obraId);
+    return `<tr><td>${o?`${o.code} — ${o.cliente}`:'(obra eliminada)'}</td><td class="num">${dias}</td></tr>`;
+  }).join('');
+  modalEl.innerHTML = `<h3>Obras — ${t.nombre}</h3>
+    <div class="modal-sub">Días trabajados por obra en ${mesLabel(mes)}</div>
+    <div class="card card-table"><table><thead><tr><th>Obra</th><th class="num">Días trabajados</th></tr></thead>
+    <tbody>${filas || '<tr class="empty-row"><td colspan="2">Sin días trabajados en ninguna obra este mes</td></tr>'}</tbody></table></div>
+    <div class="modal-actions"><button class="btn btn-primary" onclick="closeModal()">Cerrar</button></div>`;
+  overlay.classList.add('open');
 }
 function openModalTrabajador(id){
   const existing = id ? getTrabajador(id) : null;
