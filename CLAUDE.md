@@ -112,3 +112,18 @@ Una vez desplegado, tildar los ítems de arriba o borrar la sección.
   el costo real de Mano de obra de obras que ya tenían esos días
   contabilizados (decisión tomada a pedido: se prefirió borrar todo el
   historial en vez de conservarlo).
+- **"Quitar" trabajador de una obra ahora también borra sus días de esa
+  obra.** Antes solo lo sacaba de la tabla de asignados, pero los días ya
+  marcados "trabajado" en esa obra puntual (y sus horas extra ahí)
+  quedaban contando en el costo real. Ahora "Quitar" también limpia esos
+  días (vuelven a "sin obra") y las horas extra, bajando el costo real de
+  Mano de obra de esa obra. No toca otras obras ni el historial del
+  trabajador en general — para eso está "Eliminar trabajador".
+- **Fix: "Editar" sobre un cobro importado de Excel rompía en silencio.**
+  Los cobros que traía un presupuesto importado desde Excel se guardaban
+  sin un `id` interno — al tocar "Editar" sobre uno de esos cobros, la
+  app no encontraba a cuál se refería y no pasaba nada (sin error
+  visible). Se repara solo al abrir la app (a los cobros existentes se
+  les asigna un id), y los que se importen de ahora en más ya vienen con
+  id.
+- **PDF de Orden de Compra: "Autorizó" → "Aprobación comercial".**

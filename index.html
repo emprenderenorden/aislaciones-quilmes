@@ -706,6 +706,18 @@ function migrarJornalesPorDia(){
   });
   return huboCambios;
 }
+// Los cobros importados desde Excel (antes de esta corrección) se cargaban
+// sin "id" — eso rompía "Editar" sobre esos cobros (no había forma de
+// encontrar cuál era). Les asigna un id acá, una sola vez.
+function repararIngresosSinId(){
+  let huboCambios = false;
+  state.obras.forEach(o=>{
+    (o.ingresosList||[]).forEach(i=>{
+      if(!i.id){ i.id = newId('ing'); huboCambios = true; }
+    });
+  });
+  return huboCambios;
+}
 const today = ()=> new Date().toISOString().slice(0,10);
 const VALOR_HORA_EXTRA = 10000;
 function esHabil_(y,m0,d){ const wd = new Date(y,m0,d).getDay(); return wd>=1 && wd<=5; }
@@ -1530,7 +1542,7 @@ function handleImportExcel(evt){
       let ingresosList = [];
       for(let r=62;r<=90;r++){
         const fechaCobro = cell(hr,'A'+r), montoCobro = cell(hr,'C'+r), medioCobro = cell(hr,'B'+r);
-        if(fechaCobro && montoCobro){ ingresosList.push({fecha:(fechaCobro instanceof Date)?fechaCobro.toISOString().slice(0,10):today(), monto:montoCobro, medioPago:medioCobro||'Transferencia'}); }
+        if(fechaCobro && montoCobro){ ingresosList.push({id:newId('ing'), fecha:(fechaCobro instanceof Date)?fechaCobro.toISOString().slice(0,10):today(), monto:Number(montoCobro)||0, medioPago:medioCobro||'Transferencia'}); }
       }
       buildState.importedReal = { materialesReal, extrasReal, logisticaReal, estadiaReal, manoObraReal, cobradoTotal, ingresosList };
 
@@ -1761,10 +1773,21 @@ function asignarTrabajadorObra(obraId, trabajadorId){
   if(!o.jornalesConfig.asignados.includes(trabajadorId)) o.jornalesConfig.asignados.push(trabajadorId);
   renderAll();
 }
+// Quitar a un trabajador de una obra también borra los días que ya le
+// hubiera marcado "trabajado" en esa obra puntual (y sus horas extra ahí) —
+// baja el costo real de Mano de obra de esta obra. No toca otras obras ni
+// otros trabajadores.
 function quitarTrabajadorObra(obraId, trabajadorId){
   const o = getObra(obraId);
   if(!o.jornalesConfig) return;
   o.jornalesConfig.asignados = (o.jornalesConfig.asignados||[]).filter(id=>id!==trabajadorId);
+  if(o.jornalesConfig.horasExtra) delete o.jornalesConfig.horasExtra[trabajadorId];
+  state.jornales.forEach(row=>{
+    if(row.trabajadorId!==trabajadorId) return;
+    row.dias.forEach(cell=>{
+      if(cell.obraId===obraId){ cell.estado='sin_obra'; cell.obraId=null; }
+    });
+  });
   renderAll();
 }
 function setHorasExtraObra(obraId, trabajadorId, valor){
@@ -2160,7 +2183,7 @@ function imprimirOrden(id){
 
     <div class="firmas">
       <div>Solicitado por<br>${o.solicitante}</div>
-      <div>Autorizó</div>
+      <div>Aprobación comercial</div>
       <div>Recibí conforme</div>
     </div>
     <div class="foot">Generado por el sistema de gestión de ${e.nombre} — ${today()}</div>
@@ -2566,6 +2589,7 @@ function submitIngreso(obraId, editId){
   o.ingresosList = o.ingresosList || [];
   if(editId){
     const i = o.ingresosList.find(x=>x.id===editId);
+    if(!i){ closeModal(); return; }
     const montoAnterior = i.monto;
     Object.assign(i, {fecha, monto, medioPago, numeroFactura, numeroCobranza});
     state.caja += (monto - montoAnterior);
@@ -3007,6 +3031,7 @@ function renderAll(){ renderDashboard(); renderObraLista(); if(!document.getElem
   const huboReparacionFechas = repararFechasEnState();
   const huboMaduraciones = reconciliarPagosProgramados();
   const huboMigracionJornales = migrarJornalesPorDia();
+  const huboReparacionIngresos = repararIngresosSinId();
   showObraSubview('lista');
   renderAll();
   // La primera vez que se renderiza es lo que se acaba de leer del Sheet:
@@ -3014,7 +3039,7 @@ function renderAll(){ renderDashboard(); renderObraLista(); if(!document.getElem
   // reflejan ediciones reales — así abrir la app en varios dispositivos a
   // la vez no genera avisos de "conflicto" sin que nadie haya cambiado nada.
   bootCompleto = true;
-  if(huboReparacionFechas || huboMaduraciones || huboMigracionJornales) saveState();
+  if(huboReparacionFechas || huboMaduraciones || huboMigracionJornales || huboReparacionIngresos) saveState();
   const overlay = document.getElementById('loading-overlay');
   if(overlay){ overlay.style.opacity='0'; setTimeout(()=>overlay.remove(), 300); }
   const initialView = location.hash.slice(1);
