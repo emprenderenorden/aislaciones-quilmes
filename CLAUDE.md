@@ -155,3 +155,17 @@ Una vez desplegado, tildar los ítems de arriba o borrar la sección.
     de FIMA todavía pueden quedar levemente desactualizados tras un
     conflicto resuelto, hasta el próximo movimiento que los toque. Si
     notás algún saldo que no cierra justo después de un conflicto, avisá.
+- **Fix importante: marcar un día en la grilla principal de Jornales no se
+  guardaba.** Auditoría completa a pedido del dueño ("revisá que todo lo
+  que se carga quede bien en la base de datos"). Se verificaron uno por
+  uno: (a) que cada campo del esquema del backend se lea y escriba en la
+  columna correcta (todo bien ahí), y (b) que cada acción que cambia
+  datos dispare el guardado (`renderAll()` → `scheduleSave()`). En (b) se
+  encontró que `cycleDia` y `setDiaObra` — clickear un día o elegir la
+  obra en la grilla semanal de arriba de Jornales, la pantalla principal
+  de uso diario — solo refrescaban la pantalla (`renderJornales()`) pero
+  nunca disparaban el guardado. El cambio se veía perfecto en pantalla
+  pero se perdía apenas se recargaba la página o se sincronizaba con
+  otro dispositivo. Corregido para que llamen a `renderAll()` como el
+  resto de la app. Confirmado con un servidor de prueba que ahora sí
+  dispara el guardado y el día queda persistido.

@@ -1657,11 +1657,11 @@ function cycleDia(trabajadorId, semanaInicio, dayIdx){
   const cur = DIA_ORDEN.indexOf(row.dias[dayIdx].estado);
   const next = DIA_ORDEN[(cur+1)%DIA_ORDEN.length];
   row.dias[dayIdx] = { estado: next, obraId: next==='trabajado' ? row.dias[dayIdx].obraId : null };
-  renderJornales();
+  renderAll();
 }
 function setDiaObra(trabajadorId, semanaInicio, dayIdx, obraId){
   ensureJornalRow(trabajadorId, semanaInicio).dias[dayIdx].obraId = obraId || null;
-  renderJornales();
+  renderAll();
 }
 // Cicla el día pero "apropiándolo" para esta obra en particular — se usa
 // desde el cuadro de jornales dentro de la obra: el primer click marca
