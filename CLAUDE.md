@@ -127,3 +127,31 @@ Una vez desplegado, tildar los ítems de arriba o borrar la sección.
   les asigna un id), y los que se importen de ahora en más ya vienen con
   id.
 - **PDF de Orden de Compra: "Autorizó" → "Aprobación comercial".**
+- **Fix importante: se perdían datos cuando dos personas usaban la app al
+  mismo tiempo.** Este es el bug de fondo detrás de varios reportes
+  ("se me borró un gasto", "se me borró la asignación de un trabajador en
+  una obra", "se le borró una OC a un compañero"). Cuando dos personas
+  guardaban cerca en el tiempo, el sistema de sincronización (basado en
+  un número de revisión, `rev`) descartaba por completo los cambios de
+  quien guardaba segundo y los reemplazaba con la versión de quien guardó
+  primero — el comentario del código decía que evitaba "pisar y perder"
+  cambios, pero en los hechos sí los perdía.
+  - **Arreglo:** ahora, ante un conflicto de guardado, la app trae la
+    versión más nueva del servidor y le vuelve a sumar lo que solo
+    existía localmente (un gasto nuevo, una OC nueva, un trabajador
+    recién asignado a una obra, un cobro registrado, horas extra
+    cargadas, etc.) antes de reintentar guardar — hasta 5 reintentos. Si
+    dos personas editaron exactamente el mismo registro al mismo tiempo,
+    gana quien reintenta al final (caso raro), pero ya no se pierde un
+    registro nuevo agregado por cualquiera de las dos.
+  - Probado con 9 pruebas unitarias de la lógica de combinación y una
+    prueba de extremo a extremo con un servidor de prueba que fuerza un
+    conflicto real (releer, combinar y reintentar) — quedaron guardados
+    los cambios de ambas partes en el servidor.
+  - **Límite conocido:** esto combina las listas de registros (gastos,
+    OC, trabajadores, jornales, obras, movimientos FIMA, asignaciones
+    dentro de una obra). No reconcilia números agregados que se
+    actualizan aparte de esas listas — el saldo de caja y de los fondos
+    de FIMA todavía pueden quedar levemente desactualizados tras un
+    conflicto resuelto, hasta el próximo movimiento que los toque. Si
+    notás algún saldo que no cierra justo después de un conflicto, avisá.
