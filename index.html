@@ -860,44 +860,77 @@ async function saveState(reintentos){
     const data = await res.json();
     if(data && data.ok){
       state.rev = data.rev;
-    } else if(data && data.error==='conflict'){
-      // Alguien más guardó una revisión más nueva mientras nosotros también
-      // teníamos cambios sin guardar (un gasto nuevo, una OC, un trabajador
-      // recién asignado a una obra, etc.). Antes acá se descartaba
-      // silenciosamente lo nuestro y se mostraba directamente lo del
-      // servidor — eso perdía datos. Ahora: guardamos una referencia a
-      // nuestras colecciones locales, traemos lo último del servidor, y
-      // volvemos a sumarles lo que solo existía acá — así no se pierde lo
-      // que acabamos de cargar, y reintentamos guardar ya combinado.
-      if(reintentos<=0){
-        console.error('No se pudo guardar tras varios reintentos por conflicto.');
-        await loadState({silencioso:true}); renderAll(); avisarActualizacion();
-        return;
-      }
-      const local = {
-        obras: state.obras, pagos: state.pagos, ordenesCompra: state.ordenesCompra,
-        proveedores: state.proveedores, stock: state.stock, stockMovimientos: state.stockMovimientos,
-        trabajadores: state.trabajadores, jornales: state.jornales, movimientosFima: state.movimientosFima,
-      };
-      await loadState({silencioso:true});
-      state.obras = mergeObrasTrasConflicto(local.obras, state.obras);
-      ['pagos','ordenesCompra','proveedores','stock','stockMovimientos','trabajadores','jornales'].forEach(key=>{
-        state[key] = unionPorId(local[key], state[key]);
-      });
-      state.movimientosFima = unionPorContenido(local.movimientosFima, state.movimientosFima);
-      renderAll();
-      await saveState(reintentos-1);
-    } else if(data && data.error){
-      console.error('El backend respondió con error al guardar:', data.error);
+      ocultarAvisoGuardadoFallido();
+      return;
     }
-  } catch(err){ console.error('No se pudo guardar en el backend', err); }
+    // Cualquier error de guardado (conflicto de revisión, un error del
+    // backend tipo lock_timeout, o lo que sea) se trata igual: nunca hay
+    // que asumir que "ya está" y pisar lo que el usuario acaba de cargar.
+    // Antes acá solo se reintentaba si el error era específicamente
+    // "conflict" — cualquier otro tipo de error se registraba en la
+    // consola (que nadie mira) y se abandonaba en silencio, perdiendo el
+    // cambio apenas se recargaba la página. Ahora: guardamos una
+    // referencia a las colecciones locales, traemos lo último del
+    // servidor, le sumamos encima lo que solo existía acá, y reintentamos
+    // guardar ya combinado — pase lo que pase, nunca se descarta.
+    if(data && data.error) console.error('El backend respondió con error al guardar:', data.error);
+    if(reintentos<=0){
+      avisarGuardadoFallido();
+      programarReintentoGuardado();
+      return;
+    }
+    const local = {
+      obras: state.obras, pagos: state.pagos, ordenesCompra: state.ordenesCompra,
+      proveedores: state.proveedores, stock: state.stock, stockMovimientos: state.stockMovimientos,
+      trabajadores: state.trabajadores, jornales: state.jornales, movimientosFima: state.movimientosFima,
+    };
+    await loadState({silencioso:true});
+    state.obras = mergeObrasTrasConflicto(local.obras, state.obras);
+    ['pagos','ordenesCompra','proveedores','stock','stockMovimientos','trabajadores','jornales'].forEach(key=>{
+      state[key] = unionPorId(local[key], state[key]);
+    });
+    state.movimientosFima = unionPorContenido(local.movimientosFima, state.movimientosFima);
+    // Repintamos la pantalla con lo combinado, pero sin pasar por renderAll()
+    // acá: renderAll() vuelve a programar un guardado propio (scheduleSave),
+    // y como ya estamos reintentando explícitamente más abajo, eso generaba
+    // cadenas de reintentos superpuestas — justo más carga sobre el backend
+    // cuando lo que está fallando es contención ahí.
+    renderAllSinGuardar();
+    await saveState(reintentos-1);
+  } catch(err){
+    // Falló la conexión en sí (corte de red, respuesta no válida, etc.) —
+    // acá no tocamos `state` para nada (no sabemos si el servidor llegó a
+    // guardar o no), solo reintentamos con una pausa corta.
+    console.error('No se pudo guardar en el backend', err);
+    if(reintentos<=0){
+      avisarGuardadoFallido();
+      programarReintentoGuardado();
+      return;
+    }
+    await new Promise(r=>setTimeout(r, 1500));
+    await saveState(reintentos-1);
+  }
 }
-function avisarActualizacion(){
+let reintentoGuardadoTimer = null;
+function programarReintentoGuardado(){
+  clearTimeout(reintentoGuardadoTimer);
+  reintentoGuardadoTimer = setTimeout(()=>saveState(), 20000);
+}
+let avisoGuardadoFallidoEl = null;
+function avisarGuardadoFallido(){
+  if(avisoGuardadoFallidoEl) return;
   const b = document.createElement('div');
-  b.style.cssText = 'position:fixed;top:16px;right:16px;z-index:9999;background:#14181C;color:#fff;padding:12px 16px;border-radius:8px;font-family:Montserrat,sans-serif;font-size:12.5px;max-width:300px;line-height:1.5;box-shadow:0 6px 20px rgba(0,0,0,.25);';
-  b.textContent = 'Se actualizó con cambios que guardó otra persona. Si estabas cargando algo, fijate que haya quedado bien.';
+  b.id = 'aviso-guardado-fallido';
+  b.style.cssText = 'position:fixed;top:16px;right:16px;z-index:9999;background:#7A1F1F;color:#fff;padding:12px 16px;border-radius:8px;font-family:Montserrat,sans-serif;font-size:12.5px;max-width:320px;line-height:1.5;box-shadow:0 6px 20px rgba(0,0,0,.35);';
+  b.textContent = 'No se pudo guardar tu último cambio. No cierres ni recargues esta pestaña — vamos a seguir intentando en segundo plano.';
   document.body.appendChild(b);
-  setTimeout(()=>{ b.style.transition='opacity .4s'; b.style.opacity='0'; setTimeout(()=>b.remove(), 400); }, 6000);
+  avisoGuardadoFallidoEl = b;
+}
+function ocultarAvisoGuardadoFallido(){
+  clearTimeout(reintentoGuardadoTimer);
+  if(!avisoGuardadoFallidoEl) return;
+  const b = avisoGuardadoFallidoEl; avisoGuardadoFallidoEl = null;
+  b.style.transition='opacity .4s'; b.style.opacity='0'; setTimeout(()=>b.remove(), 400);
 }
 let bootCompleto = false;
 function scheduleSave(){
@@ -3123,7 +3156,8 @@ function renderIvaReporte(mes){
   }).join('') : `<tr class="empty-row"><td colspan="6">Sin facturas de compra este mes</td></tr>`;
 }
 
-function renderAll(){ renderDashboard(); renderObraLista(); if(!document.getElementById('obra-sub-detalle').classList.contains('hidden')) renderObraDetail(); renderJornales(); renderOrdenes(); renderFima(); renderStock(); renderPagos(); renderResultados(); scheduleSave(); }
+function renderAllSinGuardar(){ renderDashboard(); renderObraLista(); if(!document.getElementById('obra-sub-detalle').classList.contains('hidden')) renderObraDetail(); renderJornales(); renderOrdenes(); renderFima(); renderStock(); renderPagos(); renderResultados(); }
+function renderAll(){ renderAllSinGuardar(); scheduleSave(); }
 (async function bootstrap(){
   await loadState();
   // Dos correcciones automáticas antes de mostrar nada: reparar fechas viejas

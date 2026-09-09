@@ -29,17 +29,25 @@ los datos reales.
 
 ## Redeploy de Apps Script — pendiente
 
-Estos cambios de esquema ya están en `backend-AppsScript.gs` (en `main`) pero
-**todavía no están desplegados** en el Apps Script real. Hasta que se haga el
-redeploy, los campos nuevos no se guardan en el Sheet (se pierden al recargar):
+Estos cambios ya están en `backend-AppsScript.gs` (en `main`) pero **todavía
+no se confirmó que estén desplegados** en el Apps Script real (el dueño
+arregló el `SECRET` y dijo "listo", pero no llegamos a confirmar que haya
+hecho también el paso de "Nueva versión" en Administrar implementaciones —
+ver más abajo). Hasta que se haga el redeploy:
 
 - [ ] `trabajadores`: campo `sueldoMensual`.
 - [ ] `obras`: campo `jornalesConfigJSON` (asignación de trabajadores +
-      horas extra por obra).
+      horas extra por obra) — los campos nuevos no se guardan en el Sheet
+      (se pierden al recargar).
 - [ ] `stock`: campos `categoria` y `stockMinimo` (ver más abajo).
 - [ ] `obras`: campo `comisionOverrideJSON` (comisión del vendedor editable
       puntualmente en la obra, ver más abajo).
 - [ ] `movimientosFima`: campo `subcategoria` (ver más abajo).
+- [ ] **Urgente:** fix de `doPost` para que un timeout del lock devuelva un
+      error prolijo en vez de romperse sin formato (ver "Fix importante:
+      guardado silencioso..." en el registro de cambios, abajo) — sin este
+      redeploy, ese tipo de falla específica todavía puede quedar sin
+      reintentarse bien del lado del backend.
 
 Cuando se haga el redeploy: pegar todo `backend-AppsScript.gs` en el editor
 de Apps Script del Sheet, guardar, y crear una nueva implementación (o
@@ -189,3 +197,46 @@ Una vez desplegado, tildar los ítems de arriba o borrar la sección.
   también muestra la columna "Fecha de pago" (antes solo se veía el
   estado, sin saber cuándo vencía cada pago pendiente) — "—" si todavía
   no tiene fecha asignada.
+- **Fix importante: guardado silencioso ante cualquier error que no fuera
+  "conflict".** Seguían llegando reportes de que se perdía información
+  (una obra recién creada, un presupuesto) después de haber arreglado el
+  bug de conflictos entre usuarios. Auditando `saveState()` de nuevo se
+  encontró un agujero distinto: el sistema de reintentos que combina
+  cambios locales con lo del servidor **solo se activaba si el backend
+  respondía específicamente `"conflict"`**. Cualquier otro tipo de falla
+  (un error transitorio de Google Sheets, un corte de red, o que el
+  "lock" del backend tardara más de 20 segundos en liberarse porque
+  varias personas guardaban casi a la vez) se registraba en la consola
+  del navegador — que nadie mira — y se abandonaba para siempre en
+  silencio, sin avisar y sin reintentar. Lo cargado se veía perfecto en
+  pantalla pero nunca llegaba a la planilla, y se perdía apenas se
+  recargaba la página. También se encontró que en el backend
+  (`backend-AppsScript.gs`), la espera del lock (`lock.waitLock`) estaba
+  fuera del bloque que atrapa errores — si esa espera se agotaba, el
+  backend devolvía una respuesta rota (no el JSON esperado), lo que
+  también caía en el mismo agujero silencioso del lado del frontend.
+  - **Arreglo:** `saveState()` ahora reintenta (combinando cambios
+    locales + del servidor, igual que ya hacía para conflictos) ante
+    **cualquier** error, no solo "conflict". Si después de varios
+    intentos sigue sin poder guardar, la app nunca descarta lo cargado —
+    muestra un aviso fijo en pantalla ("no cierres esta pestaña") y
+    sigue reintentando solo en segundo plano cada 20 segundos hasta que
+    se pueda. En el backend, la espera del lock ahora está dentro de un
+    bloque que atrapa errores y devuelve una respuesta prolija
+    (`lock_timeout`) en vez de romperse sin formato.
+  - De paso se corrigió que cada reintento, al volver a pintar la
+    pantalla, disparaba también su propio guardado en paralelo
+    (`renderAll()` reprograma un guardado nuevo) — generaba cadenas de
+    reintentos superpuestas justo cuando el problema ya era contención
+    del backend. Ahora ese repintado interno no dispara guardados
+    adicionales.
+  - Probado con un servidor de prueba que simula fallas persistentes
+    (más fallas que reintentos disponibles): se confirmó que el dato
+    cargado sigue visible en pantalla sin perderse, que aparece el
+    aviso, que no se generan guardados duplicados en paralelo, y que al
+    recuperarse el backend el reintento en segundo plano termina
+    guardando todo lo pendiente.
+  - **Requiere redeploy del backend** (ver checklist arriba) — hasta que
+    se haga, el arreglo del lado del backend (`lock_timeout` prolijo) no
+    está activo, aunque el arreglo del frontend (reintentar ante
+    cualquier error) ya ayuda por sí solo.

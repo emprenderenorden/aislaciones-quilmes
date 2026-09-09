@@ -339,8 +339,17 @@ function doPost(e) {
   }
   if (!checkAuth_(body.secret)) return jsonOut_({ error: 'unauthorized' });
 
-  const lock = LockService.getScriptLock();
-  lock.waitLock(20000);
+  let lock;
+  try {
+    lock = LockService.getScriptLock();
+    lock.waitLock(20000);
+  } catch (err) {
+    // Si no se pudo conseguir el lock (varias personas guardando casi a la
+    // vez), devolvemos un error prolijo en vez de dejar que la excepción
+    // se escape sin formato — así el frontend lo puede reintentar en vez
+    // de fallar en silencio.
+    return jsonOut_({ error: 'lock_timeout' });
+  }
   try {
     if (body.action === 'uploadFile') {
       const folder = DriveApp.getFolderById(CARPETA_DOCUMENTOS_ID);
