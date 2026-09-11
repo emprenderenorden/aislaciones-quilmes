@@ -448,7 +448,7 @@
       </div>
     </div>
     <div class="cat-grid" id="fima-subcat-grid" style="margin-bottom:16px;"></div>
-    <div class="card card-table"><table><thead><tr><th>Fecha</th><th>Fondo</th><th>Subcategoría / Obra</th><th>Concepto</th><th></th><th class="num">Monto</th></tr></thead><tbody id="movimientos-fima-body"></tbody></table></div>
+    <div class="card card-table"><table><thead><tr><th>Fecha</th><th>Fondo</th><th>Subcategoría / Obra</th><th>Concepto</th><th></th><th class="num">Monto</th><th></th></tr></thead><tbody id="movimientos-fima-body"></tbody></table></div>
   </div>
 
   <!-- ============ ÓRDENES DE COMPRA ============ -->
@@ -2085,7 +2085,67 @@ function renderFima(){
     if(m.subcategoria) return m.subcategoria;
     return '—';
   };
-  document.getElementById('movimientos-fima-body').innerHTML = rows.length ? rows.map(m=>`<tr><td class="mono">${fmtFecha(m.fecha)}</td><td>${fondoLabel[m.fondo]}</td><td>${subcatOObraTag(m)}</td><td>${m.concepto}</td><td><span class="badge-inout ${m.tipo}">${m.tipo==='in'?'Ingreso':'Egreso'}</span></td><td class="num">${fmt(m.monto)}</td></tr>`).join('') : `<tr class="empty-row"><td colspan="6">Sin movimientos para este filtro</td></tr>`;
+  document.getElementById('movimientos-fima-body').innerHTML = rows.length ? rows.map(m=>{
+    const idx = state.movimientosFima.indexOf(m);
+    return `<tr><td class="mono">${fmtFecha(m.fecha)}</td><td>${fondoLabel[m.fondo]}</td><td>${subcatOObraTag(m)}</td><td>${m.concepto}</td><td><span class="badge-inout ${m.tipo}">${m.tipo==='in'?'Ingreso':'Egreso'}</span></td><td class="num">${fmt(m.monto)}</td><td><span class="link-btn" onclick="openModalEditarMovimientoFima(${idx})">Editar</span> · <span class="link-btn danger" onclick="eliminarMovimientoFima(${idx})">Eliminar</span></td></tr>`;
+  }).join('') : `<tr class="empty-row"><td colspan="7">Sin movimientos para este filtro</td></tr>`;
+}
+// Los movimientos de FIMA no tienen id propio (ver unionPorContenido) — para
+// editar/eliminar uno puntual usamos su posición en state.movimientosFima
+// (no en la lista filtrada/ordenada que se ve en pantalla), así apunta
+// siempre al objeto correcto aunque haya dos movimientos con el mismo
+// contenido.
+function pagoLigadoAMovimientoFima(m){
+  // Un egreso cargado directo desde "Registrar movimiento" genera también
+  // un gasto propio en Pagos (ver submitMovimientoFima). Lo identificamos
+  // por contenido + que tenga un único pago realizado (si tuviera más, es
+  // una factura que ya existía de antes y este movimiento fue solo una
+  // cuota parcial — ahí no tocamos el gasto).
+  if(m.tipo!=='out') return null;
+  return state.pagos.find(p=>p.origenFondo===m.fondo && p.concepto===m.concepto && p.monto===m.monto && p.fechaPago===m.fecha && p.formaPago==='FIMA' && (p.pagosRealizados||[]).length===1) || null;
+}
+function eliminarMovimientoFima(idx){
+  const m = state.movimientosFima[idx];
+  if(!m) return;
+  const pagoLigado = pagoLigadoAMovimientoFima(m);
+  let advertencia = `¿Eliminar este movimiento de ${fondoLabel[m.fondo]} (${m.tipo==='in'?'Ingreso':'Egreso'} de ${fmt(m.monto)} — ${m.concepto})? Se le devuelve el monto al fondo. Esta acción no se puede deshacer.`;
+  if(pagoLigado) advertencia += `\n\nEste movimiento tiene un gasto propio cargado junto con él ("${pagoLigado.concepto}") — también se va a eliminar.`;
+  if(!confirm(advertencia)) return;
+  state.fondos[m.fondo] += (m.tipo==='in'? -m.monto : m.monto);
+  if(pagoLigado){
+    state.ordenesCompra.forEach(oc=>{ if(oc.pagoId===pagoLigado.id){ oc.pagoId=null; oc.estado='pendiente'; } });
+    state.pagos = state.pagos.filter(p=>p!==pagoLigado);
+  }
+  state.movimientosFima.splice(idx,1);
+  renderAll();
+}
+function openModalEditarMovimientoFima(idx){
+  const m = state.movimientosFima[idx];
+  if(!m) return;
+  modalEl.innerHTML = `<h3>Editar movimiento FIMA</h3><div class="modal-sub">${fondoLabel[m.fondo]} — ${m.tipo==='in'?'Ingreso':'Egreso'}</div>
+    <div class="form-grid">
+      <div class="field span2"><label>Concepto</label><input id="f-fima-edit-concepto" value="${m.concepto}"></div>
+      <div class="field"><label>Monto ($)</label><input id="f-fima-edit-monto" class="mono-in" type="number" value="${m.monto}"></div>
+    </div>
+    <div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" onclick="submitEditarMovimientoFima(${idx})">Guardar</button></div>`;
+  overlay.classList.add('open');
+}
+function submitEditarMovimientoFima(idx){
+  const m = state.movimientosFima[idx];
+  if(!m) return;
+  const nuevoConcepto = document.getElementById('f-fima-edit-concepto').value.trim() || m.concepto;
+  const nuevoMonto = +document.getElementById('f-fima-edit-monto').value || 0;
+  const deltaMonto = nuevoMonto - m.monto;
+  const pagoLigado = pagoLigadoAMovimientoFima(m);
+  // El saldo del fondo ya se había movido según el monto viejo — se ajusta
+  // acá por la diferencia para que quede reflejando el monto nuevo.
+  state.fondos[m.fondo] += (m.tipo==='in'? deltaMonto : -deltaMonto);
+  if(pagoLigado){
+    pagoLigado.concepto = nuevoConcepto; pagoLigado.monto = nuevoMonto; pagoLigado.unitario = nuevoMonto;
+    if(pagoLigado.pagosRealizados[0]) pagoLigado.pagosRealizados[0].monto = nuevoMonto;
+  }
+  m.concepto = nuevoConcepto; m.monto = nuevoMonto;
+  closeModal(); renderAll();
 }
 function setFimaSubcatFiltro(value){
   document.getElementById('fima-filtro-subcat').value = value;

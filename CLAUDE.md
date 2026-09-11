@@ -270,3 +270,26 @@ archivo. Una vez desplegado, tildar el ítem de arriba o borrar la sección.
     otra persona" era este mismo problema (el alta se guarda bien — se
     revisó `submitTrabajador` y no tiene ningún bug — solo no se veía
     reflejada todavía en la pantalla de quien no había recargado).
+- **Nuevo: editar y eliminar un movimiento de FIMA.** No existía forma de
+  borrar ni de corregir un movimiento ya cargado en FIMA (ni el título ni
+  el monto) — el dueño probó borrarlo directo en la planilla y tampoco
+  funcionó, porque la app reescribe la hoja entera en cada guardado (así
+  que cualquier borrado manual ahí se pisa solo). Ahora cada fila de la
+  tabla de Movimientos tiene "Editar" (para corregir concepto y monto) y
+  "Eliminar".
+  - Al eliminar o editar el monto, se ajusta el saldo del fondo
+    correspondiente. Si el movimiento era un egreso cargado directo desde
+    "Registrar movimiento" (que también generó su propio gasto en Pagos,
+    y no una cuota parcial de una factura que ya existía de antes), ese
+    gasto vinculado se actualiza o se borra junto con el movimiento, para
+    no dejarlo desincronizado o huérfano.
+  - Los movimientos de FIMA no tienen `id` propio (se identifican por
+    contenido, ver `unionPorContenido`) — Editar/Eliminar apuntan a la
+    posición del movimiento dentro de `state.movimientosFima`, no a la
+    lista filtrada/ordenada que se ve en pantalla, así apuntan siempre al
+    registro correcto aunque haya dos movimientos con el mismo contenido.
+  - Probado en un entorno aislado: ingreso con edición de monto y
+    eliminación posterior (saldo del fondo queda en $0 al final); egreso
+    que genera un gasto propio, edición de monto (se refleja en el gasto
+    vinculado también) y eliminación (borra el movimiento y el gasto
+    vinculado, devuelve el saldo al fondo).
