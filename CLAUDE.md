@@ -29,30 +29,32 @@ los datos reales.
 
 ## Redeploy de Apps Script — pendiente
 
-Estos cambios ya están en `backend-AppsScript.gs` (en `main`) pero **todavía
-no se confirmó que estén desplegados** en el Apps Script real (el dueño
-arregló el `SECRET` y dijo "listo", pero no llegamos a confirmar que haya
-hecho también el paso de "Nueva versión" en Administrar implementaciones —
-ver más abajo). Hasta que se haga el redeploy:
+El dueño confirmó (11/09) que el redeploy con el `SECRET` corregido **sí**
+se hizo, y que ese redeploy incluyó estos campos de esquema (ya estaban en
+`backend-AppsScript.gs` en ese momento) — se dan por desplegados:
 
-- [ ] `trabajadores`: campo `sueldoMensual`.
-- [ ] `obras`: campo `jornalesConfigJSON` (asignación de trabajadores +
-      horas extra por obra) — los campos nuevos no se guardan en el Sheet
-      (se pierden al recargar).
-- [ ] `stock`: campos `categoria` y `stockMinimo` (ver más abajo).
-- [ ] `obras`: campo `comisionOverrideJSON` (comisión del vendedor editable
-      puntualmente en la obra, ver más abajo).
-- [ ] `movimientosFima`: campo `subcategoria` (ver más abajo).
-- [ ] **Urgente:** fix de `doPost` para que un timeout del lock devuelva un
-      error prolijo en vez de romperse sin formato (ver "Fix importante:
-      guardado silencioso..." en el registro de cambios, abajo) — sin este
-      redeploy, ese tipo de falla específica todavía puede quedar sin
-      reintentarse bien del lado del backend.
+- [x] `trabajadores`: campo `sueldoMensual`.
+- [x] `obras`: campo `jornalesConfigJSON` (asignación de trabajadores +
+      horas extra por obra).
+- [x] `stock`: campos `categoria` y `stockMinimo`.
+- [x] `obras`: campo `comisionOverrideJSON` (comisión del vendedor editable
+      puntualmente en la obra).
+- [x] `movimientosFima`: campo `subcategoria`.
 
-Cuando se haga el redeploy: pegar todo `backend-AppsScript.gs` en el editor
-de Apps Script del Sheet, guardar, y crear una nueva implementación (o
-actualizar la existente) — ver instrucciones al principio del propio archivo.
-Una vez desplegado, tildar los ítems de arriba o borrar la sección.
+Pero el dueño también confirmó que **todavía no hizo** el redeploy de
+después (el fix de `lock_timeout` en `doPost`, ver "Fix importante:
+guardado silencioso..." en el registro de cambios más abajo):
+
+- [ ] **Pendiente:** fix de `doPost` para que un timeout del lock devuelva
+      un error prolijo en vez de romperse sin formato — sin este redeploy,
+      ese tipo de falla específica todavía puede quedar sin reintentarse
+      bien del lado del backend (el arreglo del lado del frontend, que
+      reintenta ante cualquier error, ya ayuda por sí solo mientras tanto).
+
+Cuando se haga este redeploy: pegar todo `backend-AppsScript.gs` en el
+editor de Apps Script del Sheet, guardar, y crear una nueva implementación
+(o actualizar la existente) — ver instrucciones al principio del propio
+archivo. Una vez desplegado, tildar el ítem de arriba o borrar la sección.
 
 ## Registro de cambios (funcionalidad agregada vía Claude Code)
 
