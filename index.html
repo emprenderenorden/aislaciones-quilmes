@@ -938,6 +938,40 @@ function scheduleSave(){
   clearTimeout(saveTimer);
   saveTimer = setTimeout(saveState, 900);
 }
+// La app solo traía los datos del servidor una vez, al entrar — de ahí en
+// más una pestaña abierta nunca se enteraba de lo que cargaban otras
+// personas (otro dispositivo, otro compañero) hasta que alguien la
+// recargaba a mano. Eso daba la sensación de que "se borraba" información
+// que en realidad solo no se había vuelto a pedir. Ahora, cada un rato (y
+// al volver a esta pestaña después de estar en otra), se trae lo último
+// del servidor y se combina con lo local de la misma forma que ante un
+// conflicto de guardado — así nunca se pisa algo que se esté cargando acá
+// y sin embargo todos los dispositivos convergen solos.
+let refrescoAutoTimer = null;
+async function refrescarDesdeServidor(){
+  if(!isBackendConfigured() || !bootCompleto) return;
+  if(overlay.classList.contains('open')) return; // no interrumpir una edición en curso
+  const local = {
+    obras: state.obras, pagos: state.pagos, ordenesCompra: state.ordenesCompra,
+    proveedores: state.proveedores, stock: state.stock, stockMovimientos: state.stockMovimientos,
+    trabajadores: state.trabajadores, jornales: state.jornales, movimientosFima: state.movimientosFima,
+  };
+  const revAntes = state.rev;
+  await loadState({silencioso:true});
+  if(state.rev===revAntes) return; // nada nuevo del lado del servidor
+  state.obras = mergeObrasTrasConflicto(local.obras, state.obras);
+  ['pagos','ordenesCompra','proveedores','stock','stockMovimientos','trabajadores','jornales'].forEach(key=>{
+    state[key] = unionPorId(local[key], state[key]);
+  });
+  state.movimientosFima = unionPorContenido(local.movimientosFima, state.movimientosFima);
+  renderAllSinGuardar();
+}
+function programarRefrescoAuto(){
+  clearInterval(refrescoAutoTimer);
+  refrescoAutoTimer = setInterval(refrescarDesdeServidor, 60000);
+  document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState==='visible') refrescarDesdeServidor(); });
+  window.addEventListener('focus', refrescarDesdeServidor);
+}
 function subirArchivoDrive(file){
   if(!isBackendConfigured()) return Promise.reject(new Error('El backend todavía no está configurado.'));
   return new Promise((resolve,reject)=>{
@@ -3174,6 +3208,7 @@ function renderAll(){ renderAllSinGuardar(); scheduleSave(); }
   // reflejan ediciones reales — así abrir la app en varios dispositivos a
   // la vez no genera avisos de "conflicto" sin que nadie haya cambiado nada.
   bootCompleto = true;
+  programarRefrescoAuto();
   if(huboReparacionFechas || huboMaduraciones || huboMigracionJornales || huboReparacionIngresos) saveState();
   const overlay = document.getElementById('loading-overlay');
   if(overlay){ overlay.style.opacity='0'; setTimeout(()=>overlay.remove(), 300); }

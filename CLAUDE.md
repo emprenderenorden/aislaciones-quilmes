@@ -240,3 +240,31 @@ Una vez desplegado, tildar los ítems de arriba o borrar la sección.
     se haga, el arreglo del lado del backend (`lock_timeout` prolijo) no
     está activo, aunque el arreglo del frontend (reintentar ante
     cualquier error) ya ayuda por sí solo.
+- **Nuevo: la app ahora se actualiza sola en segundo plano.** El dueño
+  reportó que, entre dos personas usando la app a la vez, una veía datos
+  que a la otra "se le borraban" (movimientos, un trabajador recién
+  agregado). La causa: la app solo pedía los datos del servidor **una
+  vez, al entrar** — de ahí en más una pestaña abierta nunca se enteraba
+  de lo que cargaban otras personas hasta que alguien la recargaba a
+  mano. No era que se borrara nada: la pantalla de quien tenía la
+  pestaña abierta hacía rato quedaba "congelada" en la foto del momento
+  en que había entrado.
+  - **Arreglo:** ahora, mientras la app está abierta, cada 60 segundos
+    (y también al volver a esa pestaña después de estar en otra, vía
+    `visibilitychange`/`focus`) se trae lo último del servidor y se
+    combina con lo local usando el mismo sistema de "traer y combinar"
+    que ya existía para conflictos de guardado — así nunca se pisa algo
+    que se esté cargando en pantalla en ese momento, y todos los
+    dispositivos convergen solos. Si hay un modal abierto (alguien
+    completando un formulario), el refresco se salta por completo hasta
+    que se cierra, para no interrumpir una edición en curso.
+  - Probado con un servidor de prueba: (a) un alta hecha "directo en el
+    servidor" (simulando otro dispositivo) no aparece en una pestaña
+    vieja hasta que se refresca, y después sí; (b) un refresco no pisa
+    un registro cargado localmente y todavía sin guardar; (c) con un
+    modal abierto el refresco no hace nada, y uno posterior (ya cerrado
+    el modal) sí trae lo nuevo.
+  - De paso se confirmó que "cargar un trabajador y no aparecerle a
+    otra persona" era este mismo problema (el alta se guarda bien — se
+    revisó `submitTrabajador` y no tiene ningún bug — solo no se veía
+    reflejada todavía en la pantalla de quien no había recargado).
