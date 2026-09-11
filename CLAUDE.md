@@ -293,3 +293,53 @@ archivo. Una vez desplegado, tildar el ítem de arriba o borrar la sección.
     que genera un gasto propio, edición de monto (se refleja en el gasto
     vinculado también) y eliminación (borra el movimiento y el gasto
     vinculado, devuelve el saldo al fondo).
+- **Fix crítico: un borrado podía "resucitar" solo.** El dueño reportó que
+  borraba movimientos de FIMA y volvían a aparecer. La causa era de fondo,
+  no específica de FIMA: el sistema de "traer y combinar" (usado tanto al
+  reintentar un guardado con conflicto como en el auto-refresco) arma el
+  resultado tomando **la lista del servidor como base** y sumándole lo que
+  solo existe en lo local — pero un borrado hace que un registro exista
+  *solo en el servidor* (porque local ya no lo tiene), exactamente la
+  misma forma que algo "nuevo, todavía sin guardar". El sistema no podía
+  distinguir "esto lo acabo de borrar" de "esto todavía no llegué a
+  cargarlo del otro lado" — y en el primer caso, el merge lo traía de
+  vuelta. Esto afectaba **cualquier borrado** en la app (trabajador,
+  gasto, obra, movimiento de FIMA), no solo a FIMA — probablemente detrás
+  de varios reportes previos de "esto se borra y después vuelve".
+  - **Arreglo:** cada `eliminar`/`quitar` ahora registra en memoria (dura
+    lo que dura la pestaña) qué se borró — el id para las colecciones con
+    id (trabajadores, pagos, órdenes de compra, obras, stock,
+    movimientos de stock, jornales) o la firma completa del contenido
+    para movimientos de FIMA (que no tienen id propio). El merge, antes
+    de tomar la lista del servidor como base, saca de ahí cualquier cosa
+    marcada como borrada — así nunca la resucita, la haya guardado ya el
+    servidor o no. También se aplicó a "editar un movimiento de FIMA"
+    (que, al no tener id, para el sistema de merge es como borrar el
+    contenido viejo y agregar uno nuevo — sin la marca, un conflicto en
+    el medio podía dejar duplicada la versión vieja y la editada).
+  - **Bug relacionado, encontrado en el camino:** el auto-refresco (el
+    de cada 60s / al volver a la pestaña, agregado el mismo día) tenía
+    un atajo — "si el número de revisión no cambió, no hago nada" — para
+    no repintar la pantalla sin necesidad. Pero ese chequeo se hacía
+    *después* de que `loadState()` ya había sobreescrito todo `state`
+    con la copia cruda del servidor, así que cuando la revisión no había
+    cambiado (que es justo lo más común: pasa cada vez que hay un
+    cambio local recién hecho que todavía no se guardó), la función se
+    cortaba ahí sin llegar a combinar nada — dejando la copia cruda del
+    servidor pisando cualquier cambio local sin guardar (no solo un
+    borrado: también una alta o edición reciente). Se sacó ese atajo —
+    ahora siempre combina.
+  - Probado con un servidor de prueba forzando conflictos y también
+    llamando al refresco automático a mano en el medio de un borrado:
+    eliminar un trabajador, un gasto con pago real (que también borra su
+    movimiento de FIMA vinculado) y un movimiento de FIMA sobreviven los
+    tres a un conflicto de guardado forzado y al auto-refresco — ninguno
+    volvió a aparecer ni en pantalla ni en el servidor al final.
+  - **Alcance de este arreglo:** cubre las colecciones "planas" del
+    estado (arriba). Quedan afuera, con el mismo tipo de riesgo teórico
+    pero mucho menos frecuentes: quitar a un trabajador de una obra
+    puntual (la asignación dentro de `jornalesConfig`) y quitar un
+    documento de una obra — esos se combinan de forma anidada por obra
+    y no se les agregó todavía la misma marca de "borrado". Si notás que
+    alguno de esos dos vuelve a aparecer, avisá para extender el
+    arreglo ahí también.

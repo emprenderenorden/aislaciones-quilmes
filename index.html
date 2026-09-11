@@ -804,22 +804,43 @@ function loadState(opts){
     .catch(err=>{ console.error('No se pudo cargar el estado remoto.', err); });
 }
 let saveTimer = null;
+// Registro de qué se eliminó desde ESTA pestaña (id, o firma completa para
+// movimientosFima que no tiene id). Un merge (ante un conflicto de guardado,
+// o el refresco automático) trae la versión del servidor como base y le
+// suma lo local — pero el servidor todavía puede no enterarse de un borrado
+// reciente, y sin este registro ese borrado se "deshacía solo" en el merge
+// (el registro volvía a aparecer). Vive mientras dure la pestaña: una vez
+// que el borrado se guarda bien, el servidor ya no lo tiene tampoco, así
+// que deja de hacer falta.
+const eliminadosLocalmente = {
+  obras: new Set(), pagos: new Set(), ordenesCompra: new Set(), proveedores: new Set(),
+  stock: new Set(), stockMovimientos: new Set(), trabajadores: new Set(), jornales: new Set(),
+  movimientosFima: new Set(), // acá se guarda la firma (JSON.stringify), no un id
+};
+function marcarEliminado(coleccion, id){ if(id!==undefined) eliminadosLocalmente[coleccion].add(id); }
+function marcarEliminadoFima(m){ eliminadosLocalmente.movimientosFima.add(JSON.stringify(m)); }
 // Combina por id: la base es la lista del servidor (ya guardada), y se le
 // suman los elementos que solo existen en la lista local (lo que acabamos
 // de agregar acá y todavía no se había guardado). Si un mismo id existe en
 // las dos listas, gana el del servidor — evita pisar una edición ajena al
 // mismo registro. Se usa para todas las colecciones "planas" del estado.
-function unionPorId(local, servidor){
-  const idsServidor = new Set((servidor||[]).filter(Boolean).map(x=>x.id));
-  const soloLocal = (local||[]).filter(x=>x && x.id!==undefined && !idsServidor.has(x.id));
-  return [...(servidor||[]), ...soloLocal];
+// `eliminados` (opcional) saca de la base del servidor cualquier id que se
+// haya borrado localmente, para que el merge no lo resucite.
+function unionPorId(local, servidor, eliminados){
+  const base = eliminados && eliminados.size ? (servidor||[]).filter(x=>x && !eliminados.has(x.id)) : (servidor||[]);
+  const idsServidor = new Set(base.filter(Boolean).map(x=>x.id));
+  const soloLocal = (local||[]).filter(x=>x && x.id!==undefined && !idsServidor.has(x.id) && !(eliminados&&eliminados.has(x.id)));
+  return [...base, ...soloLocal];
 }
 // Los movimientos de FIMA no tienen id propio — se identifican por su
 // contenido completo para no duplicar los que ya estén guardados.
-function unionPorContenido(local, servidor){
-  const firmas = new Set((servidor||[]).map(x=>JSON.stringify(x)));
-  const soloLocal = (local||[]).filter(x=>!firmas.has(JSON.stringify(x)));
-  return [...(servidor||[]), ...soloLocal];
+// `eliminadosFirmas` (opcional) funciona igual que en unionPorId, pero
+// comparando la firma completa del objeto en vez de un id.
+function unionPorContenido(local, servidor, eliminadosFirmas){
+  const base = eliminadosFirmas && eliminadosFirmas.size ? (servidor||[]).filter(x=>!eliminadosFirmas.has(JSON.stringify(x))) : (servidor||[]);
+  const firmas = new Set(base.map(x=>JSON.stringify(x)));
+  const soloLocal = (local||[]).filter(x=>!firmas.has(JSON.stringify(x)) && !(eliminadosFirmas&&eliminadosFirmas.has(JSON.stringify(x))));
+  return [...base, ...soloLocal];
 }
 // Las obras tienen datos anidados que se editan seguido sin crear un id
 // nuevo (asignar un trabajador en el cuadro de jornales de la obra, cargar
@@ -845,9 +866,10 @@ function mergeObraTrasConflicto(obraLocal, obraServidor){
   return merged;
 }
 function mergeObrasTrasConflicto(local, servidor){
-  const porId = new Map((servidor||[]).filter(Boolean).map(o=>[o.id,o]));
+  const eliminadas = eliminadosLocalmente.obras;
+  const porId = new Map((servidor||[]).filter(Boolean).filter(o=>!eliminadas.has(o.id)).map(o=>[o.id,o]));
   (local||[]).forEach(o=>{
-    if(!o || o.id===undefined) return;
+    if(!o || o.id===undefined || eliminadas.has(o.id)) return;
     porId.set(o.id, porId.has(o.id) ? mergeObraTrasConflicto(o, porId.get(o.id)) : o);
   });
   return [...porId.values()];
@@ -887,9 +909,9 @@ async function saveState(reintentos){
     await loadState({silencioso:true});
     state.obras = mergeObrasTrasConflicto(local.obras, state.obras);
     ['pagos','ordenesCompra','proveedores','stock','stockMovimientos','trabajadores','jornales'].forEach(key=>{
-      state[key] = unionPorId(local[key], state[key]);
+      state[key] = unionPorId(local[key], state[key], eliminadosLocalmente[key]);
     });
-    state.movimientosFima = unionPorContenido(local.movimientosFima, state.movimientosFima);
+    state.movimientosFima = unionPorContenido(local.movimientosFima, state.movimientosFima, eliminadosLocalmente.movimientosFima);
     // Repintamos la pantalla con lo combinado, pero sin pasar por renderAll()
     // acá: renderAll() vuelve a programar un guardado propio (scheduleSave),
     // y como ya estamos reintentando explícitamente más abajo, eso generaba
@@ -956,14 +978,18 @@ async function refrescarDesdeServidor(){
     proveedores: state.proveedores, stock: state.stock, stockMovimientos: state.stockMovimientos,
     trabajadores: state.trabajadores, jornales: state.jornales, movimientosFima: state.movimientosFima,
   };
-  const revAntes = state.rev;
+  // Ojo: no nos podemos guiar por si `rev` cambió para decidir si hace
+  // falta combinar — loadState() ya sobreescribió `state` con la copia
+  // cruda del servidor de todas formas, así que aunque el rev no haya
+  // cambiado (lo más común: es justo lo que pasa cuando tenemos un cambio
+  // local recién hecho que todavía no se guardó) igual hay que volver a
+  // sumarle lo local, o se pierde/resucita algo sin querer.
   await loadState({silencioso:true});
-  if(state.rev===revAntes) return; // nada nuevo del lado del servidor
   state.obras = mergeObrasTrasConflicto(local.obras, state.obras);
   ['pagos','ordenesCompra','proveedores','stock','stockMovimientos','trabajadores','jornales'].forEach(key=>{
-    state[key] = unionPorId(local[key], state[key]);
+    state[key] = unionPorId(local[key], state[key], eliminadosLocalmente[key]);
   });
-  state.movimientosFima = unionPorContenido(local.movimientosFima, state.movimientosFima);
+  state.movimientosFima = unionPorContenido(local.movimientosFima, state.movimientosFima, eliminadosLocalmente.movimientosFima);
   renderAllSinGuardar();
 }
 function programarRefrescoAuto(){
@@ -1367,6 +1393,7 @@ function eliminarObra(id){
   state.pagos = state.pagos.filter(p=>{
     if(p.obraId!==id) return true;
     if((p.pagosRealizados||[]).length>0){ p.obraId=null; p.tipo='fijo'; p.categoria='otros'; p.concepto += ` (obra eliminada: ${o.code})`; return true; }
+    marcarEliminado('pagos', p.id);
     return false;
   });
 
@@ -1375,6 +1402,7 @@ function eliminarObra(id){
   state.ordenesCompra = state.ordenesCompra.filter(oc=>{
     if(oc.obraId!==id) return true;
     if(oc.pagoId && state.pagos.find(p=>p.id===oc.pagoId)){ oc.obraId=null; return true; }
+    marcarEliminado('ordenesCompra', oc.id);
     return false;
   });
 
@@ -1382,6 +1410,7 @@ function eliminarObra(id){
   state.stockMovimientos = state.stockMovimientos.filter(m=>{
     if(m.obraId!==id) return true;
     if(m.tipo==='consumo'){ const item=getStockItem(m.stockId); if(item) item.cantidad += m.cantidad; }
+    marcarEliminado('stockMovimientos', m.id);
     return false;
   });
 
@@ -1390,6 +1419,7 @@ function eliminarObra(id){
   state.movimientosFima.forEach(m=>{ if(m.obraId===id) m.obraId=null; });
   state.jornales.forEach(j=>{ j.dias.forEach(cell=>{ if(cell.obraId===id){ cell.obraId=null; } }); });
 
+  marcarEliminado('obras', id);
   state.obras = state.obras.filter(x=>x.id!==id);
   state.selectedObraId = state.obras[0] ? state.obras[0].id : null;
   showObraSubview('lista');
@@ -1880,12 +1910,14 @@ function eliminarTrabajador(id){
     ? `El trabajador "${t.nombre}" ya tiene días cargados en Jornales (trabajados o ausentes) en una o más obras. Al eliminarlo se borra también todo ese historial, y puede bajar el costo real de Mano de obra de esas obras. Esta acción no se puede deshacer.\n\n¿Eliminar igual a "${t.nombre}"?`
     : `¿Eliminar al trabajador "${t.nombre}"? Esta acción no se puede deshacer.`;
   if(!confirm(advertencia)) return;
+  state.jornales.forEach(j=>{ if(j.trabajadorId===id) marcarEliminado('jornales', j.id); });
   state.jornales = state.jornales.filter(j=>j.trabajadorId!==id);
   state.obras.forEach(o=>{
     if(!o.jornalesConfig) return;
     o.jornalesConfig.asignados = (o.jornalesConfig.asignados||[]).filter(tid=>tid!==id);
     if(o.jornalesConfig.horasExtra) delete o.jornalesConfig.horasExtra[id];
   });
+  marcarEliminado('trabajadores', id);
   state.trabajadores = state.trabajadores.filter(x=>x.id!==id);
   closeModal(); renderAll();
 }
@@ -2112,7 +2144,9 @@ function eliminarMovimientoFima(idx){
   if(pagoLigado) advertencia += `\n\nEste movimiento tiene un gasto propio cargado junto con él ("${pagoLigado.concepto}") — también se va a eliminar.`;
   if(!confirm(advertencia)) return;
   state.fondos[m.fondo] += (m.tipo==='in'? -m.monto : m.monto);
+  marcarEliminadoFima(m);
   if(pagoLigado){
+    marcarEliminado('pagos', pagoLigado.id);
     state.ordenesCompra.forEach(oc=>{ if(oc.pagoId===pagoLigado.id){ oc.pagoId=null; oc.estado='pendiente'; } });
     state.pagos = state.pagos.filter(p=>p!==pagoLigado);
   }
@@ -2144,6 +2178,12 @@ function submitEditarMovimientoFima(idx){
     pagoLigado.concepto = nuevoConcepto; pagoLigado.monto = nuevoMonto; pagoLigado.unitario = nuevoMonto;
     if(pagoLigado.pagosRealizados[0]) pagoLigado.pagosRealizados[0].monto = nuevoMonto;
   }
+  // Los movimientos de FIMA se identifican por contenido completo (no
+  // tienen id) — si no marcamos la firma vieja como "eliminada", un merge
+  // que ocurra antes de que esta edición se guarde podría traer de vuelta
+  // la versión vieja del servidor Y quedarnos con las dos (la editada acá
+  // y la vieja, duplicadas).
+  marcarEliminadoFima(m);
   m.concepto = nuevoConcepto; m.monto = nuevoMonto;
   closeModal(); renderAll();
 }
@@ -3042,7 +3082,9 @@ function revertirPago(pagoId){
     else state.caja += pr.monto;
   });
   state.movimientosFima = state.movimientosFima.filter(m=>{
-    return !aplicados.some(pr=>pr.fondo && m.tipo==='out' && m.fondo===pr.fondo && m.obraId===p.obraId && m.concepto===p.concepto && m.monto===pr.monto);
+    const ligado = aplicados.some(pr=>pr.fondo && m.tipo==='out' && m.fondo===pr.fondo && m.obraId===p.obraId && m.concepto===p.concepto && m.monto===pr.monto);
+    if(ligado) marcarEliminadoFima(m);
+    return !ligado;
   });
   p.pagosRealizados = [];
   p.fechaPago = null;
@@ -3064,11 +3106,14 @@ function eliminarGasto(pagoId){
       else state.caja += pr.monto;
     });
     state.movimientosFima = state.movimientosFima.filter(m=>{
-      return !p.pagosRealizados.some(pr=>pr.fondo && m.tipo==='out' && m.fondo===pr.fondo && m.obraId===p.obraId && m.concepto===p.concepto && m.monto===pr.monto);
+      const ligado = p.pagosRealizados.some(pr=>pr.fondo && m.tipo==='out' && m.fondo===pr.fondo && m.obraId===p.obraId && m.concepto===p.concepto && m.monto===pr.monto);
+      if(ligado) marcarEliminadoFima(m);
+      return !ligado;
     });
   }
   if(p.tipo==='obra' && p.obraId){ const o=getObra(p.obraId); if(o) o.real[categoriaParaReal(p.categoria)] -= p.monto; }
   state.ordenesCompra.forEach(oc=>{ if(oc.pagoId===p.id){ oc.pagoId=null; oc.estado='pendiente'; } });
+  marcarEliminado('pagos', pagoId);
   state.pagos = state.pagos.filter(x=>x.id!==pagoId);
   renderAll();
 }
