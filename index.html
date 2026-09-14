@@ -212,7 +212,7 @@
 
 <div id="loading-overlay" style="position:fixed;inset:0;z-index:10000;background:#FAFBFB;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;font-family:'Montserrat',sans-serif;transition:opacity .3s;">
   <div style="width:34px;height:34px;border:3px solid #DCE3E1;border-top-color:#14181C;border-radius:50%;animation:spin 0.8s linear infinite;"></div>
-  <div style="color:#6B7573;font-size:13px;">Cargando datos…</div>
+  <div id="loading-overlay-msg" style="color:#6B7573;font-size:13px;">Cargando datos…</div>
 </div>
 <style>@keyframes spin{to{transform:rotate(360deg);}}</style>
 
@@ -784,7 +784,7 @@ const STATE_API_URL = 'https://script.google.com/macros/s/AKfycbzNUM_FeQ61f4oRQC
 const API_SECRET = 'ramonino22';
 function isBackendConfigured(){ return !!STATE_API_URL; }
 function loadState(opts){
-  if(!isBackendConfigured()) return Promise.resolve();
+  if(!isBackendConfigured()) return Promise.resolve(true);
   const esCargaInicial = !(opts && opts.silencioso);
   return fetch(STATE_API_URL+'?secret='+encodeURIComponent(API_SECRET))
     .then(r=>r.json())
@@ -797,11 +797,31 @@ function loadState(opts){
           state.selectedObraId = (data.state.obras&&data.state.obras[0]&&data.state.obras[0].id) || null;
           state.ordenesFilter = 'pendiente'; state.selectedProveedorId = null; state.pagosFilter = 'todos';
         }
+        return true;
       } else if(data && data.error){
         console.error('Backend respondió con error al cargar:', data.error);
       }
+      return false;
     })
-    .catch(err=>{ console.error('No se pudo cargar el estado remoto.', err); });
+    .catch(err=>{ console.error('No se pudo cargar el estado remoto.', err); return false; });
+}
+// La carga inicial (al abrir o recargar la página) no tenía ningún
+// reintento: si el primer pedido fallaba por algo transitorio (arranque
+// en frío de Apps Script, un hipo de red), la app se quedaba con el
+// estado vacío por defecto y lo mostraba tal cual, sin avisar — daba la
+// sensación de "a veces actualizo y no aparece nada, actualizo de nuevo y
+// aparece todo". Ahora reintenta sola, con una pausa que va creciendo,
+// hasta lograrlo — mientras tanto deja el cartel de "Cargando datos…" en
+// pantalla (avisando que sigue intentando) en vez de sacarlo y mostrar
+// todo vacío.
+async function cargarEstadoInicial(){
+  let intentos = 0;
+  const overlayMsg = document.getElementById('loading-overlay-msg');
+  while(!(await loadState())){
+    intentos++;
+    if(overlayMsg) overlayMsg.textContent = `No se pudo conectar con la base de datos, reintentando… (intento ${intentos+1})`;
+    await new Promise(r=>setTimeout(r, Math.min(intentos*1500, 8000)));
+  }
 }
 let saveTimer = null;
 // Registro de qué se eliminó desde ESTA pestaña (id, o firma completa para
@@ -3366,7 +3386,7 @@ function renderIvaReporte(mes){
 function renderAllSinGuardar(){ renderDashboard(); renderObraLista(); if(!document.getElementById('obra-sub-detalle').classList.contains('hidden')) renderObraDetail(); renderJornales(); renderOrdenes(); renderFima(); renderStock(); renderPagos(); renderResultados(); }
 function renderAll(){ renderAllSinGuardar(); scheduleSave(); }
 (async function bootstrap(){
-  await loadState();
+  await cargarEstadoInicial();
   // Dos correcciones automáticas antes de mostrar nada: reparar fechas viejas
   // que hayan quedado mal guardadas, y aplicar los pagos "programados" (fecha
   // futura, ej. cheques diferidos) cuya fecha ya llegó.

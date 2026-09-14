@@ -441,3 +441,28 @@ archivo. Una vez desplegado, tildar el ítem de arriba o borrar la sección.
     el monto en pesos ya calculado se guarda y persiste bien, pero la
     distinción "esta OC se cargó en dólares" se pierde al recargar la
     página (vuelve a leerse como si fuera en pesos).
+- **Fix: la carga inicial no reintentaba.** El dueño reportó "a veces
+  actualizo la página y no aparece información, al volver a actualizar
+  ahí aparece todo". La causa: la carga de datos al abrir/recargar la
+  app (`loadState()` en `bootstrap()`) no tenía ningún reintento — si el
+  primer pedido al backend fallaba por algo transitorio (arranque en
+  frío de Apps Script, un hipo de red), la app se quedaba con el estado
+  vacío por defecto y lo mostraba tal cual, sin avisar. Apretar
+  "Actualizar" de nuevo disparaba una carga nueva que esta vez sí salía
+  bien — de ahí la sensación de que "a veces sí, a veces no".
+  - **Arreglo:** la carga inicial ahora reintenta sola, con una pausa
+    que va creciendo (1,5s, 3s, hasta un máximo de 8s entre intentos),
+    hasta lograrlo — no se rinde nunca (sin datos la app no sirve para
+    nada, así que reintentar indefinidamente es lo correcto acá, a
+    diferencia de un guardado donde si se sigue fallando hay que avisar
+    y no perder lo cargado). Mientras reintenta, el cartel de "Cargando
+    datos…" se queda en pantalla y cambia a "No se pudo conectar con la
+    base de datos, reintentando… (intento N)" en vez de sacarse y
+    mostrar la app vacía como si no hubiera datos.
+  - Probado con un servidor de prueba que simula que las primeras 2
+    cargas fallan (como un arranque en frío) y la 3ra sale bien: el
+    cartel de carga se queda visible con el mensaje de reintento durante
+    las fallas, y una vez que logra cargar, se saca solo y la app
+    termina mostrando los datos reales (no una pantalla vacía). Una
+    carga normal, sin fallas, sigue siendo instantánea — no se le agregó
+    ninguna demora de por sí.
