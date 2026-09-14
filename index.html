@@ -882,6 +882,7 @@ async function saveState(reintentos){
     const data = await res.json();
     if(data && data.ok){
       state.rev = data.rev;
+      hayGuardadoPendiente = false;
       ocultarAvisoGuardadoFallido();
       return;
     }
@@ -955,8 +956,15 @@ function ocultarAvisoGuardadoFallido(){
   b.style.transition='opacity .4s'; b.style.opacity='0'; setTimeout(()=>b.remove(), 400);
 }
 let bootCompleto = false;
+// true desde que hay un cambio local sin confirmar que se guardó bien
+// (el debounce de 900ms, un reintento en curso, o el aviso de guardado
+// fallido reintentando en segundo plano) hasta que saveState() confirma
+// éxito. Mientras esté en true, el auto-refresco no debe combinar nada —
+// ver refrescarDesdeServidor().
+let hayGuardadoPendiente = false;
 function scheduleSave(){
   if(!isBackendConfigured() || !bootCompleto) return;
+  hayGuardadoPendiente = true;
   clearTimeout(saveTimer);
   saveTimer = setTimeout(saveState, 900);
 }
@@ -973,6 +981,16 @@ let refrescoAutoTimer = null;
 async function refrescarDesdeServidor(){
   if(!isBackendConfigured() || !bootCompleto) return;
   if(overlay.classList.contains('open')) return; // no interrumpir una edición en curso
+  // Si hay un guardado nuestro pendiente o en curso, nos salteamos este
+  // refresco entero: el sistema de combinación, para un registro que ya
+  // existe en las dos listas (ej. un pago al que le acabás de asignar
+  // fecha, una OC que acabás de marcar comprada), se queda con la versión
+  // del servidor — que todavía no tiene nuestro cambio. Antes de este
+  // chequeo, eso podía pisar una edición recién hecha si el refresco
+  // automático corría en el medio de esos ~900ms de espera. Apenas
+  // termine nuestro guardado, el próximo refresco (máximo 60s después)
+  // trae tranquilo lo de los demás.
+  if(hayGuardadoPendiente) return;
   const local = {
     obras: state.obras, pagos: state.pagos, ordenesCompra: state.ordenesCompra,
     proveedores: state.proveedores, stock: state.stock, stockMovimientos: state.stockMovimientos,

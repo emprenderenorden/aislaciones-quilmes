@@ -369,3 +369,36 @@ archivo. Una vez desplegado, tildar el ítem de arriba o borrar la sección.
     editar la OC subiendo el monto a $15.000 → el pago vinculado y el
     costo real de la obra quedan en $15.000 (no en $17.000, que hubiera
     sido el resultado de restar mal el estimado en vez del monto real).
+- **Fix crítico: el auto-refresco podía pisar una edición recién hecha
+  (asignar una fecha de pago, marcar una compra como pagada).** Efecto
+  colateral del fix anterior ("un borrado podía resucitar solo"): para
+  arreglar eso hubo que sacarle al auto-refresco un atajo que se saltaba
+  la combinación cuando la revisión no había cambiado. Pero sacar ese
+  atajo tuvo una consecuencia no vista en su momento: el auto-refresco
+  (cada 60s, o al volver a la pestaña) pasó a combinar **siempre**,
+  incluso en el momento exacto en que hay una edición local recién hecha
+  todavía sin guardar (el debounce de guardado espera ~900ms). Y el
+  sistema de combinación, para un registro que ya existe en las dos
+  listas (mismo pago, misma orden), siempre elige la versión del
+  servidor — que en ese momento todavía no tiene el cambio recién hecho.
+  Antes del fix del borrado, esto pasaba poco (el atajo lo evitaba la
+  mayoría de las veces); después, pasaba cada vez que el auto-refresco
+  corría en ese margen de menos de un segundo — mucho más frecuente de
+  lo que parece si alguien cambia de pestaña justo después de guardar
+  algo (dispara el refresco por `focus`).
+  - **Arreglo:** se agregó una marca (`hayGuardadoPendiente`) que queda
+    en `true` desde que se programa un guardado hasta que se confirma
+    guardado con éxito. El auto-refresco ahora se salta por completo
+    (ni siquiera pide datos al servidor) mientras esa marca esté en
+    `true` — así nunca compite con una edición propia todavía sin
+    confirmar. Apenas termina el guardado, el siguiente refresco (como
+    mucho 60 segundos después) sigue trayendo tranquilo los cambios de
+    los demás.
+  - Probado con un servidor de prueba: asignar una fecha de pago a un
+    gasto y, en el medio de la espera del guardado (antes de que
+    termine), forzar un refresco automático a mano — la fecha asignada
+    sigue en pantalla y termina guardada bien en el servidor. Un
+    refresco posterior, ya sin nada pendiente, sigue trayendo cambios
+    de otros dispositivos con normalidad. Se reconfirmó además que el
+    fix del borrado (registro anterior) sigue funcionando junto con
+    este cambio.
