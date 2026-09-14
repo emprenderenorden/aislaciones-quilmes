@@ -50,6 +50,12 @@ guardado silencioso..." en el registro de cambios más abajo):
       ese tipo de falla específica todavía puede quedar sin reintentarse
       bien del lado del backend (el arreglo del lado del frontend, que
       reintenta ante cualquier error, ya ayuda por sí solo mientras tanto).
+- [ ] **Pendiente:** `ordenesCompra`: campo `moneda` (para las OC cargadas
+      en dólares, ver "Nuevo: cargar una orden de compra en dólares" en el
+      registro de cambios) — sin este redeploy, el campo se guarda bien
+      mientras la pestaña sigue abierta, pero se pierde al recargar (la
+      OC vuelve a leerse como si fuera en pesos, aunque el monto en pesos
+      ya calculado queda bien guardado y no se pierde).
 
 Cuando se haga este redeploy: pegar todo `backend-AppsScript.gs` en el
 editor de Apps Script del Sheet, guardar, y crear una nueva implementación
@@ -402,3 +408,36 @@ archivo. Una vez desplegado, tildar el ítem de arriba o borrar la sección.
     de otros dispositivos con normalidad. Se reconfirmó además que el
     fix del borrado (registro anterior) sigue funcionando junto con
     este cambio.
+- **Nuevo: cargar una orden de compra en dólares.** La "Cotización USD"
+  de la OC era solo un dato informativo que se imprimía en el PDF — no
+  convertía nada, así que si el proveedor cotizaba en USD había que
+  convertir a mano antes de tipear los precios unitarios.
+  - Ahora la OC tiene un selector "Moneda de los ítems" (Pesos / Dólares,
+    Pesos por defecto — las OC existentes no cambian). Si se elige
+    Dólares, los precios unitarios de los ítems se cargan en USD, la
+    "Cotización USD" pasa a ser obligatoria (antes era opcional — no se
+    puede guardar sin ella), y el resumen del formulario muestra el
+    subtotal en USD y su equivalente en pesos.
+  - El monto final de la orden — el que se usa para todo lo demás
+    (autorizar, IVA, costo real de la obra) — **siempre queda en pesos**:
+    subtotal en USD × cotización cargada, más IVA si aplica. El pago real
+    (al marcarla como comprada) sigue siendo 100% en pesos como ya era,
+    sin ningún cambio ahí — el campo "Monto final" se sigue prellenando
+    ya convertido a pesos.
+  - El PDF de la orden (imprimirOrden) muestra los precios unitarios y el
+    subtotal en dólares cuando corresponde, más el total en pesos y la
+    cotización usada, para que quede clara la conversión.
+  - Probado en un entorno aislado: intentar guardar en USD sin cotización
+    (bloquea con aviso), cargar con cotización y confirmar el monto en
+    pesos calculado bien (con y sin IVA), reabrir para editar y verificar
+    que moneda/cotización/etiquetas se repueblan bien, imprimir y
+    confirmar que el PDF muestra los montos en USD y en pesos, marcar
+    como comprada y confirmar que el monto final prellenado ya viene
+    convertido a pesos, y que una OC común en pesos sigue funcionando
+    exactamente igual que antes.
+  - **Requiere redeploy del backend** (`ordenesCompra.moneda`, ver
+    checklist arriba) — el campo se agregó al final del esquema (no
+    corre las columnas existentes), así que mientras no se despliegue,
+    el monto en pesos ya calculado se guarda y persiste bien, pero la
+    distinción "esta OC se cargó en dólares" se pierde al recargar la
+    página (vuelve a leerse como si fuera en pesos).

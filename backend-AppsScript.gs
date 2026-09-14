@@ -61,7 +61,7 @@ const SCHEMAS = {
     'fechaPago', 'numeroOC', 'origenFondo', 'pagosRealizadosJSON'],
   ordenesCompra: ['id', 'numero', 'fecha', 'solicitante', 'tipo', 'obraId', 'categoria',
     'itemsJSON', 'monto', 'ivaAplica', 'proveedorId', 'estado', 'comentarioDueno', 'pagoId',
-    'cotizacionUsd', 'notaMaterial', 'notaGeneral'],
+    'cotizacionUsd', 'notaMaterial', 'notaGeneral', 'moneda'],
   proveedores: ['id', 'nombre', 'cuit', 'telefono', 'email'],
   stock: ['id', 'nombre', 'unidad', 'cantidad', 'costoUnitario', 'categoria', 'stockMinimo'],
   stockMovimientos: ['id', 'fecha', 'tipo', 'stockId', 'cantidad', 'obraId', 'monto'],
@@ -208,7 +208,7 @@ function readState_() {
     proveedorId: toStrOrNull_(r.proveedorId), estado: r.estado,
     comentarioDueno: toStrOrNull_(r.comentarioDueno), pagoId: toStrOrNull_(r.pagoId),
     cotizacionUsd: toNumOrNull_(r.cotizacionUsd), notaMaterial: r.notaMaterial || '',
-    notaGeneral: r.notaGeneral || '',
+    notaGeneral: r.notaGeneral || '', moneda: r.moneda || 'ars',
   }));
 
   const proveedores = sheetToRows_(ss.getSheetByName(SHEET_NAMES.proveedores), SCHEMAS.proveedores);
@@ -284,7 +284,7 @@ function writeState_(state) {
   writeRows_(ss.getSheetByName(SHEET_NAMES.ordenesCompra), SCHEMAS.ordenesCompra, state.ordenesCompra || [], o => [
     o.id, o.numero, o.fecha, o.solicitante, o.tipo, o.obraId, o.categoria,
     JSON.stringify(o.items || []), o.monto, o.ivaAplica ? 'TRUE' : 'FALSE', o.proveedorId, o.estado, o.comentarioDueno,
-    o.pagoId, o.cotizacionUsd, o.notaMaterial || '', o.notaGeneral || '',
+    o.pagoId, o.cotizacionUsd, o.notaMaterial || '', o.notaGeneral || '', o.moneda || 'ars',
   ]);
 
   writeRows_(ss.getSheetByName(SHEET_NAMES.proveedores), SCHEMAS.proveedores, state.proveedores || [],

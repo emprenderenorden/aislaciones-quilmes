@@ -2450,18 +2450,20 @@ function imprimirOrden(id){
     </div>
 
     <table>
-      <thead><tr><th>Producto</th><th class="num">Cantidad</th><th class="num">Precio unitario</th><th class="num">Subtotal</th></tr></thead>
+      <thead><tr><th>Producto</th><th class="num">Cantidad</th><th class="num">Precio unitario${o.moneda==='usd'?' (US$)':''}</th><th class="num">Subtotal${o.moneda==='usd'?' (US$)':''}</th></tr></thead>
       <tbody>
-        ${o.items.map(it=>`<tr><td>${it.producto}</td><td class="num">${it.cantidad}</td><td class="num">${fmt(it.unitario)}</td><td class="num">${fmt(it.cantidad*it.unitario)}</td></tr>`).join('')}
+        ${o.items.map(it=>`<tr><td>${it.producto}</td><td class="num">${it.cantidad}</td><td class="num">${o.moneda==='usd'?fmtUsd(it.unitario):fmt(it.unitario)}</td><td class="num">${o.moneda==='usd'?fmtUsd(it.cantidad*it.unitario):fmt(it.cantidad*it.unitario)}</td></tr>`).join('')}
       </tbody>
     </table>
     ${o.notaMaterial?`<div class="box"><h4>Nota sobre los materiales</h4><div>${o.notaMaterial}</div></div>`:''}
 
     <div class="totales"><table>
-      ${o.ivaAplica?`<tr><td>Subtotal</td><td class="num">${fmt(o.items.reduce((a,it)=>a+it.cantidad*it.unitario,0))}</td></tr>
-      <tr><td>IVA (21%)</td><td class="num">${fmt(o.items.reduce((a,it)=>a+it.cantidad*it.unitario,0)*0.21)}</td></tr>
-      <tr><td>Total</td><td class="num">${fmt(o.monto)}</td></tr>`:`<tr><td>Monto estimado</td><td class="num">${fmt(o.monto)}</td></tr>`}
-      ${o.cotizacionUsd?`<tr><td>Cotización USD</td><td class="num">$ ${o.cotizacionUsd} / US$1</td></tr>`:''}
+      ${o.moneda==='usd'?`<tr><td>Subtotal (US$)</td><td class="num">${fmtUsd(o.items.reduce((a,it)=>a+it.cantidad*it.unitario,0))}</td></tr>
+      <tr><td>Cotización USD</td><td class="num">$ ${o.cotizacionUsd} / US$1</td></tr>`:''}
+      ${o.ivaAplica?`<tr><td>Subtotal ($)</td><td class="num">${fmt(o.monto/1.21)}</td></tr>
+      <tr><td>IVA (21%)</td><td class="num">${fmt(o.monto-o.monto/1.21)}</td></tr>
+      <tr><td>Total</td><td class="num">${fmt(o.monto)}</td></tr>`:`<tr><td>Monto estimado ($)</td><td class="num">${fmt(o.monto)}</td></tr>`}
+      ${o.moneda!=='usd'&&o.cotizacionUsd?`<tr><td>Cotización USD</td><td class="num">$ ${o.cotizacionUsd} / US$1</td></tr>`:''}
     </table></div>
 
     ${o.notaGeneral?`<div class="box"><h4>Nota general</h4><div>${o.notaGeneral}</div></div>`:''}
@@ -2519,12 +2521,16 @@ function openModalOrdenCompra(id){
       <div class="field hidden" id="wrap-proveedor-nuevo-cuit"><label>CUIT</label><input id="f-proveedor-nuevo-cuit" placeholder="30-12345678-9"></div>
       <div class="field hidden" id="wrap-proveedor-nuevo-tel"><label>Teléfono</label><input id="f-proveedor-nuevo-tel" placeholder="(011) 15-0000-0000"></div>
       <div class="field hidden" id="wrap-proveedor-nuevo-mail"><label>E-mail</label><input id="f-proveedor-nuevo-mail" type="email" placeholder="contacto@proveedor.com"></div>
-      <div class="field"><label>Cotización USD (opcional)</label><input id="f-cotizacion-usd" class="mono-in" type="number" placeholder="Ej: 1450" value="${existing&&existing.cotizacionUsd?existing.cotizacionUsd:''}"></div>
+      <div class="field"><label>Moneda de los ítems</label><select id="f-oc-moneda" onchange="onOcMonedaChange()">
+        <option value="ars" ${(!existing||existing.moneda!=='usd')?'selected':''}>Pesos ($)</option>
+        <option value="usd" ${existing&&existing.moneda==='usd'?'selected':''}>Dólares (US$)</option>
+      </select></div>
+      <div class="field"><label id="lbl-oc-cotizacion">Cotización USD (opcional)</label><input id="f-cotizacion-usd" class="mono-in" type="number" placeholder="Ej: 1450" value="${existing&&existing.cotizacionUsd?existing.cotizacionUsd:''}" oninput="renderOcItemsTable()"></div>
       <div class="field"><label>Solicitante</label><input id="f-solicitante" placeholder="Nombre" value="${existing?existing.solicitante:''}"></div>
       <div class="field"><label>Fecha</label><input id="f-fecha" type="date" value="${existing?existing.fecha:today()}"></div>
     </div>
     <div class="section-title" style="margin:18px 0 8px;"><h2 style="font-size:13.5px;">Materiales / productos</h2></div>
-    <div class="card card-table"><table><thead><tr><th style="width:44%;">Producto</th><th class="num">Cantidad</th><th class="num">Precio unitario</th><th class="num">Subtotal</th><th></th></tr></thead><tbody id="oc-items-body"></tbody></table>
+    <div class="card card-table"><table><thead><tr><th style="width:44%;">Producto</th><th class="num">Cantidad</th><th class="num" id="oc-th-unitario">Precio unitario</th><th class="num" id="oc-th-subtotal">Subtotal</th><th></th></tr></thead><tbody id="oc-items-body"></tbody></table>
       <div style="padding:10px 12px;display:flex;justify-content:space-between;align-items:center;"><span class="link-btn" onclick="addOcItem()">+ Agregar ítem</span>
         <label style="display:flex;align-items:center;gap:6px;font-size:13px;"><input type="checkbox" id="f-oc-iva" ${existing&&existing.ivaAplica?'checked':''} onchange="renderOcItemsTable()"> + IVA (21%)</label></div></div>
     <div class="form-grid" style="margin-top:12px;">
@@ -2535,7 +2541,7 @@ function openModalOrdenCompra(id){
     <div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" onclick="submitOrdenCompra('${id||''}')">${existing?'Guardar cambios':'Enviar a autorización'}</button></div>`;
   overlay.classList.add('open');
   ocItemsDraft = existing && existing.items && existing.items.length ? existing.items.map(it=>({...it})) : [{producto:'',cantidad:1,unitario:0}];
-  syncOcTipoVisibility(); renderOcItemsTable();
+  syncOcTipoVisibility(); onOcMonedaChange();
 }
 function syncOcTipoVisibility(){
   const tipo = document.getElementById('f-tipo').value;
@@ -2547,23 +2553,47 @@ function onOcTipoChange(){
   const tipo = document.getElementById('f-tipo').value;
   document.getElementById('f-cat').innerHTML = catOptionsForTipo(tipo==='fijo'?'fijo':'obra');
 }
+// La orden se puede cargar en pesos (como siempre) o en dólares, para
+// cuando el proveedor cotiza en USD — pero el pago real, el costo de la
+// obra y todo lo demás siguen siendo 100% en pesos, así que acá se
+// convierte a pesos con la cotización cargada antes de calcular el monto
+// final de la orden.
+function ocEsUsd(){ return document.getElementById('f-oc-moneda')?.value==='usd'; }
+function ocCotizacion(){ return +document.getElementById('f-cotizacion-usd')?.value || 0; }
+function onOcMonedaChange(){
+  const esUsd = ocEsUsd();
+  document.getElementById('lbl-oc-cotizacion').textContent = esUsd ? 'Cotización USD (obligatoria)' : 'Cotización USD (opcional)';
+  renderOcItemsTable();
+}
 let ocItemsDraft = [];
-function ocItemsTotal(){ return ocItemsDraft.reduce((a,it)=>a+it.cantidad*it.unitario,0); }
+function ocItemsTotal(){ return ocItemsDraft.reduce((a,it)=>a+it.cantidad*it.unitario,0); } // subtotal en la moneda cargada (pesos o dólares)
+function ocSubtotalArs(){ const sub = ocItemsTotal(); return ocEsUsd() ? sub*ocCotizacion() : sub; }
 function ocIvaAplica(){ const el = document.getElementById('f-oc-iva'); return el ? el.checked : false; }
-function ocMontoTotal(){ const sub = ocItemsTotal(); return ocIvaAplica() ? sub*1.21 : sub; }
+function ocMontoTotal(){ const subArs = ocSubtotalArs(); return ocIvaAplica() ? subArs*1.21 : subArs; }
 function renderOcPreview(){
+  const esUsd = ocEsUsd();
   const sub = ocItemsTotal();
-  document.getElementById('oc-preview').textContent = ocIvaAplica()
-    ? `Subtotal: ${fmt(sub)}  +  IVA (21%): ${fmt(sub*0.21)}  =  Total: ${fmt(sub*1.21)}`
-    : 'Monto estimado: ' + fmt(sub);
+  const previewEl = document.getElementById('oc-preview');
+  if(esUsd && !ocCotizacion()){
+    previewEl.innerHTML = `Subtotal: ${fmtUsd(sub)} — <span style="color:var(--bad);">cargá la cotización para calcular el monto en pesos</span>`;
+    return;
+  }
+  const subArs = ocSubtotalArs();
+  const prefijo = esUsd ? `Subtotal: ${fmtUsd(sub)} = ${fmt(subArs)}` : `Subtotal: ${fmt(subArs)}`;
+  previewEl.textContent = ocIvaAplica()
+    ? `${prefijo}  +  IVA (21%): ${fmt(subArs*0.21)}  =  Total: ${fmt(subArs*1.21)}`
+    : (esUsd ? `${prefijo} (monto estimado)` : 'Monto estimado: ' + fmt(subArs));
 }
 function renderOcItemsTable(){
+  const esUsd = ocEsUsd();
+  document.getElementById('oc-th-unitario').textContent = esUsd ? 'Precio unitario (US$)' : 'Precio unitario';
+  document.getElementById('oc-th-subtotal').textContent = esUsd ? 'Subtotal (US$)' : 'Subtotal';
   document.getElementById('oc-items-body').innerHTML = ocItemsDraft.map((it,i)=>`
     <tr>
       <td><input class="cell-input" placeholder="Ej: Fijaciones y flejes" value="${it.producto}" oninput="updateOcItem(${i},'producto',this.value)"></td>
       <td><input class="cell-input mono-in" type="number" value="${it.cantidad}" oninput="updateOcItem(${i},'cantidad',this.value)"></td>
       <td><input class="cell-input mono-in" type="number" value="${it.unitario}" oninput="updateOcItem(${i},'unitario',this.value)"></td>
-      <td class="num" id="oc-item-total-${i}">${fmt(it.cantidad*it.unitario)}</td>
+      <td class="num" id="oc-item-total-${i}">${esUsd?fmtUsd(it.cantidad*it.unitario):fmt(it.cantidad*it.unitario)}</td>
       <td>${ocItemsDraft.length>1?`<span class="link-btn danger" onclick="removeOcItem(${i})">✕</span>`:''}</td>
     </tr>`).join('');
   renderOcPreview();
@@ -2571,7 +2601,7 @@ function renderOcItemsTable(){
 function updateOcItem(i,field,value){
   ocItemsDraft[i][field] = (field==='producto') ? value : (+value||0);
   const cell = document.getElementById('oc-item-total-'+i);
-  if(cell) cell.textContent = fmt(ocItemsDraft[i].cantidad*ocItemsDraft[i].unitario);
+  if(cell) cell.textContent = ocEsUsd() ? fmtUsd(ocItemsDraft[i].cantidad*ocItemsDraft[i].unitario) : fmt(ocItemsDraft[i].cantidad*ocItemsDraft[i].unitario);
   renderOcPreview();
 }
 function addOcItem(){ ocItemsDraft.push({producto:'',cantidad:1,unitario:0}); renderOcItemsTable(); }
@@ -2583,12 +2613,15 @@ function submitOrdenCompra(id){
   const proveedorId = resolveProveedorId();
   const items = ocItemsDraft.filter(it=>it.producto.trim()).map(it=>({producto:it.producto.trim(), cantidad:it.cantidad, unitario:it.unitario}));
   if(!items.length){ alert('Cargá al menos un producto en la orden.'); return; }
+  const moneda = document.getElementById('f-oc-moneda').value;
+  const cotizacionUsd = +document.getElementById('f-cotizacion-usd').value || null;
+  if(moneda==='usd' && !cotizacionUsd){ alert('Para cargar la orden en dólares, ingresá la cotización USD.'); return; }
   const ivaAplica = document.getElementById('f-oc-iva').checked;
-  const subtotal = items.reduce((a,it)=>a+it.cantidad*it.unitario,0);
-  const monto = ivaAplica ? subtotal*1.21 : subtotal;
+  const subtotalOriginal = items.reduce((a,it)=>a+it.cantidad*it.unitario,0);
+  const subtotalArs = moneda==='usd' ? subtotalOriginal*cotizacionUsd : subtotalOriginal;
+  const monto = ivaAplica ? subtotalArs*1.21 : subtotalArs;
   const solicitante = document.getElementById('f-solicitante').value.trim() || 'Sin especificar';
   const fecha = document.getElementById('f-fecha').value || today();
-  const cotizacionUsd = +document.getElementById('f-cotizacion-usd').value || null;
   const notaMaterial = document.getElementById('f-nota-material').value.trim();
   const notaGeneral = document.getElementById('f-nota-general').value.trim();
   if(id){
@@ -2600,7 +2633,7 @@ function submitOrdenCompra(id){
     // revertir ESE monto, no el estimado de la OC, o el ajuste queda mal.
     const pagoPrevio = o.pagoId ? state.pagos.find(p=>p.id===o.pagoId) : null;
     const previo = {tipo:o.tipo, obraId:o.obraId, categoria:o.categoria, montoReal: pagoPrevio ? pagoPrevio.monto : o.monto};
-    Object.assign(o, {tipo, obraId, categoria, proveedorId, items, monto, ivaAplica, solicitante, fecha, cotizacionUsd, notaMaterial, notaGeneral});
+    Object.assign(o, {tipo, obraId, categoria, proveedorId, items, monto, moneda, ivaAplica, solicitante, fecha, cotizacionUsd, notaMaterial, notaGeneral});
     // Si la OC ya está marcada como comprada, tiene un pago real vinculado
     // (creado en submitEfectivizarOrden) y sumó su monto al costo real de
     // la obra en ese momento — si acá se corrige el monto (o el destino),
@@ -2612,7 +2645,7 @@ function submitOrdenCompra(id){
       if(tipo==='obra' && obraId){ const obraNueva=getObra(obraId); if(obraNueva) obraNueva.real[categoriaParaReal(categoria)] += monto; }
     }
   } else {
-    state.ordenesCompra.push({id:newId('oc'), numero: nextOcNumero(), fecha, solicitante, tipo, obraId, categoria, items, monto, ivaAplica, proveedorId, estado:'pendiente', comentarioDueno:null, pagoId:null, cotizacionUsd, notaMaterial, notaGeneral});
+    state.ordenesCompra.push({id:newId('oc'), numero: nextOcNumero(), fecha, solicitante, tipo, obraId, categoria, items, monto, moneda, ivaAplica, proveedorId, estado:'pendiente', comentarioDueno:null, pagoId:null, cotizacionUsd, notaMaterial, notaGeneral});
   }
   closeModal(); renderAll();
 }
