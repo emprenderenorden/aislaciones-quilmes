@@ -2475,8 +2475,8 @@ function renderOrdenes(){
     const estadoTxt = {pendiente:'Pendiente', autorizada:'Autorizada', comprada:'Comprada', rechazada:'Rechazada'}[o.estado];
     let acciones = '';
     if(o.estado==='pendiente') acciones = `<span class="link-btn" onclick="openModalOrdenCompra('${o.id}')">Editar</span> · <span class="link-btn" onclick="openModalAutorizarOrden('${o.id}')">Autorizar</span> · <span class="link-btn danger" onclick="openModalRechazarOrden('${o.id}')">Rechazar</span>`;
-    if(o.estado==='autorizada') acciones = `<span class="link-btn" onclick="openModalEfectivizarOrden('${o.id}')">Marcar como comprada →</span>`;
-    if(o.estado==='comprada') acciones = `<span class="link-btn" onclick="verOrdenEnPagos('${o.id}')">Ver en Pagos →</span>`;
+    if(o.estado==='autorizada') acciones = `<span class="link-btn" onclick="openModalOrdenCompra('${o.id}')">Editar</span> · <span class="link-btn" onclick="openModalEfectivizarOrden('${o.id}')">Marcar como comprada →</span>`;
+    if(o.estado==='comprada') acciones = `<span class="link-btn" onclick="openModalOrdenCompra('${o.id}')">Editar</span> · <span class="link-btn" onclick="verOrdenEnPagos('${o.id}')">Ver en Pagos →</span>`;
     if(o.estado==='rechazada') acciones = o.comentarioDueno ? `<span class="hint">Motivo: ${o.comentarioDueno}</span>` : '';
     if(acciones) acciones += ' · ';
     acciones += `<span class="link-btn" onclick="imprimirOrden('${o.id}')" title="Abrir para imprimir o guardar como PDF">⬇ Descargar OC</span>`;
@@ -2575,7 +2575,24 @@ function submitOrdenCompra(id){
   const notaGeneral = document.getElementById('f-nota-general').value.trim();
   if(id){
     const o = getOrden(id);
+    // Ojo: el `monto` de la OC es la ESTIMACIÓN original (de los ítems) y
+    // no se actualiza al marcarla comprada — lo que realmente se sumó al
+    // costo real de la obra en ese momento es el monto final del pago
+    // vinculado (`pagoPrevio.monto`), que puede ser distinto. Hay que
+    // revertir ESE monto, no el estimado de la OC, o el ajuste queda mal.
+    const pagoPrevio = o.pagoId ? state.pagos.find(p=>p.id===o.pagoId) : null;
+    const previo = {tipo:o.tipo, obraId:o.obraId, categoria:o.categoria, montoReal: pagoPrevio ? pagoPrevio.monto : o.monto};
     Object.assign(o, {tipo, obraId, categoria, proveedorId, items, monto, ivaAplica, solicitante, fecha, cotizacionUsd, notaMaterial, notaGeneral});
+    // Si la OC ya está marcada como comprada, tiene un pago real vinculado
+    // (creado en submitEfectivizarOrden) y sumó su monto al costo real de
+    // la obra en ese momento — si acá se corrige el monto (o el destino),
+    // hay que reflejarlo en los dos lugares para que no queden
+    // desincronizados.
+    if(o.estado==='comprada'){
+      if(pagoPrevio) pagoPrevio.monto = monto;
+      if(previo.tipo==='obra' && previo.obraId){ const obraPrevia=getObra(previo.obraId); if(obraPrevia) obraPrevia.real[categoriaParaReal(previo.categoria)] -= previo.montoReal; }
+      if(tipo==='obra' && obraId){ const obraNueva=getObra(obraId); if(obraNueva) obraNueva.real[categoriaParaReal(categoria)] += monto; }
+    }
   } else {
     state.ordenesCompra.push({id:newId('oc'), numero: nextOcNumero(), fecha, solicitante, tipo, obraId, categoria, items, monto, ivaAplica, proveedorId, estado:'pendiente', comentarioDueno:null, pagoId:null, cotizacionUsd, notaMaterial, notaGeneral});
   }

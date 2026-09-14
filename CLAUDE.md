@@ -343,3 +343,29 @@ archivo. Una vez desplegado, tildar el ítem de arriba o borrar la sección.
     y no se les agregó todavía la misma marca de "borrado". Si notás que
     alguno de esos dos vuelve a aparecer, avisá para extender el
     arreglo ahí también.
+- **Nuevo: editar una orden de compra ya autorizada o comprada.** El link
+  "Editar" en Órdenes de compra solo aparecía con la OC en estado
+  Pendiente — el mecanismo para editar ya andaba para cualquier estado
+  (`submitOrdenCompra` no chequea el estado), solo faltaba mostrar el
+  link. Ahora también aparece en Autorizada y Comprada.
+  - Al editar una OC ya marcada como Comprada (que generó su propio pago
+    real en Pagos y sumó su monto al costo real de la obra en el momento
+    de confirmarla), el monto nuevo se refleja también en ese pago
+    vinculado y en el costo real de la obra — restando lo que se había
+    sumado antes y sumando lo nuevo, para no quedar desincronizado ni
+    duplicar el ajuste. Si además se cambia la obra o categoría de
+    destino, el ajuste se revierte de la obra/categoría vieja y se aplica
+    en la nueva.
+  - **Ojo con un detalle no obvio:** el monto que había quedado sumado al
+    costo real de la obra no es el monto *estimado* de la OC (que nunca
+    se actualiza al marcarla comprada) sino el monto *final* que se cargó
+    en el pago al confirmar la compra — pueden ser distintos (el de
+    "Marcar como comprada" se escribe a mano, no se recalcula de los
+    ítems). El ajuste usa ese monto final del pago para revertir, no el
+    estimado de la OC — si hubiera usado el estimado, el costo real de la
+    obra habría quedado mal.
+  - Probado en un entorno aislado: crear OC → autorizar → marcar
+    comprada por $12.000 (el costo real de la obra sube a $12.000) →
+    editar la OC subiendo el monto a $15.000 → el pago vinculado y el
+    costo real de la obra quedan en $15.000 (no en $17.000, que hubiera
+    sido el resultado de restar mal el estimado en vez del monto real).
