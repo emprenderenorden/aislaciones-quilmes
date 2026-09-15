@@ -466,3 +466,76 @@ archivo. Una vez desplegado, tildar el ítem de arriba o borrar la sección.
     termina mostrando los datos reales (no una pantalla vacía). Una
     carga normal, sin fallas, sigue siendo instantánea — no se le agregó
     ninguna demora de por sí.
+- **Fix importante: una edición podía perderse si su guardado chocaba con
+  un conflicto AJENO y sin relación.** El dueño reportó "registraron
+  asistencia en una obra y se borró". Investigado con una prueba
+  controlada: se confirmó que marcar un día como trabajado en el cuadro
+  de jornales de una obra se perdía en silencio si, en el momento de
+  guardar, el guardado chocaba con CUALQUIER conflicto (de cualquier
+  otro registro, de cualquier otra persona) — no hacía falta que nadie
+  más hubiera tocado esa fila de jornales en particular.
+  - **Causa de fondo:** el sistema de "combinar tras un conflicto"
+    (compartido por el reintento de guardado y el auto-refresco) resolvía
+    todo registro que ya existiera en las dos listas (local y servidor)
+    siempre a favor del servidor — una regla pensada para no pisar la
+    edición de otra persona al mismo registro. Pero como esa regla no
+    distinguía "otra persona editó esto" de "yo edité esto y el conflicto
+    fue por otra cosa", cualquier edición propia a un registro que ya
+    existía se perdía apenas el guardado chocaba por cualquier motivo. Al
+    auditar a fondo se encontró que esto no era exclusivo de jornales:
+    aplicaba a **cualquier edición sobre un registro ya existente** en
+    pagos, órdenes de compra, proveedores, stock, trabajadores, cobros de
+    una obra (`ingresosList`) y varios campos de nivel superior de la obra
+    (estado, costo real, código/cliente/encargado/fecha, presupuesto,
+    facturación, "sin cobros pendientes") — este último grupo ni siquiera
+    estaba identificado como riesgo en los registros anteriores de este
+    archivo.
+  - **Arreglo:** se agregó un registro de "esto lo edité yo" (separado del
+    ya existente registro de "esto lo borré yo"), que vive mientras dura
+    la pestaña. Cada acción que edita un registro existente (asignar
+    fecha de pago, marcar un día de jornales, editar una orden de compra,
+    iniciar una obra, registrar un gasto que suma al costo real, etc.)
+    anota qué tocó. Al combinar tras un conflicto: si ESTA pestaña editó
+    ese registro (o, en jornales, ese día puntual; o, en la obra, ese
+    campo puntual) desde el último sync, gana la versión local; si no lo
+    tocamos, se sigue respetando la del servidor tal cual — para no pisar
+    una edición ajena a algo que ni nos importaba en ese momento, aunque
+    tuviéramos en memoria una copia vieja de ese registro. En jornales,
+    el día se resuelve celda por celda (no fila entera) para no
+    resucitar por error un día que el usuario, en el medio del conflicto,
+    justo acababa de limpiar a propósito (un click legítimo, no un día
+    "sin tocar").
+  - **Ojo con un detalle no obvio (y por qué la primera idea se
+    descartó):** la solución más simple —"ante un conflicto, mi versión
+    local siempre gana"— se evaluó y se rechazó: haría que un registro
+    que otra persona edita en el servidor, y que esta pestaña ni tocó
+    (pero tenía en memoria una copia vieja, simplemente por tenerla
+    cargada en pantalla), se pisara solo porque un conflicto ocurrió por
+    cualquier otro motivo — exactamente el mismo tipo de pérdida de datos
+    que se estaba arreglando, solo que en la dirección opuesta. Por eso
+    el arreglo final es puntual (por registro, por día de jornal, por
+    campo de obra editado), no una regla general de "local gana".
+  - Probado: (a) se repitió la prueba original que reproducía el bug
+    reportado (marcar dos días de jornales en una obra, forzando un
+    conflicto ajeno entre medio) — ahora los dos días sobreviven; (b)
+    prueba específica para el caso que motivó descartar "local siempre
+    gana": un cambio hecho por "otra persona" directo en el servidor, que
+    esta pestaña nunca tocó, se sigue trayendo bien tras un conflicto
+    (no se pisa con la copia vieja en memoria); (c) un pago con fecha de
+    pago recién asignada, el estado de una obra recién iniciada y el
+    costo real de una obra tras registrar un gasto sobreviven un
+    conflicto de guardado genuino (no solo la carrera de auto-refresco ya
+    cubierta antes); (d) los 16 tests de regresión existentes (tombstones,
+    confiabilidad de guardado, auto-refresco, conflictos, FIMA, órdenes de
+    compra en dólares, presupuesto, eliminar trabajador, etc.) se
+    volvieron a correr contra el código nuevo y siguen pasando.
+  - **Alcance / lo que queda igual que antes:** esto no toca el caso ya
+    documentado y aceptado como poco frecuente de "dos personas editando
+    el EXACTO mismo campo del EXACTO mismo registro al mismo tiempo"
+    (ahí sigue ganando quien reintenta al final). Tampoco cierra los dos
+    gaps de "borrado sin marca" que ya estaban anotados como pendientes
+    en el registro anterior (quitar un documento de una obra, y quitar la
+    asignación de un trabajador a una obra vía `jornalesConfig.asignados`
+    — estos son casos de "borrado que puede resucitar", no de "edición
+    que se pierde", y quedan afuera de este arreglo puntual). Si notás
+    que alguno de estos dos casos vuelve a pasar, avisá para extenderlo.

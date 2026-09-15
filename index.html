@@ -839,18 +839,75 @@ const eliminadosLocalmente = {
 };
 function marcarEliminado(coleccion, id){ if(id!==undefined) eliminadosLocalmente[coleccion].add(id); }
 function marcarEliminadoFima(m){ eliminadosLocalmente.movimientosFima.add(JSON.stringify(m)); }
+// Igual que eliminadosLocalmente, pero para EDICIONES en el lugar (no altas
+// ni bajas): registra qué registro editamos nosotros mismos en esta pestaña
+// desde el último sync con el servidor. Antes, ante un conflicto de
+// guardado, un registro que ya existía en las dos listas (mismo id) siempre
+// se resolvía a favor del servidor — para evitar pisar una edición ajena al
+// mismo registro. Pero eso significaba que CUALQUIER edición nuestra a un
+// registro existente (asignar una fecha de pago, marcar un día de
+// asistencia, editar una orden de compra) se perdía en silencio si el
+// guardado chocaba con un conflicto por CUALQUIER otro motivo, aunque nadie
+// más hubiera tocado ese registro puntual — el bug reportado de "se
+// registró asistencia en una obra y se borró".
+// Ahora, ante un conflicto: si el registro es uno que ESTA pestaña editó
+// desde el último sync, gana nuestra versión; si no lo tocamos, se sigue
+// respetando la del servidor tal cual (para no pisar una edición ajena a
+// un registro que nosotros solo teníamos en memoria sin haber tocado).
+const editadosLocalmente = {
+  pagos: new Set(), ordenesCompra: new Set(), proveedores: new Set(),
+  stock: new Set(), trabajadores: new Set(), ingresos: new Set(),
+  diasJornales: new Set(), // "idDeLaFilaDeJornales|índiceDelDía" (0-6)
+  camposObra: new Set(),   // "idDeLaObra|nombreDelCampo"
+};
+function marcarEditado(coleccion, id){ if(id!==undefined) editadosLocalmente[coleccion].add(id); }
+function marcarEditadoDia(jornalId, dayIdx){ editadosLocalmente.diasJornales.add(jornalId+'|'+dayIdx); }
+function marcarEditadoObra(obraId, campo){ editadosLocalmente.camposObra.add(obraId+'|'+campo); }
 // Combina por id: la base es la lista del servidor (ya guardada), y se le
 // suman los elementos que solo existen en la lista local (lo que acabamos
 // de agregar acá y todavía no se había guardado). Si un mismo id existe en
-// las dos listas, gana el del servidor — evita pisar una edición ajena al
-// mismo registro. Se usa para todas las colecciones "planas" del estado.
-// `eliminados` (opcional) saca de la base del servidor cualquier id que se
-// haya borrado localmente, para que el merge no lo resucite.
-function unionPorId(local, servidor, eliminados){
+// las dos listas: gana el servidor, salvo que ESTA pestaña haya editado ese
+// id desde el último sync (`editados`), en cuyo caso gana la versión local
+// para no perder esa edición. Se usa para todas las colecciones "planas"
+// del estado. `eliminados` (opcional) saca de la base del servidor
+// cualquier id que se haya borrado localmente, para que el merge no lo
+// resucite.
+function unionPorId(local, servidor, eliminados, editados){
   const base = eliminados && eliminados.size ? (servidor||[]).filter(x=>x && !eliminados.has(x.id)) : (servidor||[]);
-  const idsServidor = new Set(base.filter(Boolean).map(x=>x.id));
-  const soloLocal = (local||[]).filter(x=>x && x.id!==undefined && !idsServidor.has(x.id) && !(eliminados&&eliminados.has(x.id)));
-  return [...base, ...soloLocal];
+  const porId = new Map(base.filter(Boolean).map(x=>[x.id,x]));
+  (local||[]).forEach(x=>{
+    if(!x || x.id===undefined || (eliminados&&eliminados.has(x.id))) return;
+    if(!porId.has(x.id)){ porId.set(x.id, x); return; } // nuevo, solo local -> se agrega
+    if(editados && editados.has(x.id)) porId.set(x.id, x); // lo editamos nosotros -> gana lo local
+    // si no lo editamos nosotros y ya existe en el servidor, se queda esa versión sin tocar
+  });
+  return [...porId.values()];
+}
+// Igual que unionPorId, pero a nivel de cada DÍA dentro de la fila (no de
+// toda la fila): una fila de jornales (trabajador+semana) se edita muy
+// seguido sin crear una fila nueva —marcar o desmarcar un día puntual—, así
+// que un simple unionPorId a nivel de fila tiene el mismo problema que
+// tenían las obras: si la fila ya existe en las dos versiones, un
+// conflicto ajeno (por cualquier otro motivo) podía tirar abajo un día que
+// acabábamos de marcar acá. Por eso cada día se resuelve por separado: si
+// ESTA pestaña marcó ese día puntual (editadosLocalmente.diasJornales), gana
+// la versión local; si no, se respeta la del servidor. Esto también evita
+// "resucitar" por error un día que el usuario, en el medio del conflicto,
+// justo acababa de limpiar a propósito (un tercer click legítimo en el
+// ciclo de estados, no un día "sin tocar").
+function mergeJornalesTrasConflicto(local, servidor, eliminados, editadosDias){
+  const base = eliminados && eliminados.size ? (servidor||[]).filter(x=>x && !eliminados.has(x.id)) : (servidor||[]);
+  const porId = new Map(base.filter(Boolean).map(x=>[x.id,x]));
+  (local||[]).forEach(row=>{
+    if(!row || row.id===undefined || (eliminados&&eliminados.has(row.id))) return;
+    const enServidor = porId.get(row.id);
+    if(!enServidor){ porId.set(row.id, row); return; } // fila nueva, solo local
+    const dias = enServidor.dias.map((diaServidor, idx)=>
+      (editadosDias && editadosDias.has(row.id+'|'+idx)) ? row.dias[idx] : diaServidor
+    );
+    porId.set(row.id, {...enServidor, dias});
+  });
+  return [...porId.values()];
 }
 // Los movimientos de FIMA no tienen id propio — se identifican por su
 // contenido completo para no duplicar los que ya estén guardados.
@@ -872,17 +929,40 @@ function unionPorContenido(local, servidor, eliminadosFirmas){
 function mergeObraTrasConflicto(obraLocal, obraServidor){
   if(!obraLocal) return obraServidor;
   if(!obraServidor) return obraLocal;
-  const merged = {...obraServidor};
+  // Antes esto era un simple {...obraServidor}: cualquier campo de nivel
+  // superior de la obra (estado, real, código, cliente, fechaInicio,
+  // presupuesto*, facturasVenta, sinCobrosPendientes, ingresos.facturado)
+  // quedaba SIEMPRE a favor del servidor ante un conflicto — una edición
+  // local a cualquiera de esos campos (iniciar la obra, registrar un
+  // gasto que suma a "real", etc.) se perdía en silencio si el guardado
+  // chocaba por cualquier otro motivo. Ahora cada campo se resuelve por
+  // separado: si ESTA pestaña lo editó desde el último sync
+  // (editadosLocalmente.camposObra), gana la versión local; si no, se
+  // respeta la del servidor — así no se pisa una edición ajena a un campo
+  // que ni tocamos.
+  const campo = (nombre) => editadosLocalmente.camposObra.has(obraLocal.id+'|'+nombre) ? obraLocal[nombre] : obraServidor[nombre];
+  const merged = {
+    ...obraServidor,
+    estado: campo('estado'), sinCobrosPendientes: campo('sinCobrosPendientes'),
+    code: campo('code'), cliente: campo('cliente'), encargado: campo('encargado'), fechaInicio: campo('fechaInicio'),
+    presupuesto: campo('presupuesto'), presupuestoDetalle: campo('presupuestoDetalle'), presupuestoResumen: campo('presupuestoResumen'),
+    real: campo('real'), facturasVenta: campo('facturasVenta'),
+  };
   const cfgLocal = obraLocal.jornalesConfig || {asignados:[], horasExtra:{}};
   const cfgServidor = obraServidor.jornalesConfig || {asignados:[], horasExtra:{}};
   merged.jornalesConfig = {
     asignados: [...new Set([...(cfgServidor.asignados||[]), ...(cfgLocal.asignados||[])])],
     horasExtra: {...(cfgServidor.horasExtra||{}), ...(cfgLocal.horasExtra||{})},
   };
-  merged.ingresosList = unionPorId(obraLocal.ingresosList, obraServidor.ingresosList);
+  // ingresosList: igual que las demás colecciones planas, un cobro que ya
+  // existía en las dos listas (editar monto/fecha de un cobro ya cargado,
+  // no agregar uno nuevo) ganaba siempre el del servidor — se protege del
+  // mismo modo, vía editadosLocalmente.ingresos.
+  merged.ingresosList = unionPorId(obraLocal.ingresosList, obraServidor.ingresosList, null, editadosLocalmente.ingresos);
   merged.documentos = unionPorId(obraLocal.documentos, obraServidor.documentos);
   if(obraLocal.comisionOverride) merged.comisionOverride = obraLocal.comisionOverride;
-  merged.ingresos = {...obraServidor.ingresos, cobrado: merged.ingresosList.reduce((a,i)=>a+i.monto,0)};
+  const facturado = editadosLocalmente.camposObra.has(obraLocal.id+'|ingresosFacturado') ? obraLocal.ingresos.facturado : obraServidor.ingresos.facturado;
+  merged.ingresos = { facturado, cobrado: merged.ingresosList.reduce((a,i)=>a+i.monto,0) };
   return merged;
 }
 function mergeObrasTrasConflicto(local, servidor){
@@ -929,9 +1009,10 @@ async function saveState(reintentos){
     };
     await loadState({silencioso:true});
     state.obras = mergeObrasTrasConflicto(local.obras, state.obras);
-    ['pagos','ordenesCompra','proveedores','stock','stockMovimientos','trabajadores','jornales'].forEach(key=>{
-      state[key] = unionPorId(local[key], state[key], eliminadosLocalmente[key]);
+    ['pagos','ordenesCompra','proveedores','stock','stockMovimientos','trabajadores'].forEach(key=>{
+      state[key] = unionPorId(local[key], state[key], eliminadosLocalmente[key], editadosLocalmente[key]);
     });
+    state.jornales = mergeJornalesTrasConflicto(local.jornales, state.jornales, eliminadosLocalmente.jornales, editadosLocalmente.diasJornales);
     state.movimientosFima = unionPorContenido(local.movimientosFima, state.movimientosFima, eliminadosLocalmente.movimientosFima);
     // Repintamos la pantalla con lo combinado, pero sin pasar por renderAll()
     // acá: renderAll() vuelve a programar un guardado propio (scheduleSave),
@@ -1024,9 +1105,10 @@ async function refrescarDesdeServidor(){
   // sumarle lo local, o se pierde/resucita algo sin querer.
   await loadState({silencioso:true});
   state.obras = mergeObrasTrasConflicto(local.obras, state.obras);
-  ['pagos','ordenesCompra','proveedores','stock','stockMovimientos','trabajadores','jornales'].forEach(key=>{
-    state[key] = unionPorId(local[key], state[key], eliminadosLocalmente[key]);
+  ['pagos','ordenesCompra','proveedores','stock','stockMovimientos','trabajadores'].forEach(key=>{
+    state[key] = unionPorId(local[key], state[key], eliminadosLocalmente[key], editadosLocalmente[key]);
   });
+  state.jornales = mergeJornalesTrasConflicto(local.jornales, state.jornales, eliminadosLocalmente.jornales, editadosLocalmente.diasJornales);
   state.movimientosFima = unionPorContenido(local.movimientosFima, state.movimientosFima, eliminadosLocalmente.movimientosFima);
   renderAllSinGuardar();
 }
@@ -1375,12 +1457,12 @@ function eliminarDocumentoObra(obraId, docId){
   o.documentos = (o.documentos||[]).filter(d=>d.id!==docId);
   renderAll();
 }
-function aceptarPresupuesto(id){ getObra(id).estado='aceptado'; renderAll(); }
-function rechazarPresupuesto(id){ if(!confirm('¿Marcar este presupuesto como rechazado por el cliente?')) return; getObra(id).estado='rechazado'; renderAll(); }
-function volverABorrador(id){ getObra(id).estado='borrador'; renderAll(); }
-function iniciarObra(id){ getObra(id).estado='en curso'; renderAll(); }
-function finalizarObra(id){ getObra(id).estado='finalizada'; renderAll(); }
-function toggleSinCobrosPendientes(id){ const o=getObra(id); o.sinCobrosPendientes = !o.sinCobrosPendientes; renderAll(); }
+function aceptarPresupuesto(id){ getObra(id).estado='aceptado'; marcarEditadoObra(id,'estado'); renderAll(); }
+function rechazarPresupuesto(id){ if(!confirm('¿Marcar este presupuesto como rechazado por el cliente?')) return; getObra(id).estado='rechazado'; marcarEditadoObra(id,'estado'); renderAll(); }
+function volverABorrador(id){ getObra(id).estado='borrador'; marcarEditadoObra(id,'estado'); renderAll(); }
+function iniciarObra(id){ getObra(id).estado='en curso'; marcarEditadoObra(id,'estado'); renderAll(); }
+function finalizarObra(id){ getObra(id).estado='finalizada'; marcarEditadoObra(id,'estado'); renderAll(); }
+function toggleSinCobrosPendientes(id){ const o=getObra(id); o.sinCobrosPendientes = !o.sinCobrosPendientes; marcarEditadoObra(id,'sinCobrosPendientes'); renderAll(); }
 // La comisión del vendedor se puede pisar puntualmente en la obra real (otro
 // % u otro monto que el que se cargó al presupuestar) sin tocar el
 // presupuesto original — solo afecta el cálculo de "real" en la tabla
@@ -1430,7 +1512,7 @@ function eliminarObra(id){
   // historial de caja/FIMA que ya se descontó.
   state.pagos = state.pagos.filter(p=>{
     if(p.obraId!==id) return true;
-    if((p.pagosRealizados||[]).length>0){ p.obraId=null; p.tipo='fijo'; p.categoria='otros'; p.concepto += ` (obra eliminada: ${o.code})`; return true; }
+    if((p.pagosRealizados||[]).length>0){ p.obraId=null; p.tipo='fijo'; p.categoria='otros'; p.concepto += ` (obra eliminada: ${o.code})`; marcarEditado('pagos', p.id); return true; }
     marcarEliminado('pagos', p.id);
     return false;
   });
@@ -1439,7 +1521,7 @@ function eliminarObra(id){
   // desvinculan; el resto (sin plata real todavía) se borra.
   state.ordenesCompra = state.ordenesCompra.filter(oc=>{
     if(oc.obraId!==id) return true;
-    if(oc.pagoId && state.pagos.find(p=>p.id===oc.pagoId)){ oc.obraId=null; return true; }
+    if(oc.pagoId && state.pagos.find(p=>p.id===oc.pagoId)){ oc.obraId=null; marcarEditado('ordenesCompra', oc.id); return true; }
     marcarEliminado('ordenesCompra', oc.id);
     return false;
   });
@@ -1447,15 +1529,19 @@ function eliminarObra(id){
   // Stock consumido por esta obra: se devuelve al stock, no representa plata movida.
   state.stockMovimientos = state.stockMovimientos.filter(m=>{
     if(m.obraId!==id) return true;
-    if(m.tipo==='consumo'){ const item=getStockItem(m.stockId); if(item) item.cantidad += m.cantidad; }
+    if(m.tipo==='consumo'){ const item=getStockItem(m.stockId); if(item){ item.cantidad += m.cantidad; marcarEditado('stock', item.id); } }
     marcarEliminado('stockMovimientos', m.id);
     return false;
   });
 
   // Movimientos de FIMA y jornales: ya representan plata movida o asistencia
-  // real, no se borran — solo se desvinculan de la obra eliminada.
-  state.movimientosFima.forEach(m=>{ if(m.obraId===id) m.obraId=null; });
-  state.jornales.forEach(j=>{ j.dias.forEach(cell=>{ if(cell.obraId===id){ cell.obraId=null; } }); });
+  // real, no se borran — solo se desvinculan de la obra eliminada. Los
+  // movimientos de FIMA se identifican por contenido (sin id): hay que
+  // marcar la firma vieja como eliminada antes de mutar, o un merge en el
+  // medio podría traer de vuelta la versión vieja (todavía vinculada a la
+  // obra) y dejarla duplicada con la editada.
+  state.movimientosFima.forEach(m=>{ if(m.obraId===id){ marcarEliminadoFima(m); m.obraId=null; } });
+  state.jornales.forEach(j=>{ j.dias.forEach((cell,idx)=>{ if(cell.obraId===id){ cell.obraId=null; marcarEditadoDia(j.id, idx); } }); });
 
   marcarEliminado('obras', id);
   state.obras = state.obras.filter(x=>x.id!==id);
@@ -1642,6 +1728,8 @@ function savePresupuesto(){
     o.presupuestoDetalle=detalle; o.presupuesto=presupuesto; o.presupuestoResumen=presupuestoResumen;
     o.ingresos.facturado = c.totalConIva;
     o.facturasVenta = [{id:newId('fv'), fecha:fechaFactura, montoSinIva:c.presupuestoSinIva, iva:c.ivaARS, monto:c.totalConIva}];
+    ['code','cliente','encargado','fechaInicio','presupuestoDetalle','presupuesto','presupuestoResumen','facturasVenta'].forEach(campo=>marcarEditadoObra(o.id,campo));
+    marcarEditadoObra(o.id,'ingresosFacturado');
     state.selectedObraId = o.id;
   } else {
     const id = newId('o');
@@ -1792,10 +1880,13 @@ function cycleDia(trabajadorId, semanaInicio, dayIdx){
   const cur = DIA_ORDEN.indexOf(row.dias[dayIdx].estado);
   const next = DIA_ORDEN[(cur+1)%DIA_ORDEN.length];
   row.dias[dayIdx] = { estado: next, obraId: next==='trabajado' ? row.dias[dayIdx].obraId : null };
+  marcarEditadoDia(row.id, dayIdx);
   renderAll();
 }
 function setDiaObra(trabajadorId, semanaInicio, dayIdx, obraId){
-  ensureJornalRow(trabajadorId, semanaInicio).dias[dayIdx].obraId = obraId || null;
+  const row = ensureJornalRow(trabajadorId, semanaInicio);
+  row.dias[dayIdx].obraId = obraId || null;
+  marcarEditadoDia(row.id, dayIdx);
   renderAll();
 }
 // Cicla el día pero "apropiándolo" para esta obra en particular — se usa
@@ -1808,6 +1899,7 @@ function cycleDiaObra(trabajadorId, semanaInicio, dayIdx, obraId){
   if(cell.estado==='trabajado' && cell.obraId===obraId){ row.dias[dayIdx] = {estado:'ausente', obraId:null}; }
   else if(cell.estado==='ausente'){ row.dias[dayIdx] = {estado:'sin_obra', obraId:null}; }
   else { row.dias[dayIdx] = {estado:'trabajado', obraId}; }
+  marcarEditadoDia(row.id, dayIdx);
   renderAll();
 }
 function contarDias(dias, estado){ return dias.filter(d=>d.estado===estado).length; }
@@ -1964,7 +2056,7 @@ function submitTrabajador(id){
   if(!nombre){ alert('Ingresá el nombre del trabajador.'); return; }
   const puesto = document.getElementById('f-trab-puesto').value;
   const sueldoMensual = +document.getElementById('f-trab-sueldo').value || 0;
-  if(id){ Object.assign(getTrabajador(id), {nombre, puesto, sueldoMensual}); }
+  if(id){ Object.assign(getTrabajador(id), {nombre, puesto, sueldoMensual}); marcarEditado('trabajadores', id); }
   else { state.trabajadores.push({id:newId('t'), nombre, puesto, sueldoMensual}); }
   closeModal(); renderAll();
 }
@@ -2022,8 +2114,8 @@ function quitarTrabajadorObra(obraId, trabajadorId){
   if(o.jornalesConfig.horasExtra) delete o.jornalesConfig.horasExtra[trabajadorId];
   state.jornales.forEach(row=>{
     if(row.trabajadorId!==trabajadorId) return;
-    row.dias.forEach(cell=>{
-      if(cell.obraId===obraId){ cell.estado='sin_obra'; cell.obraId=null; }
+    row.dias.forEach((cell,idx)=>{
+      if(cell.obraId===obraId){ cell.estado='sin_obra'; cell.obraId=null; marcarEditadoDia(row.id, idx); }
     });
   });
   renderAll();
@@ -2185,7 +2277,7 @@ function eliminarMovimientoFima(idx){
   marcarEliminadoFima(m);
   if(pagoLigado){
     marcarEliminado('pagos', pagoLigado.id);
-    state.ordenesCompra.forEach(oc=>{ if(oc.pagoId===pagoLigado.id){ oc.pagoId=null; oc.estado='pendiente'; } });
+    state.ordenesCompra.forEach(oc=>{ if(oc.pagoId===pagoLigado.id){ oc.pagoId=null; oc.estado='pendiente'; marcarEditado('ordenesCompra', oc.id); } });
     state.pagos = state.pagos.filter(p=>p!==pagoLigado);
   }
   state.movimientosFima.splice(idx,1);
@@ -2215,6 +2307,7 @@ function submitEditarMovimientoFima(idx){
   if(pagoLigado){
     pagoLigado.concepto = nuevoConcepto; pagoLigado.monto = nuevoMonto; pagoLigado.unitario = nuevoMonto;
     if(pagoLigado.pagosRealizados[0]) pagoLigado.pagosRealizados[0].monto = nuevoMonto;
+    marcarEditado('pagos', pagoLigado.id);
   }
   // Los movimientos de FIMA se identifican por contenido completo (no
   // tienen id) — si no marcamos la firma vieja como "eliminada", un merge
@@ -2309,7 +2402,7 @@ function submitStockItem(id){
   const cantidad = +document.getElementById('f-cantidad').value||0;
   const stockMinimo = Math.max(0, +document.getElementById('f-stockminimo').value||0);
   const costoUnitario = +document.getElementById('f-costo').value||0;
-  if(id){ Object.assign(getStockItem(id), {nombre, categoria, unidad, cantidad, stockMinimo, costoUnitario}); }
+  if(id){ Object.assign(getStockItem(id), {nombre, categoria, unidad, cantidad, stockMinimo, costoUnitario}); marcarEditado('stock', id); }
   else { state.stock.push({id:newId('s'), nombre, categoria, unidad, cantidad, stockMinimo, costoUnitario}); }
   closeModal(); renderAll();
 }
@@ -2347,6 +2440,7 @@ function submitStockCompra(){
   const fechaPago = sinFecha? null : (document.getElementById('f-fechapago').value || today());
   item.cantidad += cantidad;
   if(costoUnitario>0) item.costoUnitario = costoUnitario;
+  marcarEditado('stock', item.id);
   state.stockMovimientos.push({id:newId('sm'), fecha: fechaPago||today(), tipo:'compra', stockId, cantidad, obraId:null, monto});
   state.pagos.push({id:newId('p'), tipo:'stock', obraId:null, categoria:'stock', concepto:'Reposición de stock — '+item.nombre, cantidad, unitario:costoUnitario, ivaAplica, monto, proveedorId, numeroFactura, fechaFactura, formaPago, fechaPago, pagosRealizados:[]});
   closeModal(); renderAll();
@@ -2654,15 +2748,16 @@ function submitOrdenCompra(id){
     const pagoPrevio = o.pagoId ? state.pagos.find(p=>p.id===o.pagoId) : null;
     const previo = {tipo:o.tipo, obraId:o.obraId, categoria:o.categoria, montoReal: pagoPrevio ? pagoPrevio.monto : o.monto};
     Object.assign(o, {tipo, obraId, categoria, proveedorId, items, monto, moneda, ivaAplica, solicitante, fecha, cotizacionUsd, notaMaterial, notaGeneral});
+    marcarEditado('ordenesCompra', o.id);
     // Si la OC ya está marcada como comprada, tiene un pago real vinculado
     // (creado en submitEfectivizarOrden) y sumó su monto al costo real de
     // la obra en ese momento — si acá se corrige el monto (o el destino),
     // hay que reflejarlo en los dos lugares para que no queden
     // desincronizados.
     if(o.estado==='comprada'){
-      if(pagoPrevio) pagoPrevio.monto = monto;
-      if(previo.tipo==='obra' && previo.obraId){ const obraPrevia=getObra(previo.obraId); if(obraPrevia) obraPrevia.real[categoriaParaReal(previo.categoria)] -= previo.montoReal; }
-      if(tipo==='obra' && obraId){ const obraNueva=getObra(obraId); if(obraNueva) obraNueva.real[categoriaParaReal(categoria)] += monto; }
+      if(pagoPrevio){ pagoPrevio.monto = monto; marcarEditado('pagos', pagoPrevio.id); }
+      if(previo.tipo==='obra' && previo.obraId){ const obraPrevia=getObra(previo.obraId); if(obraPrevia){ obraPrevia.real[categoriaParaReal(previo.categoria)] -= previo.montoReal; marcarEditadoObra(previo.obraId,'real'); } }
+      if(tipo==='obra' && obraId){ const obraNueva=getObra(obraId); if(obraNueva){ obraNueva.real[categoriaParaReal(categoria)] += monto; marcarEditadoObra(obraId,'real'); } }
     }
   } else {
     state.ordenesCompra.push({id:newId('oc'), numero: nextOcNumero(), fecha, solicitante, tipo, obraId, categoria, items, monto, moneda, ivaAplica, proveedorId, estado:'pendiente', comentarioDueno:null, pagoId:null, cotizacionUsd, notaMaterial, notaGeneral});
@@ -2683,14 +2778,14 @@ function openModalAutorizarOrden(id){
     <div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" onclick="submitAutorizarOrden('${id}')">Confirmar autorización</button></div>`;
   overlay.classList.add('open');
 }
-function submitAutorizarOrden(id){ const o=getOrden(id); o.estado='autorizada'; closeModal(); renderAll(); }
+function submitAutorizarOrden(id){ const o=getOrden(id); o.estado='autorizada'; marcarEditado('ordenesCompra', id); closeModal(); renderAll(); }
 function openModalRechazarOrden(id){
   modalEl.innerHTML = `<h3>Rechazar orden de compra</h3><div class="modal-sub">${getOrden(id).numero}</div>
     <div class="form-grid"><div class="field span2"><label>Motivo (opcional)</label><input id="f-motivo" placeholder="Ej: no es prioritario este mes"></div></div>
     <div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" onclick="submitRechazarOrden('${id}')">Confirmar rechazo</button></div>`;
   overlay.classList.add('open');
 }
-function submitRechazarOrden(id){ const o=getOrden(id); o.estado='rechazada'; o.comentarioDueno=document.getElementById('f-motivo').value.trim()||null; closeModal(); renderAll(); }
+function submitRechazarOrden(id){ const o=getOrden(id); o.estado='rechazada'; o.comentarioDueno=document.getElementById('f-motivo').value.trim()||null; marcarEditado('ordenesCompra', id); closeModal(); renderAll(); }
 function openModalEfectivizarOrden(id){
   const o = getOrden(id);
   modalEl.innerHTML = `<h3>Marcar como comprada</h3><div class="modal-sub">${o.numero} · genera el pago real y suma al gasto</div>
@@ -2725,14 +2820,16 @@ function submitEfectivizarOrden(id){
       if(!item){ item = {id:newId('s'), nombre:it.producto, categoria:'', unidad:'un.', cantidad:0, stockMinimo:0, costoUnitario:0}; state.stock.push(item); }
       item.cantidad += it.cantidad;
       if(it.cantidad>0) item.costoUnitario = itemMontoNeto/it.cantidad;
+      marcarEditado('stock', item.id);
       state.stockMovimientos.push({id:newId('sm'), fecha: fechaPago||today(), tipo:'compra', stockId:item.id, cantidad:it.cantidad, obraId:null, monto:monto*share});
     });
   }
   const cantidadTotal = o.items.reduce((a,it)=>a+it.cantidad,0);
   const pago = {id:newId('p'), tipo:o.tipo, obraId:o.obraId, categoria:o.categoria||'costosFijos', concepto:ocProductosTxt(o), numeroOC:o.numero, cantidad:cantidadTotal, unitario:cantidadTotal?montoNeto/cantidadTotal:montoNeto, ivaAplica, monto, proveedorId:o.proveedorId, numeroFactura, fechaFactura, formaPago, fechaPago, pagosRealizados:[]};
   state.pagos.push(pago);
-  if(o.tipo==='obra'){ const obra=getObra(o.obraId); if(obra) obra.real[categoriaParaReal(o.categoria)]+=monto; }
+  if(o.tipo==='obra'){ const obra=getObra(o.obraId); if(obra){ obra.real[categoriaParaReal(o.categoria)]+=monto; marcarEditadoObra(o.obraId,'real'); } }
   o.estado='comprada'; o.pagoId=pago.id;
+  marcarEditado('ordenesCompra', o.id);
   closeModal(); renderAll();
 }
 
@@ -2863,6 +2960,7 @@ function submitEditarProveedor(id){
   pr.cuit = document.getElementById('f-ep-cuit').value.trim();
   pr.telefono = document.getElementById('f-ep-tel').value.trim();
   pr.email = document.getElementById('f-ep-mail').value.trim();
+  marcarEditado('proveedores', id);
   closeModal(); renderAll();
 }
 function openModalPagoProveedor(){
@@ -2900,6 +2998,7 @@ function submitPagoProveedor(provId){
     p.pagosRealizados = p.pagosRealizados||[];
     p.pagosRealizados.push({fecha, monto:aplicar, fondo, formaPago});
     if(fondo) p.origenFondo = fondo;
+    marcarEditado('pagos', p.id);
     restante -= aplicar;
   });
   const aplicadoTotal = monto - restante;
@@ -2948,6 +3047,7 @@ function submitIngreso(obraId, editId){
     if(!i){ closeModal(); return; }
     const montoAnterior = i.monto;
     Object.assign(i, {fecha, monto, medioPago, numeroFactura, numeroCobranza});
+    marcarEditado('ingresos', i.id);
     state.caja += (monto - montoAnterior);
   } else {
     o.ingresosList.push({id:newId('ing'), fecha, monto, medioPago, numeroFactura, numeroCobranza});
@@ -3059,7 +3159,8 @@ function submitCompra(editId){
     if(cantidad>item.cantidad){ if(!confirm(`Solo hay ${item.cantidad} ${item.unidad} en stock. ¿Registrar igual (quedaría en negativo)?`)) return; }
     const monto = cantidad*item.costoUnitario;
     item.cantidad -= cantidad;
-    const o = getObra(obraId); if(o) o.real.materiaPrima += monto;
+    marcarEditado('stock', item.id);
+    const o = getObra(obraId); if(o){ o.real.materiaPrima += monto; marcarEditadoObra(obraId,'real'); }
     state.stockMovimientos.push({id:newId('sm'), fecha: today(), tipo:'consumo', stockId, cantidad, obraId, monto});
     closeModal(); renderAll();
     return;
@@ -3079,12 +3180,13 @@ function submitCompra(editId){
 
   if(editId){
     const p = state.pagos.find(x=>x.id===editId);
-    if(p.tipo==='obra' && p.obraId){ const oAnterior=getObra(p.obraId); if(oAnterior) oAnterior.real[categoriaParaReal(p.categoria)]-=p.monto; }
+    if(p.tipo==='obra' && p.obraId){ const oAnterior=getObra(p.obraId); if(oAnterior){ oAnterior.real[categoriaParaReal(p.categoria)]-=p.monto; marcarEditadoObra(p.obraId,'real'); } }
     Object.assign(p, {tipo, obraId, categoria, concepto, cantidad, unitario, ivaAplica, monto, proveedorId, numeroFactura, numeroOC, fechaFactura, formaPago, fechaPago});
-    if(tipo==='obra'){ const o=getObra(obraId); if(o) o.real[categoriaParaReal(categoria)]+=monto; }
+    marcarEditado('pagos', editId);
+    if(tipo==='obra'){ const o=getObra(obraId); if(o){ o.real[categoriaParaReal(categoria)]+=monto; marcarEditadoObra(obraId,'real'); } }
   } else {
     state.pagos.push({id:newId('p'), tipo, obraId, categoria, concepto, cantidad, unitario, ivaAplica, monto, proveedorId, numeroFactura, numeroOC, fechaFactura, formaPago, fechaPago, pagosRealizados:[]});
-    if(tipo==='obra'){ const o=getObra(obraId); if(o) o.real[categoriaParaReal(categoria)]+=monto; }
+    if(tipo==='obra'){ const o=getObra(obraId); if(o){ o.real[categoriaParaReal(categoria)]+=monto; marcarEditadoObra(obraId,'real'); } }
   }
   closeModal(); renderAll();
 }
@@ -3125,6 +3227,7 @@ function submitFinalizarPago(pagoId){
   p.pagosRealizados = p.pagosRealizados||[];
   p.pagosRealizados.push({fecha, monto, fondo, formaPago, aplicado: !esFutura});
   if(fondo) p.origenFondo = fondo;
+  marcarEditado('pagos', pagoId);
   if(!esFutura){
     if(fondo){
       state.fondos[fondo] -= monto;
@@ -3152,6 +3255,7 @@ function reconciliarPagosProgramados(){
         }
         pr.aplicado = true;
         huboCambios = true;
+        marcarEditado('pagos', p.id);
       }
     });
   });
@@ -3177,6 +3281,7 @@ function revertirPago(pagoId){
   p.pagosRealizados = [];
   p.fechaPago = null;
   p.origenFondo = null;
+  marcarEditado('pagos', pagoId);
   renderAll();
 }
 
@@ -3199,8 +3304,8 @@ function eliminarGasto(pagoId){
       return !ligado;
     });
   }
-  if(p.tipo==='obra' && p.obraId){ const o=getObra(p.obraId); if(o) o.real[categoriaParaReal(p.categoria)] -= p.monto; }
-  state.ordenesCompra.forEach(oc=>{ if(oc.pagoId===p.id){ oc.pagoId=null; oc.estado='pendiente'; } });
+  if(p.tipo==='obra' && p.obraId){ const o=getObra(p.obraId); if(o){ o.real[categoriaParaReal(p.categoria)] -= p.monto; marcarEditadoObra(p.obraId,'real'); } }
+  state.ordenesCompra.forEach(oc=>{ if(oc.pagoId===p.id){ oc.pagoId=null; oc.estado='pendiente'; marcarEditado('ordenesCompra', oc.id); } });
   marcarEliminado('pagos', pagoId);
   state.pagos = state.pagos.filter(x=>x.id!==pagoId);
   renderAll();
