@@ -636,6 +636,32 @@ const catLabel = {materiaPrima:'Materiales', manoObra:'Mano de obra', logistica:
 const catFijaLabel = {sueldo:'Sueldo', alquiler:'Alquiler', seguros:'Seguros', impuestos:'Impuestos', servicios:'Servicios (luz/gas/agua/internet)', mantenimiento:'Mantenimiento', otros:'Otros'};
 const estadoColor = {borrador:'var(--muted)', aceptado:'var(--good)', rechazado:'var(--bad)', 'en curso':'var(--warn)', finalizada:'var(--good)'};
 const categoriaParaReal = (categoria)=> (categoria==='combustible'||categoria==='telepase') ? 'logistica' : categoria;
+// El costo real de una obra (real.materiaPrima, .manoObra, .logistica,
+// .estadia, .otros) ya NO se mantiene sumando/restando a mano en cada
+// gasto, orden de compra marcada como comprada o consumo de stock — eso
+// era un contador manual repartido en varios puntos del código, y
+// cualquier bug de guardado o de conflicto (de los que ya arreglamos, o
+// alguno futuro) lo podía desincronizar sin ninguna forma de
+// autocorregirse (a diferencia de `ingresos.cobrado`, que sí se recalcula
+// solo desde `ingresosList`). Ahora se recalcula siempre desde el origen
+// real de la plata: los gastos de la obra (`pagos` con tipo:'obra') más
+// el consumo de stock de esa obra (`stockMovimientos` tipo 'consumo',
+// que no genera un pago propio). Se llama después de cualquier alta,
+// edición o baja que toque esas listas para esa obra, y también después
+// de combinar tras un conflicto de guardado.
+function recomputeObraReal(obra){
+  const real = {materiaPrima:0, manoObra:0, logistica:0, estadia:0, otros:0};
+  state.pagos.forEach(p=>{
+    if(p.tipo!=='obra' || p.obraId!==obra.id) return;
+    const cat = categoriaParaReal(p.categoria);
+    if(real[cat]===undefined) return;
+    real[cat] += p.monto;
+  });
+  state.stockMovimientos.forEach(m=>{
+    if(m.tipo==='consumo' && m.obraId===obra.id) real.materiaPrima += m.monto;
+  });
+  obra.real = real;
+}
 function catOptionsForTipo(tipo, selected){
   const opts = tipo==='obra'
     ? {materiaPrima:'Materiales', manoObra:'Mano de obra', combustible:'Combustible', telepase:'Telepase', estadia:'Estadía de obra', otros:'Otros no previstos'}
@@ -940,13 +966,17 @@ function mergeObraTrasConflicto(obraLocal, obraServidor){
   // (editadosLocalmente.camposObra), gana la versión local; si no, se
   // respeta la del servidor — así no se pisa una edición ajena a un campo
   // que ni tocamos.
+  // `real` no está en esta lista: ya no es un campo que se elija entero de
+  // un lado o del otro, se recalcula aparte (ver recomputeObraReal) una vez
+  // que la lista de pagos/stockMovimientos ya está combinada — antes de
+  // eso, cualquier valor que tenga acá es solo un placeholder transitorio.
   const campo = (nombre) => editadosLocalmente.camposObra.has(obraLocal.id+'|'+nombre) ? obraLocal[nombre] : obraServidor[nombre];
   const merged = {
     ...obraServidor,
     estado: campo('estado'), sinCobrosPendientes: campo('sinCobrosPendientes'),
     code: campo('code'), cliente: campo('cliente'), encargado: campo('encargado'), fechaInicio: campo('fechaInicio'),
     presupuesto: campo('presupuesto'), presupuestoDetalle: campo('presupuestoDetalle'), presupuestoResumen: campo('presupuestoResumen'),
-    real: campo('real'), facturasVenta: campo('facturasVenta'),
+    facturasVenta: campo('facturasVenta'),
   };
   const cfgLocal = obraLocal.jornalesConfig || {asignados:[], horasExtra:{}};
   const cfgServidor = obraServidor.jornalesConfig || {asignados:[], horasExtra:{}};
@@ -1014,6 +1044,9 @@ async function saveState(reintentos){
     });
     state.jornales = mergeJornalesTrasConflicto(local.jornales, state.jornales, eliminadosLocalmente.jornales, editadosLocalmente.diasJornales);
     state.movimientosFima = unionPorContenido(local.movimientosFima, state.movimientosFima, eliminadosLocalmente.movimientosFima);
+    // real se recalcula recién acá, con pagos/stockMovimientos ya combinados
+    // (antes de esto, mergeObraTrasConflicto dejó un valor transitorio sin usar).
+    state.obras.forEach(o=>recomputeObraReal(o));
     // Repintamos la pantalla con lo combinado, pero sin pasar por renderAll()
     // acá: renderAll() vuelve a programar un guardado propio (scheduleSave),
     // y como ya estamos reintentando explícitamente más abajo, eso generaba
@@ -1110,6 +1143,7 @@ async function refrescarDesdeServidor(){
   });
   state.jornales = mergeJornalesTrasConflicto(local.jornales, state.jornales, eliminadosLocalmente.jornales, editadosLocalmente.diasJornales);
   state.movimientosFima = unionPorContenido(local.movimientosFima, state.movimientosFima, eliminadosLocalmente.movimientosFima);
+  state.obras.forEach(o=>recomputeObraReal(o));
   renderAllSinGuardar();
 }
 function programarRefrescoAuto(){
@@ -1734,20 +1768,25 @@ function savePresupuesto(){
   } else {
     const id = newId('o');
     const ir = buildState.importedReal;
-    const real = ir ? { materiaPrima:ir.materialesReal, manoObra:ir.manoObraReal, logistica:ir.logisticaReal, estadia:ir.estadiaReal, otros:ir.extrasReal } : {materiaPrima:0, manoObra:0, logistica:0, estadia:0, otros:0};
+    const importado = ir ? { materiaPrima:ir.materialesReal, manoObra:ir.manoObraReal, logistica:ir.logisticaReal, estadia:ir.estadiaReal, otros:ir.extrasReal } : null;
     const ingresosList = ir ? ir.ingresosList : [];
     const cobrado = ir ? (ir.cobradoTotal || ingresosList.reduce((a,i)=>a+i.monto,0)) : 0;
     const estadoInicial = ir && (ir.materialesReal>0 || ir.manoObraReal>0 || cobrado>0) ? 'en curso' : 'borrador';
     const facturasVenta = [{id:newId('fv'), fecha:fechaFactura, montoSinIva:c.presupuestoSinIva, iva:c.ivaARS, monto:c.totalConIva}];
     state.obras.push({ id, code, cliente, encargado, fechaInicio:fecha, estado:estadoInicial,
       presupuestoDetalle:detalle, presupuesto, presupuestoResumen,
-      real, ingresos:{facturado:c.totalConIva, cobrado}, ingresosList, facturasVenta, documentos:[],
+      real:{materiaPrima:0, manoObra:0, logistica:0, estadia:0, otros:0}, ingresos:{facturado:c.totalConIva, cobrado}, ingresosList, facturasVenta, documentos:[],
       jornalesConfig: {asignados:[], horasExtra:{}}, comisionOverride: null });
-    if(ir){
+    if(importado){
+      // Se crea un gasto por cada categoría importada en vez de escribir
+      // `real` directo, para que sea la misma fuente de la que
+      // recomputeObraReal() va a recalcularlo — así no hay dos lugares
+      // que puedan desincronizarse entre sí.
       ['materiaPrima','manoObra','logistica','estadia','otros'].forEach(cat=>{
-        const monto = real[cat];
+        const monto = importado[cat];
         if(monto>0) state.pagos.push({id:newId('p'), tipo:'obra', obraId:id, categoria:cat, concepto:'Importado desde Excel (total incurrido a la fecha)', cantidad:1, unitario:monto, ivaAplica:false, monto, proveedorId:null, numeroFactura:null, fechaFactura:fecha, formaPago:'A definir', fechaPago:null, pagosRealizados:[]});
       });
+      recomputeObraReal(getObra(id));
     }
     state.selectedObraId = id;
   }
@@ -2740,13 +2779,8 @@ function submitOrdenCompra(id){
   const notaGeneral = document.getElementById('f-nota-general').value.trim();
   if(id){
     const o = getOrden(id);
-    // Ojo: el `monto` de la OC es la ESTIMACIÓN original (de los ítems) y
-    // no se actualiza al marcarla comprada — lo que realmente se sumó al
-    // costo real de la obra en ese momento es el monto final del pago
-    // vinculado (`pagoPrevio.monto`), que puede ser distinto. Hay que
-    // revertir ESE monto, no el estimado de la OC, o el ajuste queda mal.
     const pagoPrevio = o.pagoId ? state.pagos.find(p=>p.id===o.pagoId) : null;
-    const previo = {tipo:o.tipo, obraId:o.obraId, categoria:o.categoria, montoReal: pagoPrevio ? pagoPrevio.monto : o.monto};
+    const previo = {tipo:o.tipo, obraId:o.obraId};
     Object.assign(o, {tipo, obraId, categoria, proveedorId, items, monto, moneda, ivaAplica, solicitante, fecha, cotizacionUsd, notaMaterial, notaGeneral});
     marcarEditado('ordenesCompra', o.id);
     // Si la OC ya está marcada como comprada, tiene un pago real vinculado
@@ -2755,9 +2789,12 @@ function submitOrdenCompra(id){
     // hay que reflejarlo en los dos lugares para que no queden
     // desincronizados.
     if(o.estado==='comprada'){
-      if(pagoPrevio){ pagoPrevio.monto = monto; marcarEditado('pagos', pagoPrevio.id); }
-      if(previo.tipo==='obra' && previo.obraId){ const obraPrevia=getObra(previo.obraId); if(obraPrevia){ obraPrevia.real[categoriaParaReal(previo.categoria)] -= previo.montoReal; marcarEditadoObra(previo.obraId,'real'); } }
-      if(tipo==='obra' && obraId){ const obraNueva=getObra(obraId); if(obraNueva){ obraNueva.real[categoriaParaReal(categoria)] += monto; marcarEditadoObra(obraId,'real'); } }
+      // El pago vinculado también tiene que reflejar el destino nuevo
+      // (obra/categoría), no solo el monto — si no, real quedaría mal
+      // calculado la próxima vez que se recalcule desde `pagos`.
+      if(pagoPrevio){ pagoPrevio.monto = monto; pagoPrevio.obraId = obraId; pagoPrevio.categoria = categoria; pagoPrevio.tipo = tipo; marcarEditado('pagos', pagoPrevio.id); }
+      if(previo.tipo==='obra' && previo.obraId){ const obraPrevia=getObra(previo.obraId); if(obraPrevia) recomputeObraReal(obraPrevia); }
+      if(tipo==='obra' && obraId){ const obraNueva=getObra(obraId); if(obraNueva) recomputeObraReal(obraNueva); }
     }
   } else {
     state.ordenesCompra.push({id:newId('oc'), numero: nextOcNumero(), fecha, solicitante, tipo, obraId, categoria, items, monto, moneda, ivaAplica, proveedorId, estado:'pendiente', comentarioDueno:null, pagoId:null, cotizacionUsd, notaMaterial, notaGeneral});
@@ -2827,7 +2864,7 @@ function submitEfectivizarOrden(id){
   const cantidadTotal = o.items.reduce((a,it)=>a+it.cantidad,0);
   const pago = {id:newId('p'), tipo:o.tipo, obraId:o.obraId, categoria:o.categoria||'costosFijos', concepto:ocProductosTxt(o), numeroOC:o.numero, cantidad:cantidadTotal, unitario:cantidadTotal?montoNeto/cantidadTotal:montoNeto, ivaAplica, monto, proveedorId:o.proveedorId, numeroFactura, fechaFactura, formaPago, fechaPago, pagosRealizados:[]};
   state.pagos.push(pago);
-  if(o.tipo==='obra'){ const obra=getObra(o.obraId); if(obra){ obra.real[categoriaParaReal(o.categoria)]+=monto; marcarEditadoObra(o.obraId,'real'); } }
+  if(o.tipo==='obra'){ const obra=getObra(o.obraId); if(obra) recomputeObraReal(obra); }
   o.estado='comprada'; o.pagoId=pago.id;
   marcarEditado('ordenesCompra', o.id);
   closeModal(); renderAll();
@@ -3160,8 +3197,8 @@ function submitCompra(editId){
     const monto = cantidad*item.costoUnitario;
     item.cantidad -= cantidad;
     marcarEditado('stock', item.id);
-    const o = getObra(obraId); if(o){ o.real.materiaPrima += monto; marcarEditadoObra(obraId,'real'); }
     state.stockMovimientos.push({id:newId('sm'), fecha: today(), tipo:'consumo', stockId, cantidad, obraId, monto});
+    const o = getObra(obraId); if(o) recomputeObraReal(o);
     closeModal(); renderAll();
     return;
   }
@@ -3180,13 +3217,14 @@ function submitCompra(editId){
 
   if(editId){
     const p = state.pagos.find(x=>x.id===editId);
-    if(p.tipo==='obra' && p.obraId){ const oAnterior=getObra(p.obraId); if(oAnterior){ oAnterior.real[categoriaParaReal(p.categoria)]-=p.monto; marcarEditadoObra(p.obraId,'real'); } }
+    const obraAnteriorId = p.obraId;
     Object.assign(p, {tipo, obraId, categoria, concepto, cantidad, unitario, ivaAplica, monto, proveedorId, numeroFactura, numeroOC, fechaFactura, formaPago, fechaPago});
     marcarEditado('pagos', editId);
-    if(tipo==='obra'){ const o=getObra(obraId); if(o){ o.real[categoriaParaReal(categoria)]+=monto; marcarEditadoObra(obraId,'real'); } }
+    if(obraAnteriorId){ const oAnterior=getObra(obraAnteriorId); if(oAnterior) recomputeObraReal(oAnterior); }
+    if(tipo==='obra' && obraId && obraId!==obraAnteriorId){ const o=getObra(obraId); if(o) recomputeObraReal(o); }
   } else {
     state.pagos.push({id:newId('p'), tipo, obraId, categoria, concepto, cantidad, unitario, ivaAplica, monto, proveedorId, numeroFactura, numeroOC, fechaFactura, formaPago, fechaPago, pagosRealizados:[]});
-    if(tipo==='obra'){ const o=getObra(obraId); if(o){ o.real[categoriaParaReal(categoria)]+=monto; marcarEditadoObra(obraId,'real'); } }
+    if(tipo==='obra'){ const o=getObra(obraId); if(o) recomputeObraReal(o); }
   }
   closeModal(); renderAll();
 }
@@ -3304,10 +3342,10 @@ function eliminarGasto(pagoId){
       return !ligado;
     });
   }
-  if(p.tipo==='obra' && p.obraId){ const o=getObra(p.obraId); if(o){ o.real[categoriaParaReal(p.categoria)] -= p.monto; marcarEditadoObra(p.obraId,'real'); } }
   state.ordenesCompra.forEach(oc=>{ if(oc.pagoId===p.id){ oc.pagoId=null; oc.estado='pendiente'; marcarEditado('ordenesCompra', oc.id); } });
   marcarEliminado('pagos', pagoId);
   state.pagos = state.pagos.filter(x=>x.id!==pagoId);
+  if(p.tipo==='obra' && p.obraId){ const o=getObra(p.obraId); if(o) recomputeObraReal(o); }
   renderAll();
 }
 
@@ -3490,15 +3528,32 @@ function renderIvaReporte(mes){
 
 function renderAllSinGuardar(){ renderDashboard(); renderObraLista(); if(!document.getElementById('obra-sub-detalle').classList.contains('hidden')) renderObraDetail(); renderJornales(); renderOrdenes(); renderFima(); renderStock(); renderPagos(); renderResultados(); }
 function renderAll(){ renderAllSinGuardar(); scheduleSave(); }
+// Corrige, una vez al abrir la app, cualquier obra cuyo `real` haya quedado
+// desincronizado por algún bug viejo (de guardado, de conflicto, o lo que
+// sea) — antes de este cambio no había forma de que se autocorrigiera solo.
+// Recalcularlo siempre desde acá en más (ver recomputeObraReal) hace que
+// esto sea un arreglo de una sola vez: una vez guardado el valor correcto,
+// ya no puede volver a desincronizarse de la misma forma.
+function repararRealObras(){
+  let hubo = false;
+  state.obras.forEach(o=>{
+    const anterior = JSON.stringify(o.real);
+    recomputeObraReal(o);
+    if(JSON.stringify(o.real)!==anterior) hubo = true;
+  });
+  return hubo;
+}
 (async function bootstrap(){
   await cargarEstadoInicial();
-  // Dos correcciones automáticas antes de mostrar nada: reparar fechas viejas
-  // que hayan quedado mal guardadas, y aplicar los pagos "programados" (fecha
-  // futura, ej. cheques diferidos) cuya fecha ya llegó.
+  // Correcciones automáticas antes de mostrar nada: reparar fechas viejas
+  // que hayan quedado mal guardadas, aplicar los pagos "programados" (fecha
+  // futura, ej. cheques diferidos) cuya fecha ya llegó, y recalcular el
+  // costo real de cada obra por si quedó desincronizado.
   const huboReparacionFechas = repararFechasEnState();
   const huboMaduraciones = reconciliarPagosProgramados();
   const huboMigracionJornales = migrarJornalesPorDia();
   const huboReparacionIngresos = repararIngresosSinId();
+  const huboReparacionReal = repararRealObras();
   showObraSubview('lista');
   renderAll();
   // La primera vez que se renderiza es lo que se acaba de leer del Sheet:
@@ -3507,7 +3562,7 @@ function renderAll(){ renderAllSinGuardar(); scheduleSave(); }
   // la vez no genera avisos de "conflicto" sin que nadie haya cambiado nada.
   bootCompleto = true;
   programarRefrescoAuto();
-  if(huboReparacionFechas || huboMaduraciones || huboMigracionJornales || huboReparacionIngresos) saveState();
+  if(huboReparacionFechas || huboMaduraciones || huboMigracionJornales || huboReparacionIngresos || huboReparacionReal) saveState();
   const overlay = document.getElementById('loading-overlay');
   if(overlay){ overlay.style.opacity='0'; setTimeout(()=>overlay.remove(), 300); }
   const initialView = location.hash.slice(1);

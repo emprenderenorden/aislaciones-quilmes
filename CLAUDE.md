@@ -539,3 +539,55 @@ archivo. Una vez desplegado, tildar el ítem de arriba o borrar la sección.
     — estos son casos de "borrado que puede resucitar", no de "edición
     que se pierde", y quedan afuera de este arreglo puntual). Si notás
     que alguno de estos dos casos vuelve a pasar, avisá para extenderlo.
+- **Fix crítico: el costo real de una obra (Materiales, sobre todo) podía
+  quedar mal calculado, incluso en negativo.** El dueño reportó una obra
+  con "Materiales" en `-$4.582.792` en Presupuestado vs. real, a pesar de
+  que los gastos cargados en la tabla eran todos positivos y correctos.
+  - **Causa de fondo:** `real` (el costo real de la obra: materiales, mano
+    de obra, logística, estadía, otros) **no se calculaba solo** — era un
+    contador que se sumaba y restaba a mano en 7 lugares distintos del
+    código (registrar/editar/eliminar un gasto, marcar una orden de compra
+    como comprada, editar una OC ya comprada, consumir stock). Cualquier
+    bug histórico en cualquiera de esos puntos — incluidos varios que ya
+    arreglamos este mismo día (conflictos de guardado, borrados que
+    resucitaban, el auto-refresco pisando una edición) — podía haber
+    restado de más en algún momento, y como nada volvía a calcularlo desde
+    cero, el error quedaba pegado ahí para siempre. Es lo opuesto a
+    "Ingresos (cobrado)", que nunca tiene este problema porque se
+    recalcula entero desde la lista de cobros cada vez, en vez de
+    mantenerse como contador.
+  - **Arreglo:** `real` ahora se calcula siempre desde el origen real de la
+    plata (`recomputeObraReal()`) — la suma de los gastos de la obra
+    (`pagos` con `tipo:'obra'`) más el consumo de stock de esa obra
+    (`stockMovimientos` tipo `consumo`, que no genera un gasto propio) — en
+    vez de mantenerse a mano. Se recalcula después de cualquier alta,
+    edición o baja que toque esas listas, y también después de combinar
+    tras un conflicto de guardado (reemplazando el seguimiento por campo
+    que se le había agregado a `real` en el arreglo anterior — dejó de
+    hacer falta, porque ya no es un valor que haya que elegir entre la
+    versión local o la del servidor). Al editar una orden de compra ya
+    comprada y cambiarla de obra o categoría, el pago vinculado ahora
+    también actualiza su `obraId`/`categoria` (antes se quedaban con el
+    valor viejo, silenciosamente, porque `real` se ajustaba a mano y
+    "tapaba" el hecho de que el pago había quedado desincronizado).
+  - **Reparación automática al abrir la app:** además de prevenir el
+    problema hacia adelante, `bootstrap()` ahora recalcula el `real` de
+    todas las obras una vez al cargar (`repararRealObras()`, mismo patrón
+    que ya existía para fechas corruptas, pagos programados vencidos y
+    jornales viejos) y, si corrige algo, lo guarda enseguida — así la obra
+    reportada (y cualquier otra con el mismo problema) se corrige sola en
+    cuanto alguien abra la app con esta versión, sin tocar la planilla a
+    mano.
+  - Probado en un entorno aislado: (a) una obra sembrada con
+    `real.materiaPrima` corrompido en negativo, pero con gastos reales
+    positivos y correctos, se autocorrige al abrir la app y esa
+    corrección queda guardada en el servidor (no solo visible en
+    pantalla); (b) un flujo normal — registrar un gasto, consumir stock,
+    editar el monto del gasto, eliminar el consumo de stock — deja
+    `real.materiaPrima` exactamente igual a la suma vigente en cada paso;
+    (c) marcar una orden de compra como comprada suma bien al real de la
+    obra, y editarla después para moverla a OTRA obra resta de la vieja y
+    suma a la nueva correctamente, actualizando también el pago
+    vinculado; (d) los 22 tests de regresión existentes (incluidos los de
+    conflictos y el de editar una OC comprada) se volvieron a correr y
+    siguen pasando.
