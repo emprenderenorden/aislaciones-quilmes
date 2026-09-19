@@ -744,6 +744,19 @@ function repararIngresosSinId(){
   });
   return huboCambios;
 }
+// Los movimientos de FIMA se identificaban por su contenido completo (no
+// tenían id propio) — eso podía confundir dos movimientos con el mismo
+// contenido (ej. dos aportes iguales el mismo día) y hacer que, al
+// combinar tras un conflicto o el auto-refresco, borrar o editar uno
+// terminara perdiendo también el otro. Les asigna un id acá, una sola
+// vez, igual que ya se hizo con los cobros importados de Excel.
+function repararIdsFima(){
+  let huboCambios = false;
+  state.movimientosFima.forEach(m=>{
+    if(!m.id){ m.id = newId('fm'); huboCambios = true; }
+  });
+  return huboCambios;
+}
 const today = ()=> new Date().toISOString().slice(0,10);
 const VALOR_HORA_EXTRA = 10000;
 function esHabil_(y,m0,d){ const wd = new Date(y,m0,d).getDay(); return wd>=1 && wd<=5; }
@@ -850,21 +863,19 @@ async function cargarEstadoInicial(){
   }
 }
 let saveTimer = null;
-// Registro de qué se eliminó desde ESTA pestaña (id, o firma completa para
-// movimientosFima que no tiene id). Un merge (ante un conflicto de guardado,
-// o el refresco automático) trae la versión del servidor como base y le
-// suma lo local — pero el servidor todavía puede no enterarse de un borrado
-// reciente, y sin este registro ese borrado se "deshacía solo" en el merge
-// (el registro volvía a aparecer). Vive mientras dure la pestaña: una vez
-// que el borrado se guarda bien, el servidor ya no lo tiene tampoco, así
-// que deja de hacer falta.
+// Registro de qué id se eliminó desde ESTA pestaña. Un merge (ante un
+// conflicto de guardado, o el refresco automático) trae la versión del
+// servidor como base y le suma lo local — pero el servidor todavía puede
+// no enterarse de un borrado reciente, y sin este registro ese borrado se
+// "deshacía solo" en el merge (el registro volvía a aparecer). Vive
+// mientras dure la pestaña: una vez que el borrado se guarda bien, el
+// servidor ya no lo tiene tampoco, así que deja de hacer falta.
 const eliminadosLocalmente = {
   obras: new Set(), pagos: new Set(), ordenesCompra: new Set(), proveedores: new Set(),
   stock: new Set(), stockMovimientos: new Set(), trabajadores: new Set(), jornales: new Set(),
-  movimientosFima: new Set(), // acá se guarda la firma (JSON.stringify), no un id
+  movimientosFima: new Set(),
 };
 function marcarEliminado(coleccion, id){ if(id!==undefined) eliminadosLocalmente[coleccion].add(id); }
-function marcarEliminadoFima(m){ eliminadosLocalmente.movimientosFima.add(JSON.stringify(m)); }
 // Igual que eliminadosLocalmente, pero para EDICIONES en el lugar (no altas
 // ni bajas): registra qué registro editamos nosotros mismos en esta pestaña
 // desde el último sync con el servidor. Antes, ante un conflicto de
@@ -882,7 +893,7 @@ function marcarEliminadoFima(m){ eliminadosLocalmente.movimientosFima.add(JSON.s
 // un registro que nosotros solo teníamos en memoria sin haber tocado).
 const editadosLocalmente = {
   pagos: new Set(), ordenesCompra: new Set(), proveedores: new Set(),
-  stock: new Set(), trabajadores: new Set(), ingresos: new Set(),
+  stock: new Set(), trabajadores: new Set(), ingresos: new Set(), movimientosFima: new Set(),
   diasJornales: new Set(), // "idDeLaFilaDeJornales|índiceDelDía" (0-6)
   camposObra: new Set(),   // "idDeLaObra|nombreDelCampo"
 };
@@ -934,16 +945,6 @@ function mergeJornalesTrasConflicto(local, servidor, eliminados, editadosDias){
     porId.set(row.id, {...enServidor, dias});
   });
   return [...porId.values()];
-}
-// Los movimientos de FIMA no tienen id propio — se identifican por su
-// contenido completo para no duplicar los que ya estén guardados.
-// `eliminadosFirmas` (opcional) funciona igual que en unionPorId, pero
-// comparando la firma completa del objeto en vez de un id.
-function unionPorContenido(local, servidor, eliminadosFirmas){
-  const base = eliminadosFirmas && eliminadosFirmas.size ? (servidor||[]).filter(x=>!eliminadosFirmas.has(JSON.stringify(x))) : (servidor||[]);
-  const firmas = new Set(base.map(x=>JSON.stringify(x)));
-  const soloLocal = (local||[]).filter(x=>!firmas.has(JSON.stringify(x)) && !(eliminadosFirmas&&eliminadosFirmas.has(JSON.stringify(x))));
-  return [...base, ...soloLocal];
 }
 // Las obras tienen datos anidados que se editan seguido sin crear un id
 // nuevo (asignar un trabajador en el cuadro de jornales de la obra, cargar
@@ -1004,7 +1005,26 @@ function mergeObrasTrasConflicto(local, servidor){
   });
   return [...porId.values()];
 }
-async function saveState(reintentos){
+// Encola: un guardado (con sus reintentos) y un auto-refresco leen el
+// servidor, combinan con lo local y reescriben `state` de punta a punta
+// — si dos de estas operaciones llegan a correr superpuestas (un
+// guardado reintentando mientras el usuario carga algo más, o el
+// refresco disparado dos veces al volver a la pestaña, por ejemplo por
+// "visibilitychange" y "focus" casi juntos) una puede pisar en el medio
+// lo que la otra recién combinó, perdiendo en silencio lo que se cargó
+// justo en esa ventana — sin que ninguna de las dos vea ningún error.
+// Se turnan, en el orden en que se dispararon, para que nunca corran
+// dos a la vez.
+let colaSync = Promise.resolve();
+function conSyncExclusivo(fn){
+  const resultado = colaSync.then(fn, fn);
+  colaSync = resultado.catch(()=>{});
+  return resultado;
+}
+function saveState(reintentos){
+  return conSyncExclusivo(()=>saveStateCore(reintentos));
+}
+async function saveStateCore(reintentos){
   if(!isBackendConfigured()) return;
   if(reintentos===undefined) reintentos = 5;
   try{
@@ -1039,11 +1059,10 @@ async function saveState(reintentos){
     };
     await loadState({silencioso:true});
     state.obras = mergeObrasTrasConflicto(local.obras, state.obras);
-    ['pagos','ordenesCompra','proveedores','stock','stockMovimientos','trabajadores'].forEach(key=>{
+    ['pagos','ordenesCompra','proveedores','stock','stockMovimientos','trabajadores','movimientosFima'].forEach(key=>{
       state[key] = unionPorId(local[key], state[key], eliminadosLocalmente[key], editadosLocalmente[key]);
     });
     state.jornales = mergeJornalesTrasConflicto(local.jornales, state.jornales, eliminadosLocalmente.jornales, editadosLocalmente.diasJornales);
-    state.movimientosFima = unionPorContenido(local.movimientosFima, state.movimientosFima, eliminadosLocalmente.movimientosFima);
     // real se recalcula recién acá, con pagos/stockMovimientos ya combinados
     // (antes de esto, mergeObraTrasConflicto dejó un valor transitorio sin usar).
     state.obras.forEach(o=>recomputeObraReal(o));
@@ -1053,7 +1072,7 @@ async function saveState(reintentos){
     // cadenas de reintentos superpuestas — justo más carga sobre el backend
     // cuando lo que está fallando es contención ahí.
     renderAllSinGuardar();
-    await saveState(reintentos-1);
+    await saveStateCore(reintentos-1);
   } catch(err){
     // Falló la conexión en sí (corte de red, respuesta no válida, etc.) —
     // acá no tocamos `state` para nada (no sabemos si el servidor llegó a
@@ -1065,7 +1084,7 @@ async function saveState(reintentos){
       return;
     }
     await new Promise(r=>setTimeout(r, 1500));
-    await saveState(reintentos-1);
+    await saveStateCore(reintentos-1);
   }
 }
 let reintentoGuardadoTimer = null;
@@ -1112,7 +1131,10 @@ function scheduleSave(){
 // conflicto de guardado — así nunca se pisa algo que se esté cargando acá
 // y sin embargo todos los dispositivos convergen solos.
 let refrescoAutoTimer = null;
-async function refrescarDesdeServidor(){
+function refrescarDesdeServidor(){
+  return conSyncExclusivo(refrescarDesdeServidorCore);
+}
+async function refrescarDesdeServidorCore(){
   if(!isBackendConfigured() || !bootCompleto) return;
   if(overlay.classList.contains('open')) return; // no interrumpir una edición en curso
   // Si hay un guardado nuestro pendiente o en curso, nos salteamos este
@@ -1138,11 +1160,10 @@ async function refrescarDesdeServidor(){
   // sumarle lo local, o se pierde/resucita algo sin querer.
   await loadState({silencioso:true});
   state.obras = mergeObrasTrasConflicto(local.obras, state.obras);
-  ['pagos','ordenesCompra','proveedores','stock','stockMovimientos','trabajadores'].forEach(key=>{
+  ['pagos','ordenesCompra','proveedores','stock','stockMovimientos','trabajadores','movimientosFima'].forEach(key=>{
     state[key] = unionPorId(local[key], state[key], eliminadosLocalmente[key], editadosLocalmente[key]);
   });
   state.jornales = mergeJornalesTrasConflicto(local.jornales, state.jornales, eliminadosLocalmente.jornales, editadosLocalmente.diasJornales);
-  state.movimientosFima = unionPorContenido(local.movimientosFima, state.movimientosFima, eliminadosLocalmente.movimientosFima);
   state.obras.forEach(o=>recomputeObraReal(o));
   renderAllSinGuardar();
 }
@@ -1569,12 +1590,8 @@ function eliminarObra(id){
   });
 
   // Movimientos de FIMA y jornales: ya representan plata movida o asistencia
-  // real, no se borran — solo se desvinculan de la obra eliminada. Los
-  // movimientos de FIMA se identifican por contenido (sin id): hay que
-  // marcar la firma vieja como eliminada antes de mutar, o un merge en el
-  // medio podría traer de vuelta la versión vieja (todavía vinculada a la
-  // obra) y dejarla duplicada con la editada.
-  state.movimientosFima.forEach(m=>{ if(m.obraId===id){ marcarEliminadoFima(m); m.obraId=null; } });
+  // real, no se borran — solo se desvinculan de la obra eliminada.
+  state.movimientosFima.forEach(m=>{ if(m.obraId===id){ marcarEditado('movimientosFima', m.id); m.obraId=null; } });
   state.jornales.forEach(j=>{ j.dias.forEach((cell,idx)=>{ if(cell.obraId===id){ cell.obraId=null; marcarEditadoDia(j.id, idx); } }); });
 
   marcarEliminado('obras', id);
@@ -2291,11 +2308,11 @@ function renderFima(){
     return `<tr><td class="mono">${fmtFecha(m.fecha)}</td><td>${fondoLabel[m.fondo]}</td><td>${subcatOObraTag(m)}</td><td>${m.concepto}</td><td><span class="badge-inout ${m.tipo}">${m.tipo==='in'?'Ingreso':'Egreso'}</span></td><td class="num">${fmt(m.monto)}</td><td><span class="link-btn" onclick="openModalEditarMovimientoFima(${idx})">Editar</span> · <span class="link-btn danger" onclick="eliminarMovimientoFima(${idx})">Eliminar</span></td></tr>`;
   }).join('') : `<tr class="empty-row"><td colspan="7">Sin movimientos para este filtro</td></tr>`;
 }
-// Los movimientos de FIMA no tienen id propio (ver unionPorContenido) — para
-// editar/eliminar uno puntual usamos su posición en state.movimientosFima
-// (no en la lista filtrada/ordenada que se ve en pantalla), así apunta
-// siempre al objeto correcto aunque haya dos movimientos con el mismo
-// contenido.
+// Para editar/eliminar un movimiento puntual usamos su posición en
+// state.movimientosFima (no en la lista filtrada/ordenada que se ve en
+// pantalla), así apunta siempre al objeto correcto — el `id` del
+// movimiento (ver marcarEliminado/marcarEditado más abajo) es lo que se
+// usa para el merge ante un conflicto o el auto-refresco, no para esto.
 function pagoLigadoAMovimientoFima(m){
   // Un egreso cargado directo desde "Registrar movimiento" genera también
   // un gasto propio en Pagos (ver submitMovimientoFima). Lo identificamos
@@ -2313,7 +2330,7 @@ function eliminarMovimientoFima(idx){
   if(pagoLigado) advertencia += `\n\nEste movimiento tiene un gasto propio cargado junto con él ("${pagoLigado.concepto}") — también se va a eliminar.`;
   if(!confirm(advertencia)) return;
   state.fondos[m.fondo] += (m.tipo==='in'? -m.monto : m.monto);
-  marcarEliminadoFima(m);
+  marcarEliminado('movimientosFima', m.id);
   if(pagoLigado){
     marcarEliminado('pagos', pagoLigado.id);
     state.ordenesCompra.forEach(oc=>{ if(oc.pagoId===pagoLigado.id){ oc.pagoId=null; oc.estado='pendiente'; marcarEditado('ordenesCompra', oc.id); } });
@@ -2348,12 +2365,7 @@ function submitEditarMovimientoFima(idx){
     if(pagoLigado.pagosRealizados[0]) pagoLigado.pagosRealizados[0].monto = nuevoMonto;
     marcarEditado('pagos', pagoLigado.id);
   }
-  // Los movimientos de FIMA se identifican por contenido completo (no
-  // tienen id) — si no marcamos la firma vieja como "eliminada", un merge
-  // que ocurra antes de que esta edición se guarde podría traer de vuelta
-  // la versión vieja del servidor Y quedarnos con las dos (la editada acá
-  // y la vieja, duplicadas).
-  marcarEliminadoFima(m);
+  marcarEditado('movimientosFima', m.id);
   m.concepto = nuevoConcepto; m.monto = nuevoMonto;
   closeModal(); renderAll();
 }
@@ -3042,7 +3054,7 @@ function submitPagoProveedor(provId){
   if(aplicadoTotal>0){
     if(fondo){
       state.fondos[fondo] -= aplicadoTotal;
-      state.movimientosFima.push({fecha, fondo, obraId:null, concepto:'Pago a proveedor — '+getProveedor(provId).nombre, tipo:'out', monto:aplicadoTotal});
+      state.movimientosFima.push({id:newId('fm'), fecha, fondo, obraId:null, concepto:'Pago a proveedor — '+getProveedor(provId).nombre, tipo:'out', monto:aplicadoTotal});
     } else {
       state.caja -= aplicadoTotal;
     }
@@ -3269,7 +3281,7 @@ function submitFinalizarPago(pagoId){
   if(!esFutura){
     if(fondo){
       state.fondos[fondo] -= monto;
-      state.movimientosFima.push({fecha, fondo, obraId:p.obraId, concepto:p.concepto, tipo:'out', monto});
+      state.movimientosFima.push({id:newId('fm'), fecha, fondo, obraId:p.obraId, concepto:p.concepto, tipo:'out', monto});
     } else {
       state.caja -= monto;
     }
@@ -3287,7 +3299,7 @@ function reconciliarPagosProgramados(){
       if(pr.aplicado===false && pr.fecha<=hoy){
         if(pr.fondo){
           state.fondos[pr.fondo] -= pr.monto;
-          state.movimientosFima.push({fecha:pr.fecha, fondo:pr.fondo, obraId:p.obraId, concepto:p.concepto, tipo:'out', monto:pr.monto});
+          state.movimientosFima.push({id:newId('fm'), fecha:pr.fecha, fondo:pr.fondo, obraId:p.obraId, concepto:p.concepto, tipo:'out', monto:pr.monto});
         } else {
           state.caja -= pr.monto;
         }
@@ -3313,7 +3325,7 @@ function revertirPago(pagoId){
   });
   state.movimientosFima = state.movimientosFima.filter(m=>{
     const ligado = aplicados.some(pr=>pr.fondo && m.tipo==='out' && m.fondo===pr.fondo && m.obraId===p.obraId && m.concepto===p.concepto && m.monto===pr.monto);
-    if(ligado) marcarEliminadoFima(m);
+    if(ligado) marcarEliminado('movimientosFima', m.id);
     return !ligado;
   });
   p.pagosRealizados = [];
@@ -3338,7 +3350,7 @@ function eliminarGasto(pagoId){
     });
     state.movimientosFima = state.movimientosFima.filter(m=>{
       const ligado = p.pagosRealizados.some(pr=>pr.fondo && m.tipo==='out' && m.fondo===pr.fondo && m.obraId===p.obraId && m.concepto===p.concepto && m.monto===pr.monto);
-      if(ligado) marcarEliminadoFima(m);
+      if(ligado) marcarEliminado('movimientosFima', m.id);
       return !ligado;
     });
   }
@@ -3400,7 +3412,7 @@ function submitMovimientoFima(){
   const obraId = fondo==='obras' ? (document.getElementById('f-fima-obra').value || null) : null;
   const subcategoria = fondo==='obras' ? null : (document.getElementById('f-fima-subcat').value.trim() || null);
   state.fondos[fondo] += (tipo==='in'? monto:-monto);
-  state.movimientosFima.push({fecha, fondo, obraId, subcategoria, concepto, tipo, monto});
+  state.movimientosFima.push({id:newId('fm'), fecha, fondo, obraId, subcategoria, concepto, tipo, monto});
   if(tipo==='out'){
     const proveedorId = resolveProveedorId();
     const numeroFactura = document.getElementById('f-factura').value.trim() || null;
@@ -3554,6 +3566,7 @@ function repararRealObras(){
   const huboMigracionJornales = migrarJornalesPorDia();
   const huboReparacionIngresos = repararIngresosSinId();
   const huboReparacionReal = repararRealObras();
+  const huboReparacionIdsFima = repararIdsFima();
   showObraSubview('lista');
   renderAll();
   // La primera vez que se renderiza es lo que se acaba de leer del Sheet:
@@ -3562,7 +3575,7 @@ function repararRealObras(){
   // la vez no genera avisos de "conflicto" sin que nadie haya cambiado nada.
   bootCompleto = true;
   programarRefrescoAuto();
-  if(huboReparacionFechas || huboMaduraciones || huboMigracionJornales || huboReparacionIngresos || huboReparacionReal) saveState();
+  if(huboReparacionFechas || huboMaduraciones || huboMigracionJornales || huboReparacionIngresos || huboReparacionReal || huboReparacionIdsFima) saveState();
   const overlay = document.getElementById('loading-overlay');
   if(overlay){ overlay.style.opacity='0'; setTimeout(()=>overlay.remove(), 300); }
   const initialView = location.hash.slice(1);

@@ -56,6 +56,15 @@ guardado silencioso..." en el registro de cambios más abajo):
       mientras la pestaña sigue abierta, pero se pierde al recargar (la
       OC vuelve a leerse como si fuera en pesos, aunque el monto en pesos
       ya calculado queda bien guardado y no se pierde).
+- [ ] **Pendiente:** `movimientosFima`: campo `id` (ver "Fix crítico: dos
+      bugs detrás de que 'se borren' movimientos, uno de ellos específico
+      de FIMA" en el registro de cambios) — sin este redeploy, el `id` se
+      genera y se usa bien dentro de cada sesión (ya corta el problema de
+      fondo), pero no queda guardado en el Sheet: cada recarga de la
+      página vuelve a generar ids nuevos para los movimientos ya
+      existentes (`repararIdsFima()`), así que la app funciona bien pero
+      esa reparación se repite en cada carga en vez de quedar hecha una
+      sola vez.
 
 Cuando se haga este redeploy: pegar todo `backend-AppsScript.gs` en el
 editor de Apps Script del Sheet, guardar, y crear una nueva implementación
@@ -591,3 +600,58 @@ archivo. Una vez desplegado, tildar el ítem de arriba o borrar la sección.
     vinculado; (d) los 22 tests de regresión existentes (incluidos los de
     conflictos y el de editar una OC comprada) se volvieron a correr y
     siguen pasando.
+- **Fix crítico: dos bugs detrás de que "se pierdan" movimientos —
+  reportado puntualmente con un ingreso a un fondo FIMA.** Investigando a
+  fondo el reporte se encontraron dos causas distintas, ninguna cubierta
+  por los arreglos anteriores de conflictos/auto-refresco:
+  - **1) Dos sincronizaciones podían correr al mismo tiempo y pisarse.**
+    Tanto reintentar un guardado como el auto-refresco (cada 60s, o al
+    volver a la pestaña vía `visibilitychange`/`focus`) traen el estado
+    del servidor y lo combinan con lo local, reescribiendo `state` de
+    punta a punta — pero nada impedía que dos de estas operaciones
+    corrieran superpuestas (ej. un guardado reintentando —por un
+    `lock_timeout` del backend, algo que ya sabemos que pasa— justo
+    cuando el usuario carga otro movimiento y dispara un segundo
+    guardado en paralelo; o `visibilitychange` y `focus` disparando el
+    auto-refresco dos veces casi juntos al volver a la pestaña). Cuando
+    dos llegaban a cruzarse, había una ventana de milisegundos en la que
+    un registro recién cargado quedaba en una copia intermedia que la
+    otra sincronización descartaba sin que nada lo volviera a traer — se
+    perdía en silencio y nunca llegaba a guardarse. No hacía falta que
+    dos personas estuvieran usando la app a la vez, aunque con varios
+    dispositivos guardando y sincronizando en simultáneo (como es el caso
+    acá) la ventana para que esto pase es bastante más frecuente.
+    **Arreglo:** se agregó una cola (`conSyncExclusivo`) — un guardado (con
+    sus reintentos) y un auto-refresco ahora se turnan, nunca corren dos
+    a la vez.
+  - **2) Los movimientos de FIMA eran la única lista de toda la app sin
+    `id` propio** — se identificaban por su contenido completo
+    (`JSON.stringify`). Esto tenía dos problemas: el orden de campos con
+    el que se arma un movimiento nuevo en el navegador no coincidía con
+    el orden en que el backend lo devuelve, así que un movimiento ya
+    guardado podía duplicarse en la siguiente sincronización; y, más
+    grave, si dos movimientos tenían exactamente el mismo contenido (ej.
+    dos aportes iguales el mismo día al mismo fondo), borrar o editar
+    **uno de los dos** hacía que la próxima sincronización no pudiera
+    distinguirlos y terminara perdiendo **los dos**. **Arreglo:** cada
+    movimiento de FIMA ahora tiene un `id` propio (como el resto de la
+    app) y se combina con el mismo mecanismo robusto (`unionPorId`) que
+    ya usan pagos, obras, trabajadores, etc., en vez de compararse por
+    contenido. A los movimientos ya cargados sin `id` se les asigna uno
+    solo al abrir la app (mismo patrón que ya se usó para los cobros
+    importados de Excel). **Requiere redeploy del backend** (columna
+    `id` en `MovimientosFima`, ver checklist arriba) para que el `id`
+    quede persistido entre recargas — mientras tanto ya corta el
+    problema de fondo dentro de cada sesión, que es cuando ocurren la
+    gran mayoría de estas sincronizaciones.
+  - Probado: (a) simulación directa de la carrera del punto 1 (dos
+    refrescos superpuestos con una carga de por medio) — sin la cola el
+    ingreso se pierde de forma reproducible; con la cola sobrevive
+    siempre; (b) simulación directa de la colisión del punto 2 — dos
+    movimientos idénticos, borrar uno con el sistema viejo (contenido)
+    borraba los dos; con el sistema nuevo (id) sobrevive exactamente el
+    que no se tocó; (c) prueba en un entorno aislado (navegador real):
+    alta, edición y borrado de movimientos de FIMA, incluidos dos
+    movimientos de contenido idéntico, confirmando ids únicos y que
+    `eliminadosLocalmente`/`editadosLocalmente` registran el id
+    correcto en cada caso.
