@@ -41,45 +41,22 @@ se hizo, y que ese redeploy incluyó estos campos de esquema (ya estaban en
       puntualmente en la obra).
 - [x] `movimientosFima`: campo `subcategoria`.
 
-Pero el dueño también confirmó que **todavía no hizo** el redeploy de
-después (el fix de `lock_timeout` en `doPost`, ver "Fix importante:
-guardado silencioso..." en el registro de cambios más abajo):
+El dueño confirmó (20/09) que además se hizo el redeploy que agrupaba los
+siguientes cuatro cambios de esquema — pegó `backend-AppsScript.gs`
+completo en el editor de Apps Script y creó una nueva versión de la
+implementación:
 
-- [ ] **Pendiente:** fix de `doPost` para que un timeout del lock devuelva
-      un error prolijo en vez de romperse sin formato — sin este redeploy,
-      ese tipo de falla específica todavía puede quedar sin reintentarse
-      bien del lado del backend (el arreglo del lado del frontend, que
-      reintenta ante cualquier error, ya ayuda por sí solo mientras tanto).
-- [ ] **Pendiente:** `ordenesCompra`: campo `moneda` (para las OC cargadas
-      en dólares, ver "Nuevo: cargar una orden de compra en dólares" en el
-      registro de cambios) — sin este redeploy, el campo se guarda bien
-      mientras la pestaña sigue abierta, pero se pierde al recargar (la
-      OC vuelve a leerse como si fuera en pesos, aunque el monto en pesos
-      ya calculado queda bien guardado y no se pierde).
-- [ ] **Pendiente:** `movimientosFima`: campo `id` (ver "Fix crítico: dos
-      bugs detrás de que 'se borren' movimientos, uno de ellos específico
-      de FIMA" en el registro de cambios) — sin este redeploy, el `id` se
-      genera y se usa bien dentro de cada sesión (ya corta el problema de
-      fondo), pero no queda guardado en el Sheet: cada recarga de la
-      página vuelve a generar ids nuevos para los movimientos ya
-      existentes (`repararIdsFima()`), así que la app funciona bien pero
-      esa reparación se repite en cada carga en vez de quedar hecha una
-      sola vez.
-- [ ] **Pendiente:** `ordenesCompra`: campos `obraIds` y `pagoIds` (para
-      las OC repartidas entre varias obras, ver "Nuevo: OC con varias
-      obras y reparto de materiales al comprar" en el registro de
-      cambios) — sin este redeploy, el reparto en sí funciona bien y los
-      pagos por obra quedan guardados y persistidos correctamente (usan
-      columnas que ya existían), pero la lista de "a cuáles obras apunta
-      esta OC" y el vínculo de vuelta OC→pagos se pierden al recargar la
-      página (una OC multi-obra ya comprada, tras recargar, va a mostrar
-      "—" como destino en vez de las obras, aunque el costo real de cada
-      obra ya quedó bien sumado y no se pierde).
+- [x] Fix de `doPost` para que un timeout del lock devuelva un error
+      prolijo (`lock_timeout`) en vez de romperse sin formato.
+- [x] `ordenesCompra`: campo `moneda` (para las OC cargadas en dólares).
+- [x] `movimientosFima`: campo `id`.
+- [x] `ordenesCompra`: campos `obraIds` y `pagoIds` (para las OC
+      repartidas entre varias obras).
 
-Cuando se haga este redeploy: pegar todo `backend-AppsScript.gs` en el
-editor de Apps Script del Sheet, guardar, y crear una nueva implementación
-(o actualizar la existente) — ver instrucciones al principio del propio
-archivo. Una vez desplegado, tildar el ítem de arriba o borrar la sección.
+No hay ningún redeploy pendiente por ahora. Cuando se sume un cambio de
+backend nuevo, se anota acá como pendiente y se agrupan varios antes de
+volver a desplegar (ver instrucciones al principio de
+`backend-AppsScript.gs`).
 
 ## Registro de cambios (funcionalidad agregada vía Claude Code)
 
