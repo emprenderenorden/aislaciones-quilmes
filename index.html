@@ -1216,6 +1216,32 @@ function pagoEstadoInfo(est){
   if(est==='programado') return {dot:'info', txt:'Programado'};
   return {dot:'warn', txt:'Pendiente'}; // "pendiente" y "sin_fecha" se muestran igual para no confundir
 }
+// Arma el "compromiso" de pago de un gasto recién cargado o editado (antes
+// esto solo pasaba al tocar "Registrar pago →" — cargar la fecha/medio de
+// pago directo en "Registrar compra/gasto", "Registrar compra de stock" o
+// "Marcar como comprada" dejaba la fecha como dato suelto, sin generar
+// ningún compromiso real: el gasto quedaba "Pendiente" para siempre y
+// nunca se marcaba solo como pagado al llegar la fecha). Mismo criterio
+// que ya usa submitFinalizarPago: si la fecha ya llegó, se aplica al
+// toque (sale la plata ya); si es futura, queda "Programado" y madura
+// solo (ver reconciliarPagosProgramados, que corre al abrir la app).
+// Reemplaza cualquier compromiso previo todavía sin aplicar (no toca los
+// que ya se pagaron de verdad) para no terminar descontando la plata dos
+// veces si se edita la fecha o se paga antes de lo programado.
+function aplicarCompromisoDePago(p, fechaPago, formaPago, fondo){
+  p.pagosRealizados = (p.pagosRealizados||[]).filter(x=>x.aplicado!==false);
+  if(!fechaPago) return;
+  const aplicado = fechaPago<=today();
+  p.pagosRealizados.push({fecha:fechaPago, monto:p.monto, fondo, formaPago, aplicado});
+  if(aplicado){
+    if(fondo){
+      state.fondos[fondo] -= p.monto;
+      state.movimientosFima.push({id:newId('fm'), fecha:fechaPago, fondo, obraId:p.obraId, concepto:p.concepto, tipo:'out', monto:p.monto});
+    } else {
+      state.caja -= p.monto;
+    }
+  }
+}
 const obraManoObraReal = (o)=> (o.real.manoObra||0) + obraJornalesCostoReal(o);
 const obraRealTotal = (o)=> o.real.materiaPrima+obraManoObraReal(o)+o.real.logistica+o.real.estadia+o.real.otros;
 const obraPresTotal = (o)=> o.presupuesto.materiaPrima+o.presupuesto.manoObra+o.presupuesto.logistica+o.presupuesto.estadia;
@@ -2671,12 +2697,14 @@ function openModalStockCompra(){
       <div class="field"><label>Precio unitario ($, sin IVA)</label><input id="f-costo" class="mono-in" type="number" value="0"></div>
       <div class="field checkbox span2"><input type="checkbox" id="f-iva" checked><label>Aplica IVA (21%)</label></div>
       <div class="field"><label>Fecha de factura (para IVA)</label><input id="f-fecha-factura" type="date" value="${today()}"></div>
-      <div class="field"><label>Medio de pago</label><select id="f-forma"><option>A definir</option><option>Transferencia</option><option>Efectivo</option><option>eCheq</option><option>FIMA</option></select></div>
+      <div class="field"><label>Medio de pago</label><select id="f-forma" onchange="onMedioPagoChange()"><option>A definir</option><option>Transferencia</option><option>Efectivo</option><option>eCheq</option><option>FIMA</option></select></div>
       <div class="field checkbox"><input type="checkbox" id="f-sinfecha" checked onchange="document.getElementById('wrap-fecha').classList.toggle('hidden', this.checked)"><label>Sin fecha de pago todavía</label></div>
       <div class="field hidden" id="wrap-fecha"><label>Fecha de pago</label><input id="f-fechapago" type="date"></div>
+      <div class="field hidden" id="wrap-fondo"><label>Fondo que paga</label><select id="f-fondo">${fondoOptionsHTML()}</select></div>
     </div>
     <div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" onclick="submitStockCompra()">Registrar</button></div>`;
   overlay.classList.add('open');
+  onMedioPagoChange();
 }
 function submitStockCompra(){
   const stockId = document.getElementById('f-material').value;
@@ -2691,11 +2719,14 @@ function submitStockCompra(){
   const formaPago = document.getElementById('f-forma').value;
   const sinFecha = document.getElementById('f-sinfecha').checked;
   const fechaPago = sinFecha? null : (document.getElementById('f-fechapago').value || today());
+  const fondo = (!sinFecha && formaPago==='FIMA') ? document.getElementById('f-fondo').value : null;
   item.cantidad += cantidad;
   if(costoUnitario>0) item.costoUnitario = costoUnitario;
   marcarEditado('stock', item.id);
   state.stockMovimientos.push({id:newId('sm'), fecha: fechaPago||today(), tipo:'compra', stockId, cantidad, obraId:null, monto});
-  state.pagos.push({id:newId('p'), tipo:'stock', obraId:null, categoria:'stock', concepto:'Reposición de stock — '+item.nombre, cantidad, unitario:costoUnitario, ivaAplica, monto, proveedorId, numeroFactura, fechaFactura, formaPago, fechaPago, pagosRealizados:[]});
+  const p = {id:newId('p'), tipo:'stock', obraId:null, categoria:'stock', concepto:'Reposición de stock — '+item.nombre, cantidad, unitario:costoUnitario, ivaAplica, monto, proveedorId, numeroFactura, fechaFactura, formaPago, fechaPago, origenFondo:fondo, pagosRealizados:[]};
+  state.pagos.push(p);
+  aplicarCompromisoDePago(p, fechaPago, formaPago, fondo);
   closeModal(); renderAll();
 }
 
@@ -3136,13 +3167,15 @@ function openModalEfectivizarOrden(id){
       <div class="field"><label>Monto final ($, con IVA si aplica)</label><input id="f-monto" class="mono-in" type="number" value="${o.monto}"></div>
       <div class="field checkbox"><input type="checkbox" id="f-iva" ${o.ivaAplica?'checked':''}><label>El monto incluye IVA (21%)</label></div>
       <div class="field"><label>Fecha de factura (para IVA)</label><input id="f-fecha-factura" type="date" value="${today()}"></div>
-      <div class="field"><label>Medio de pago</label><select id="f-forma"><option>A definir</option><option>Transferencia</option><option>Efectivo</option><option>eCheq</option><option>FIMA</option></select></div>
+      <div class="field"><label>Medio de pago</label><select id="f-forma" onchange="onMedioPagoChange()"><option>A definir</option><option>Transferencia</option><option>Efectivo</option><option>eCheq</option><option>FIMA</option></select></div>
       <div class="field checkbox"><input type="checkbox" id="f-sinfecha" checked onchange="document.getElementById('wrap-fecha').classList.toggle('hidden', this.checked)"><label>Sin fecha de pago todavía</label></div>
       <div class="field hidden" id="wrap-fecha"><label>Fecha de pago</label><input id="f-fechapago" type="date"></div>
+      <div class="field hidden" id="wrap-fondo"><label>Fondo que paga</label><select id="f-fondo">${fondoOptionsHTML()}</select></div>
     </div>
     ${repartoHtml}
     <div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" onclick="submitEfectivizarOrden('${id}')">Confirmar compra</button></div>`;
   overlay.classList.add('open');
+  onMedioPagoChange();
 }
 function submitEfectivizarOrden(id){
   const o = getOrden(id);
@@ -3153,6 +3186,7 @@ function submitEfectivizarOrden(id){
   const formaPago = document.getElementById('f-forma').value;
   const sinFecha = document.getElementById('f-sinfecha').checked;
   const fechaPago = sinFecha ? null : (document.getElementById('f-fechapago').value || today());
+  const fondo = (!sinFecha && formaPago==='FIMA') ? document.getElementById('f-fondo').value : null;
   const montoNeto = ivaAplica ? monto/1.21 : monto;
 
   if(o.tipo==='stock'){
@@ -3182,8 +3216,9 @@ function submitEfectivizarOrden(id){
       const share = totalSub>0 ? subObra/totalSub : 1/idsOc.length;
       const montoObra = monto*share, montoNetoObra = montoNeto*share;
       const cantidadObra = itsObra.reduce((a,it)=>a+it.cantidad,0);
-      const pago = {id:newId('p'), tipo:'obra', obraId:obId, categoria:o.categoria||'costosFijos', concepto:ocProductosTxt({items:itsObra}), numeroOC:o.numero, cantidad:cantidadObra, unitario:cantidadObra?montoNetoObra/cantidadObra:montoNetoObra, ivaAplica, monto:montoObra, proveedorId:o.proveedorId, numeroFactura, fechaFactura, formaPago, fechaPago, pagosRealizados:[]};
+      const pago = {id:newId('p'), tipo:'obra', obraId:obId, categoria:o.categoria||'costosFijos', concepto:ocProductosTxt({items:itsObra}), numeroOC:o.numero, cantidad:cantidadObra, unitario:cantidadObra?montoNetoObra/cantidadObra:montoNetoObra, ivaAplica, monto:montoObra, proveedorId:o.proveedorId, numeroFactura, fechaFactura, formaPago, fechaPago, origenFondo:fondo, pagosRealizados:[]};
       state.pagos.push(pago);
+      aplicarCompromisoDePago(pago, fechaPago, formaPago, fondo);
       pagoIds.push(pago.id);
       const obra = getObra(obId); if(obra) recomputeObraReal(obra);
     });
@@ -3193,8 +3228,9 @@ function submitEfectivizarOrden(id){
     return;
   }
   const cantidadTotal = o.items.reduce((a,it)=>a+it.cantidad,0);
-  const pago = {id:newId('p'), tipo:o.tipo, obraId:o.obraId, categoria:o.categoria||'costosFijos', concepto:ocProductosTxt(o), numeroOC:o.numero, cantidad:cantidadTotal, unitario:cantidadTotal?montoNeto/cantidadTotal:montoNeto, ivaAplica, monto, proveedorId:o.proveedorId, numeroFactura, fechaFactura, formaPago, fechaPago, pagosRealizados:[]};
+  const pago = {id:newId('p'), tipo:o.tipo, obraId:o.obraId, categoria:o.categoria||'costosFijos', concepto:ocProductosTxt(o), numeroOC:o.numero, cantidad:cantidadTotal, unitario:cantidadTotal?montoNeto/cantidadTotal:montoNeto, ivaAplica, monto, proveedorId:o.proveedorId, numeroFactura, fechaFactura, formaPago, fechaPago, origenFondo:fondo, pagosRealizados:[]};
   state.pagos.push(pago);
+  aplicarCompromisoDePago(pago, fechaPago, formaPago, fondo);
   if(o.tipo==='obra'){ const obra=getObra(o.obraId); if(obra) recomputeObraReal(obra); }
   o.estado='comprada'; o.pagoId=pago.id;
   marcarEditado('ordenesCompra', o.id);
@@ -3482,7 +3518,7 @@ function openModalCompra(preselectObraId, editId){
       <div class="field"><label>Cantidad</label><input id="f-cantidad" class="mono-in" type="number" value="${editing?editing.cantidad:1}" oninput="previewCompraMonto()"></div>
       <div class="field" id="wrap-unitario"><label>Precio unitario ($)</label><input id="f-unitario" class="mono-in" type="number" value="${editing?editing.unitario:0}" oninput="previewCompraMonto()"></div>
       <div class="field checkbox span2" id="wrap-iva"><input type="checkbox" id="f-iva" onchange="previewCompraMonto()" ${editing&&editing.ivaAplica?'checked':''}><label>Aplica IVA (21%)</label></div>
-      <div class="field" id="wrap-forma"><label>Medio de pago</label><select id="f-forma">
+      <div class="field" id="wrap-forma"><label>Medio de pago</label><select id="f-forma" onchange="onMedioPagoChange()">
         <option ${medioActual==='A definir'?'selected':''}>A definir</option>
         <option ${medioActual==='Transferencia'?'selected':''}>Transferencia</option>
         <option ${medioActual==='Efectivo'?'selected':''}>Efectivo</option>
@@ -3491,11 +3527,12 @@ function openModalCompra(preselectObraId, editId){
       </select></div>
       <div class="field checkbox" id="wrap-sinfecha"><input type="checkbox" id="f-sinfecha" ${(!editing||!editing.fechaPago)?'checked':''} onchange="toggleFechaPago()"><label>Sin fecha de pago todavía</label></div>
       <div class="field ${(!editing||!editing.fechaPago)?'hidden':''}" id="wrap-fecha"><label>Fecha de pago</label><input id="f-fechapago" type="date" value="${editing&&editing.fechaPago?editing.fechaPago:''}"></div>
+      <div class="field hidden" id="wrap-fondo"><label>Fondo que paga</label><select id="f-fondo">${fondoOptionsHTML(editing?editing.origenFondo:null)}</select></div>
     </div>
     <div class="modal-preview" style="background:var(--teal-soft);border-radius:10px;padding:12px 14px;margin-top:12px;font-size:13px;color:var(--teal-deep);font-family:'Montserrat',sans-serif;" id="compra-preview">Monto: $ 0</div>
     <div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" onclick="submitCompra('${editId||''}')">${editing?'Guardar cambios':'Registrar'}</button></div>`;
   overlay.classList.add('open');
-  syncCompraTipoVisibility(); previewCompraMonto();
+  syncCompraTipoVisibility(); previewCompraMonto(); onMedioPagoChange();
 }
 function syncCompraTipoVisibility(){
   const tipo = document.getElementById('f-tipo').value;
@@ -3578,16 +3615,24 @@ function submitCompra(editId){
   const formaPago = document.getElementById('f-forma').value;
   const sinFecha = document.getElementById('f-sinfecha').checked;
   const fechaPago = sinFecha? null : (document.getElementById('f-fechapago').value || today());
+  const fondo = (!sinFecha && formaPago==='FIMA') ? document.getElementById('f-fondo').value : null;
 
   if(editId){
     const p = state.pagos.find(x=>x.id===editId);
     const obraAnteriorId = p.obraId;
+    // Si ya se pagó algo de verdad (parcial o total), no se toca el
+    // compromiso acá — para eso está "Revertir a pendiente" primero.
+    const yaHayPagoReal = (p.pagosRealizados||[]).some(x=>x.aplicado!==false);
     Object.assign(p, {tipo, obraId, categoria, concepto, cantidad, unitario, ivaAplica, monto, proveedorId, numeroFactura, numeroOC, fechaFactura, formaPago, fechaPago});
+    if(fondo) p.origenFondo = fondo;
     marcarEditado('pagos', editId);
+    if(!yaHayPagoReal) aplicarCompromisoDePago(p, fechaPago, formaPago, fondo);
     if(obraAnteriorId){ const oAnterior=getObra(obraAnteriorId); if(oAnterior) recomputeObraReal(oAnterior); }
     if(tipo==='obra' && obraId && obraId!==obraAnteriorId){ const o=getObra(obraId); if(o) recomputeObraReal(o); }
   } else {
-    state.pagos.push({id:newId('p'), tipo, obraId, categoria, concepto, cantidad, unitario, ivaAplica, monto, proveedorId, numeroFactura, numeroOC, fechaFactura, formaPago, fechaPago, pagosRealizados:[]});
+    const p = {id:newId('p'), tipo, obraId, categoria, concepto, cantidad, unitario, ivaAplica, monto, proveedorId, numeroFactura, numeroOC, fechaFactura, formaPago, fechaPago, origenFondo:fondo, pagosRealizados:[]};
+    state.pagos.push(p);
+    aplicarCompromisoDePago(p, fechaPago, formaPago, fondo);
     if(tipo==='obra'){ const o=getObra(obraId); if(o) recomputeObraReal(o); }
   }
   closeModal(); renderAll();
@@ -3626,7 +3671,12 @@ function submitFinalizarPago(pagoId){
   const esFutura = fecha > today();
   p.formaPago = formaPago;
   p.fechaPago = fecha;
-  p.pagosRealizados = p.pagosRealizados||[];
+  // Saca cualquier compromiso previo todavía sin aplicar (ej. si esto ya
+  // estaba "Programado" y ahora se está pagando antes, o se está
+  // reprogramando a otra fecha) — si no, ese compromiso viejo quedaría
+  // pegado y terminaría descontando la plata dos veces cuando llegue su
+  // fecha original. Nunca toca lo que ya se pagó de verdad.
+  p.pagosRealizados = (p.pagosRealizados||[]).filter(x=>x.aplicado!==false);
   p.pagosRealizados.push({fecha, monto, fondo, formaPago, aplicado: !esFutura});
   if(fondo) p.origenFondo = fondo;
   marcarEditado('pagos', pagoId);

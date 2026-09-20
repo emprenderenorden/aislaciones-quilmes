@@ -784,3 +784,52 @@ archivo. Una vez desplegado, tildar el ítem de arriba o borrar la sección.
     coinciden exactamente con el cálculo esperado a mano; la sección
     aparece al final del detalle de la obra (después de "Presupuestado
     vs. real — detalle") y el PDF se genera sin errores.
+- **Fix importante: cargar la fecha de pago al registrar un gasto no lo
+  dejaba "Programado" — se quedaba "Pendiente" para siempre.** Había dos
+  caminos para poner una fecha de pago a un gasto, que a simple vista se
+  ven iguales pero hacían cosas distintas: "Registrar pago →" (sobre un
+  gasto ya cargado) sí generaba un compromiso real que madura solo
+  cuando llega la fecha (`reconciliarPagosProgramados`, corre al abrir
+  la app); pero cargar la fecha y el medio de pago directo al crear el
+  gasto — en "Registrar compra/gasto", "Registrar compra de stock" o al
+  "Marcar como comprada" una orden de compra — solo dejaba esos datos
+  anotados como referencia, sin crear ningún compromiso. El gasto
+  quedaba "Pendiente" (nunca "Programado") y no se marcaba solo como
+  pagado al llegar la fecha — alguien tenía que acordarse de entrar y
+  tocar "Registrar pago →" a mano más adelante.
+  - **Arreglo:** los tres lugares de carga ahora usan el mismo mecanismo
+    que ya tenía "Registrar pago →" (`aplicarCompromisoDePago`): si la
+    fecha cargada ya llegó, se aplica al toque (sale la plata ya); si es
+    futura, queda "Programado" y madura solo. También se sumó un
+    selector de "Fondo que paga" en esos tres formularios (antes solo
+    estaba en "Registrar pago →") para cuando el medio elegido es FIMA.
+    Quedan así los 3 estados esperados sin importar por cuál de los
+    cuatro caminos se cargó: sin fecha → Pendiente, con fecha futura →
+    Programado, fecha ya llegada → Pagado. Editar la fecha de un gasto
+    todavía sin pagar (Pendiente o Programado) también actualiza el
+    compromiso — antes, editar la fecha de un "Programado" no tocaba el
+    compromiso ya creado y maduraba solo con la fecha vieja.
+  - **Bug relacionado, encontrado en el camino:** si un gasto "Programado"
+    se terminaba pagando antes de la fecha prevista (por "Registrar pago
+    →"), el compromiso viejo sin aplicar quedaba pegado en el registro —
+    y cuando llegaba esa fecha vieja, `reconciliarPagosProgramados` lo
+    volvía a aplicar, **descontando la plata dos veces**. Ahora, tanto
+    `aplicarCompromisoDePago` como `submitFinalizarPago` sacan cualquier
+    compromiso previo todavía sin aplicar antes de cargar el nuevo — sin
+    tocar nunca lo que ya se pagó de verdad.
+  - **Límite conocido:** no soporta programar el mismo gasto en dos
+    fechas futuras distintas a la vez (ej. mitad con cheque a 30 días y
+    mitad a 60) — el segundo compromiso reemplaza al primero en vez de
+    sumarse. Es un caso raro y ya era poco claro antes de este arreglo;
+    si hace falta avisá para verlo aparte.
+  - Probado en un entorno aislado: cargar un gasto con fecha futura
+    (queda Programado, no descuenta caja) y con fecha de hoy (queda
+    Pagado, descuenta caja al toque); editar la fecha de uno Programado
+    a otra fecha futura (un solo compromiso, con la fecha nueva, no
+    duplica); pagar uno Programado antes de tiempo por "Registrar pago
+    →" (reemplaza el compromiso viejo, descuenta una sola vez, y
+    `reconciliarPagosProgramados` corrido después no vuelve a
+    descontar); "Registrar compra de stock" con fecha futura (mismo
+    comportamiento); "Marcar como comprada" una orden con medio FIMA y
+    fecha futura (aparece el selector de fondo, queda Programado sin
+    descontar el fondo todavía).
