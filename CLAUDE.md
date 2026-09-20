@@ -890,3 +890,21 @@ archivo. Una vez desplegado, tildar el ítem de arriba o borrar la sección.
     sigue presente; una obra con presupuesto normal, probada en paralelo,
     sigue mostrando todo exactamente igual que antes (sin "Sin
     presupuesto" en ningún lado, con sus % de desvío normales).
+- **Nuevo: orden de la tabla de Obras y card de obras excedidas en
+  Resultados.**
+  - La tabla de Obras ahora ordena por fecha de inicio (de más antigua a
+    más nueva) y deja las obras en estado "finalizada" todas al final
+    (también ordenadas por fecha entre ellas) — para que no se vayan
+    acumulando arriba y tapando las obras activas.
+  - Resultados suma una card "Obras excedidas este mes": cuenta las
+    obras que tuvieron algún gasto pagado ese mes puntual y que, mirando
+    su costo real acumulado hasta hoy, están por encima de su
+    presupuesto total (las obras sin presupuesto quedan afuera del
+    conteo, coherente con el cambio anterior) — la nota de la card lista
+    los códigos de esas obras.
+  - Probado en un entorno aislado: 4 obras con distintas fechas y
+    estados confirman el orden esperado (activas por fecha, finalizadas
+    al final); una obra con un gasto cargado en el mes seleccionado que
+    supera su presupuesto aparece contada y nombrada en la card nueva,
+    mientras que una obra con gasto ese mes pero dentro de presupuesto
+    no se cuenta.

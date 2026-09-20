@@ -1309,6 +1309,13 @@ function renderObraLista(){
     if(hasta && o.fechaInicio > hasta) return false;
     if(q && !(o.code.toLowerCase().includes(q) || (o.cliente||'').toLowerCase().includes(q) || (o.encargado||'').toLowerCase().includes(q))) return false;
     return true;
+  }).sort((a,b)=>{
+    // Las finalizadas van todas al final (para que no se acumulen arriba
+    // tapando las obras activas) — dentro de cada grupo, de más antigua a
+    // más nueva por fecha de inicio.
+    const finA = a.estado==='finalizada', finB = b.estado==='finalizada';
+    if(finA!==finB) return finA ? 1 : -1;
+    return (a.fechaInicio||'').localeCompare(b.fechaInicio||'');
   });
   document.getElementById('obra-lista-body').innerHTML = rows.length ? rows.map(o=>{
     const sinPres = obraSinPresupuesto(o);
@@ -3909,12 +3916,18 @@ function renderResultados(){
   const aportes = fimaAportes().filter(m=>m.fecha.slice(0,7)===mes);
   const totalAportes = aportes.reduce((a,m)=>a+m.monto,0);
   const pendientes = state.pagos.filter(p=>pagoEstado(p)!=='pagado' && p.fechaPago && p.fechaPago.slice(0,7)===mes);
+  // Obras que tuvieron algún gasto pagado este mes y que, mirando su total
+  // acumulado hasta hoy, están por encima de su presupuesto (las obras sin
+  // presupuesto quedan afuera — no hay contra qué compararlas).
+  const obraIdsConGastoEsteMes = new Set(r.egresosPagos.filter(ev=>ev.pago.tipo==='obra' && ev.pago.obraId).map(ev=>ev.pago.obraId));
+  const obrasExcedidas = [...obraIdsConGastoEsteMes].map(getObra).filter(o=>o && !obraSinPresupuesto(o) && obraRealTotal(o)>obraPresTotal(o));
 
   document.getElementById('res-kpi-row').innerHTML = `
     <div class="card kpi"><div class="kpi-label">Ingresos del mes</div><div class="kpi-value">${fmt(r.totalIngresos)}</div><div class="kpi-note">${r.ingresos.length} cobro(s)</div></div>
     <div class="card kpi"><div class="kpi-label">Egresos del mes</div><div class="kpi-value">${fmt(r.totalEgresos)}</div><div class="kpi-note">${r.egresosPagos.length} pago(s) + ${r.egresosJornales.length} semana(s) de jornales</div></div>
     <div class="card kpi"><div class="kpi-label">Resultado del mes</div><div class="kpi-value" style="color:${r.resultado>=0?'var(--good)':'var(--bad)'};">${fmt(r.resultado)}</div><div class="kpi-note">${delta>=0?'+':''}${fmt(delta)} vs. mes anterior</div></div>
     <div class="card kpi"><div class="kpi-label">Aportes a FIMA</div><div class="kpi-value">${fmt(totalAportes)}</div><div class="kpi-note">No afecta el resultado (inversión)</div></div>
+    <div class="card kpi"><div class="kpi-label">Obras excedidas este mes</div><div class="kpi-value" style="color:${obrasExcedidas.length?'var(--bad)':'var(--good)'};">${obrasExcedidas.length}</div><div class="kpi-note">${obrasExcedidas.length ? obrasExcedidas.map(o=>o.code).join(', ') : 'Ninguna'}</div></div>
   `;
 
   document.getElementById('res-ingresos-body').innerHTML = r.ingresos.length ? r.ingresos.map(i=>`<tr><td class="mono">${fmtFecha(i.fecha)}</td><td><span class="obra-code">${getObra(i.obraId)?.code||''}</span></td><td>${i.medioPago}</td><td>${i.numeroFactura||'—'}</td><td>${i.numeroCobranza||'—'}</td><td class="num">${fmt(i.monto)}</td></tr>`).join('') : `<tr class="empty-row"><td colspan="6">Sin cobros este mes</td></tr>`;
