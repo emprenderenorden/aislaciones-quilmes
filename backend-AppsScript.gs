@@ -61,7 +61,7 @@ const SCHEMAS = {
     'fechaPago', 'numeroOC', 'origenFondo', 'pagosRealizadosJSON'],
   ordenesCompra: ['id', 'numero', 'fecha', 'solicitante', 'tipo', 'obraId', 'categoria',
     'itemsJSON', 'monto', 'ivaAplica', 'proveedorId', 'estado', 'comentarioDueno', 'pagoId',
-    'cotizacionUsd', 'notaMaterial', 'notaGeneral', 'moneda'],
+    'cotizacionUsd', 'notaMaterial', 'notaGeneral', 'moneda', 'obraIdsJSON', 'pagoIdsJSON'],
   proveedores: ['id', 'nombre', 'cuit', 'telefono', 'email'],
   stock: ['id', 'nombre', 'unidad', 'cantidad', 'costoUnitario', 'categoria', 'stockMinimo'],
   stockMovimientos: ['id', 'fecha', 'tipo', 'stockId', 'cantidad', 'obraId', 'monto'],
@@ -209,6 +209,7 @@ function readState_() {
     comentarioDueno: toStrOrNull_(r.comentarioDueno), pagoId: toStrOrNull_(r.pagoId),
     cotizacionUsd: toNumOrNull_(r.cotizacionUsd), notaMaterial: r.notaMaterial || '',
     notaGeneral: r.notaGeneral || '', moneda: r.moneda || 'ars',
+    obraIds: parseJsonField_(r.obraIdsJSON, undefined), pagoIds: parseJsonField_(r.pagoIdsJSON, []),
   }));
 
   const proveedores = sheetToRows_(ss.getSheetByName(SHEET_NAMES.proveedores), SCHEMAS.proveedores);
@@ -286,6 +287,7 @@ function writeState_(state) {
     o.id, o.numero, o.fecha, o.solicitante, o.tipo, o.obraId, o.categoria,
     JSON.stringify(o.items || []), o.monto, o.ivaAplica ? 'TRUE' : 'FALSE', o.proveedorId, o.estado, o.comentarioDueno,
     o.pagoId, o.cotizacionUsd, o.notaMaterial || '', o.notaGeneral || '', o.moneda || 'ars',
+    o.obraIds && o.obraIds.length ? JSON.stringify(o.obraIds) : '', JSON.stringify(o.pagoIds || []),
   ]);
 
   writeRows_(ss.getSheetByName(SHEET_NAMES.proveedores), SCHEMAS.proveedores, state.proveedores || [],

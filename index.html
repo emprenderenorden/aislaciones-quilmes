@@ -428,7 +428,7 @@
       </div>
     </div>
     <div class="card card-table"><table>
-      <thead><tr><th>Personal</th><th>Puesto</th><th class="num">Sueldo mensual</th><th class="num">Sueldo diario</th><th class="num">Días trabajados</th><th class="num">Días ausentes</th><th class="num">Horas extra</th><th class="num">Sueldo a cobrar</th><th></th></tr></thead>
+      <thead><tr><th>Personal</th><th>Puesto</th><th class="num">Sueldo mensual</th><th class="num">Sueldo diario</th><th class="num">Días trabajados</th><th class="num">Días ausentes</th><th class="num">Horas extra</th><th class="num">1ª quincena (transf.)</th><th class="num">2ª quincena (efvo.)</th><th class="num">Sueldo a cobrar</th><th></th></tr></thead>
       <tbody id="jornales-historial-body"></tbody>
     </table></div>
   </div>
@@ -478,6 +478,7 @@
     <div class="topbar">
       <div><h1>Pagos</h1><div class="sub">Gastos fijos, gastos de obra e ingresos al fondo FIMA</div></div>
       <div class="topbar-actions">
+        <button class="btn btn-ghost hidden" id="btn-pdf-pagos" onclick="imprimirPagos()" title="Abrir para imprimir o guardar como PDF">⬇ Descargar PDF</button>
         <button class="btn btn-ghost" onclick="openModalMovimientoFima()">+ Ingreso a FIMA</button>
         <button class="btn btn-primary" onclick="openModalCompra(null)">+ Registrar pago</button>
       </div>
@@ -573,7 +574,7 @@
 
     <div class="kpi-row" id="res-kpi-row"></div>
 
-    <div class="section-title"><h2>Ingresos del mes</h2><span class="hint">Cobros registrados en obras</span></div>
+    <div class="section-title"><h2>Ingresos del mes</h2><div style="display:flex;align-items:center;gap:12px;"><span class="hint">Cobros registrados en obras</span><span class="link-btn" onclick="imprimirCobranzas()" title="Abrir para imprimir o guardar como PDF">⬇ Descargar PDF</span></div></div>
     <div class="card card-table"><table>
       <thead><tr><th>Fecha</th><th>Obra</th><th>Medio de pago</th><th>Nº factura</th><th>Nº cobranza</th><th class="num">Monto</th></tr></thead>
       <tbody id="res-ingresos-body"></tbody>
@@ -674,6 +675,11 @@ const fondoLabel = {costosFijos:'Costos Fijos', jornales:'Jornales', impuestos:'
 function fondoOptionsHTML(selected){ return Object.entries(fondoLabel).map(([k,l])=>`<option value="${k}" ${selected===k?'selected':''}>${l}</option>`).join(''); }
 const fmt = (n)=> '$ ' + Math.round(n||0).toLocaleString('es-AR');
 const fmtUsd = (n)=> 'US$ ' + Math.round(n||0).toLocaleString('en-US');
+// Igual que fmt/fmtUsd pero con 2 decimales — reservado para las órdenes de
+// compra (precios unitarios de materiales, que sí suelen venir con
+// centavos), sin tocar el resto de la app donde los montos van redondeados.
+const fmtDec = (n)=> '$ ' + (n||0).toLocaleString('es-AR', {minimumFractionDigits:2, maximumFractionDigits:2});
+const fmtUsdDec = (n)=> 'US$ ' + (n||0).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
 // Las fechas se guardan/comparan siempre en formato ISO (YYYY-MM-DD); esto
 // solo se usa para MOSTRARLAS como dd/mm/aaaa. Si llega algo que no tiene
 // pinta de fecha ISO (por ejemplo un valor viejo que quedó mal guardado como
@@ -1452,7 +1458,7 @@ function obraPagosRows(obraId){
   const pagoRows = state.pagos.filter(p=>p.obraId===obraId && (catFiltro==='todas' || p.categoria===catFiltro)).map(p=>{
     const est = pagoEstado(p);
     const {dot:estadoDot, txt:estadoTxt} = pagoEstadoInfo(est);
-    let action = (!state.ordenesCompra.some(oc=>oc.pagoId===p.id) && !p.origenFondo) ? `<span class="link-btn" onclick="openModalCompra(null,'${p.id}')">Editar</span>` : '';
+    let action = (!ocLigadaAPago(p.id) && !p.origenFondo) ? `<span class="link-btn" onclick="openModalCompra(null,'${p.id}')">Editar</span>` : '';
     if(est!=='pagado') action += `${action?' · ':''}<span class="link-btn" onclick="openModalFinalizarPago('${p.id}')">Registrar pago →</span>`;
     if(est==='pagado'||est==='parcial'||est==='programado') action += `${action?' · ':''}<span class="link-btn danger" onclick="revertirPago('${p.id}')">${est==='programado'?'Cancelar programado':'Revertir a pendiente'}</span>`;
     action += `${action?' · ':''}<span class="link-btn danger" onclick="eliminarGasto('${p.id}')">Eliminar</span>`;
@@ -1573,9 +1579,19 @@ function eliminarObra(id){
   });
 
   // Ordenes de compra: si su pago sigue existiendo (tenía plata real), se
-  // desvinculan; el resto (sin plata real todavía) se borra.
+  // desvinculan; el resto (sin plata real todavía) se borra. Una OC
+  // repartida entre varias obras (obraIds) solo pierde la porción de la
+  // obra eliminada — el resto de la orden y de las obras sigue intacto.
   state.ordenesCompra = state.ordenesCompra.filter(oc=>{
-    if(oc.obraId!==id) return true;
+    const idsOc = ocObraIds(oc);
+    if(!idsOc.includes(id)) return true;
+    if(idsOc.length>1){
+      oc.obraIds = idsOc.filter(x=>x!==id);
+      (oc.items||[]).forEach(it=>{ if(it.obraId===id) it.obraId=null; });
+      if(oc.pagoIds) oc.pagoIds = oc.pagoIds.filter(pid=>state.pagos.some(p=>p.id===pid));
+      marcarEditado('ordenesCompra', oc.id);
+      return true;
+    }
     if(oc.pagoId && state.pagos.find(p=>p.id===oc.pagoId)){ oc.obraId=null; marcarEditado('ordenesCompra', oc.id); return true; }
     marcarEliminado('ordenesCompra', oc.id);
     return false;
@@ -2010,11 +2026,54 @@ function horasExtraDelMes(trabajadorId, mes){
   });
   return total;
 }
+// Aunque el sueldo se carga mensual, el pago es quincenal (1ª quincena por
+// transferencia, 2ª en efectivo) — antes la ausencia descontaba el sueldo
+// diario proporcional de cada persona; ahora descuenta un monto fijo para
+// cualquiera, sea cual sea su sueldo.
+const DESCUENTO_AUSENCIA = 100000;
+function quincenaDeFecha(fecha){ return +fecha.slice(8,10)<=15 ? 1 : 2; }
+// Igual que diasDelMes, pero separado por quincena para el desglose de pago.
+function diasDelMesPorQuincena(trabajadorId, mes){
+  const res = { 1:{trabajado:0, ausente:0}, 2:{trabajado:0, ausente:0} };
+  state.jornales.forEach(row=>{
+    if(row.trabajadorId!==trabajadorId) return;
+    row.dias.forEach((cell,i)=>{
+      const fecha = addDays(row.semanaInicio, i);
+      if(fecha.slice(0,7)!==mes) return;
+      if(cell.estado!=='trabajado' && cell.estado!=='ausente') return;
+      res[quincenaDeFecha(fecha)][cell.estado]++;
+    });
+  });
+  return res;
+}
+// Las horas extra se cargan como un total por obra (no por día puntual) —
+// se atribuyen a la quincena de la fecha de inicio de esa obra, mismo
+// criterio que ya se usaba para atribuirlas al mes.
+function horasExtraPorQuincena(trabajadorId, mes){
+  const res = {1:0, 2:0};
+  state.obras.forEach(o=>{
+    if(!o.fechaInicio || o.fechaInicio.slice(0,7)!==mes) return;
+    const h = o.jornalesConfig && o.jornalesConfig.horasExtra && o.jornalesConfig.horasExtra[trabajadorId];
+    if(h) res[quincenaDeFecha(o.fechaInicio)] += Number(h)||0;
+  });
+  return res;
+}
+// Sueldo por quincena: mitad del sueldo mensual, menos $100.000 fijos por
+// cada ausencia que cayó en esa quincena puntual (nunca por debajo de $0,
+// no se arrastra el excedente a la otra quincena), más las horas extra de
+// esa quincena. El pago del sueldo en sí sigue sin generar gasto ni
+// movimiento de FIMA — esto es solo el desglose de cuánto corresponde en
+// cada una (ver CLAUDE.md).
+function sueldoPorQuincena(trabajador, mes){
+  const base = (trabajador.sueldoMensual||0)/2;
+  const porQ = diasDelMesPorQuincena(trabajador.id, mes);
+  const horasExtra = horasExtraPorQuincena(trabajador.id, mes);
+  const calc = (q) => Math.max(0, base - porQ[q].ausente*DESCUENTO_AUSENCIA) + horasExtra[q]*VALOR_HORA_EXTRA;
+  return { q1: calc(1), q2: calc(2) };
+}
 function sueldoACobrar(trabajador, mes){
-  const diario = sueldoDiarioTrabajador(trabajador, mes);
-  const {ausente} = diasDelMes(trabajador.id, mes);
-  const horasExtra = horasExtraDelMes(trabajador.id, mes);
-  return Math.max(0, (trabajador.sueldoMensual||0) - ausente*diario) + horasExtra*VALOR_HORA_EXTRA;
+  const {q1, q2} = sueldoPorQuincena(trabajador, mes);
+  return q1+q2;
 }
 function renderJornalesHistorial(){
   const mes = document.getElementById('jh-mes')?.value || today().slice(0,7);
@@ -2025,16 +2084,16 @@ function renderJornalesHistorial(){
 
   const body = document.getElementById('jornales-historial-body');
   if(!ids.length){ body.innerHTML = `<tr class="empty-row"><td colspan="9">No hay personal cargado</td></tr>`; return; }
-  let granT=0, granA=0, granSueldo=0;
+  let granT=0, granA=0, granQ1=0, granQ2=0;
   body.innerHTML = ids.map(id=>{
     const t = getTrabajador(id);
     const {trabajado, ausente} = diasDelMes(id, mes);
     const diario = sueldoDiarioTrabajador(t, mes);
     const horasExtra = horasExtraDelMes(id, mes);
-    const sueldo = sueldoACobrar(t, mes);
-    granT+=trabajado; granA+=ausente; granSueldo+=sueldo;
-    return `<tr><td style="font-weight:600;">${t.nombre}</td><td>${t.puesto}</td><td class="num">${fmt(t.sueldoMensual||0)}</td><td class="num">${fmt(diario)}</td><td class="num">${trabajado}</td><td class="num">${ausente}</td><td class="num">${horasExtra}</td><td class="num">${fmt(sueldo)}</td><td><span class="link-btn" onclick="openModalObrasTrabajador('${id}','${mes}')">Ver obras</span> · <span class="link-btn" onclick="openModalTrabajador('${id}')">Editar</span></td></tr>`;
-  }).join('') + `<tr class="subtotal-row"><td colspan="4">Total general</td><td class="num">${granT}</td><td class="num">${granA}</td><td></td><td class="num">${fmt(granSueldo)}</td><td></td></tr>`;
+    const {q1, q2} = sueldoPorQuincena(t, mes);
+    granT+=trabajado; granA+=ausente; granQ1+=q1; granQ2+=q2;
+    return `<tr><td style="font-weight:600;">${t.nombre}</td><td>${t.puesto}</td><td class="num">${fmt(t.sueldoMensual||0)}</td><td class="num">${fmt(diario)}</td><td class="num">${trabajado}</td><td class="num">${ausente}</td><td class="num">${horasExtra}</td><td class="num">${fmt(q1)}</td><td class="num">${fmt(q2)}</td><td class="num">${fmt(q1+q2)}</td><td><span class="link-btn" onclick="openModalObrasTrabajador('${id}','${mes}')">Ver obras</span> · <span class="link-btn" onclick="openModalTrabajador('${id}')">Editar</span></td></tr>`;
+  }).join('') + `<tr class="subtotal-row"><td colspan="4">Total general</td><td class="num">${granT}</td><td class="num">${granA}</td><td></td><td class="num">${fmt(granQ1)}</td><td class="num">${fmt(granQ2)}</td><td class="num">${fmt(granQ1+granQ2)}</td><td></td></tr>`;
 }
 function diasPorObra(trabajadorId, mes){
   const porObra = {};
@@ -2333,7 +2392,7 @@ function eliminarMovimientoFima(idx){
   marcarEliminado('movimientosFima', m.id);
   if(pagoLigado){
     marcarEliminado('pagos', pagoLigado.id);
-    state.ordenesCompra.forEach(oc=>{ if(oc.pagoId===pagoLigado.id){ oc.pagoId=null; oc.estado='pendiente'; marcarEditado('ordenesCompra', oc.id); } });
+    desvincularOcDePago(pagoLigado.id);
     state.pagos = state.pagos.filter(p=>p!==pagoLigado);
   }
   state.movimientosFima.splice(idx,1);
@@ -2503,6 +2562,24 @@ function nextOcNumero(){
   return 'OC-' + String(n).padStart(4,'0');
 }
 function getOrden(id){ return state.ordenesCompra.find(o=>o.id===id); }
+// Una OC de tipo 'obra' apunta a una sola obra (`obraId`, como siempre) o,
+// si se cargó para varias, a `obraIds` — este helper normaliza los dos
+// casos a una lista.
+function ocObraIds(o){ return (o.obraIds && o.obraIds.length) ? o.obraIds : (o.obraId ? [o.obraId] : []); }
+// Un pago puede estar ligado a una OC por `pagoId` (compra de una sola
+// obra) o estar incluido en `pagoIds` (compra repartida entre varias) —
+// estos dos helpers evitan chequear los dos campos en cada lugar.
+function ocLigadaAPago(pagoId){ return state.ordenesCompra.some(oc=>oc.pagoId===pagoId || (oc.pagoIds||[]).includes(pagoId)); }
+function desvincularOcDePago(pagoId){
+  state.ordenesCompra.forEach(oc=>{
+    if(oc.pagoId===pagoId){ oc.pagoId=null; oc.estado='pendiente'; marcarEditado('ordenesCompra', oc.id); }
+    else if((oc.pagoIds||[]).includes(pagoId)){
+      oc.pagoIds = oc.pagoIds.filter(x=>x!==pagoId);
+      if(!oc.pagoIds.length) oc.estado='pendiente'; // se borraron los pagos de todas las obras
+      marcarEditado('ordenesCompra', oc.id);
+    }
+  });
+}
 function setOrdenesFilter(f){ state.ordenesFilter=f; document.querySelectorAll('#view-ordenes .filter-tab').forEach(t=>t.classList.toggle('active', t.dataset.filter===f)); renderOrdenes(); }
 function ocBadge(numeroOC){ return numeroOC ? `<span class="oc-code">${numeroOC}</span>` : '—'; }
 function verOrdenEnPagos(id){
@@ -2557,17 +2634,11 @@ function submitConfigEmpresa(){
     closeModal(); renderAll();
   }
 }
-function imprimirOrden(id){
-  const o = getOrden(id); if(!o) return;
-  const e = state.datosEmpresa;
-  const prov = getProveedor(o.proveedorId);
-  const obra = o.tipo==='obra' ? getObra(o.obraId) : null;
-  const estadoTxt = {pendiente:'Pendiente de autorización', autorizada:'Autorizada', comprada:'Comprada', rechazada:'Rechazada'}[o.estado];
-  const condicionesLis = (e.condicionesGenerales||'').split('\n').map(l=>l.trim()).filter(Boolean).map(l=>`<li>${l}</li>`).join('');
-  const win = window.open('', '_blank');
-  if(!win){ alert('El navegador bloqueó la ventana emergente. Habilitá los pop-ups para descargar la orden.'); return; }
-  win.document.write(`<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>${o.numero} — Orden de compra</title>
-  <style>
+// CSS compartido por todos los documentos imprimibles (OC, Pagos,
+// Cobranzas) — una ventana nueva con este layout y window.print(), para que
+// el usuario elija "Guardar como PDF" desde el diálogo de impresión.
+function printCss(){
+  return `
     *{box-sizing:border-box;} body{font-family:Arial,Helvetica,sans-serif;color:#14181C;padding:32px;max-width:780px;margin:0 auto;font-size:13px;}
     h1{font-size:18px;margin:0 0 2px;} .sub{color:#6B7573;font-size:12px;}
     .head{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #14181C;padding-bottom:14px;margin-bottom:16px;}
@@ -2585,9 +2656,14 @@ function imprimirOrden(id){
     .firmas{display:flex;gap:24px;margin-top:36px;} .firmas div{flex:1;border-top:1px solid #333;padding-top:6px;font-size:11.5px;color:#6B7573;text-align:center;}
     .foot{margin-top:24px;font-size:10.5px;color:#9AA3A1;text-align:center;}
     @media print{ body{padding:0;} }
-  </style></head>
-  <body>
-    <div class="head">
+  `;
+}
+// Bloque de encabezado con el logo/datos de la empresa (izquierda) y un
+// badge + título + líneas de detalle (derecha) — igual en todos los
+// documentos imprimibles.
+function printHeaderHtml(badge, titulo, subLineas){
+  const e = state.datosEmpresa;
+  return `<div class="head">
       <div class="emp">
         ${e.logoDataUrl?`<img src="${e.logoDataUrl}" alt="Logo" style="max-height:54px;max-width:220px;display:block;margin-bottom:8px;">`:''}
         <b>${e.nombre}</b>
@@ -2598,14 +2674,35 @@ function imprimirOrden(id){
         ${e.condicionImpositiva?`<div>${e.condicionImpositiva}</div>`:''}
       </div>
       <div class="oc">
-        <div class="badge">ORDEN DE COMPRA</div>
-        <h1 style="margin-top:8px;">${o.numero}</h1>
-        <div class="sub">Fecha: ${fmtFecha(o.fecha)}</div>
-        <div class="sub">Estado: ${estadoTxt}</div>
-        ${obra?`<div class="sub">Obra Nº: <b>${obra.code}</b></div>`:''}
+        <div class="badge">${badge}</div>
+        <h1 style="margin-top:8px;">${titulo}</h1>
+        ${subLineas.map(s=>`<div class="sub">${s}</div>`).join('')}
       </div>
-    </div>
-
+    </div>`;
+}
+function abrirVentanaImpresion(tituloVentana, bodyHtml){
+  const win = window.open('', '_blank');
+  if(!win){ alert('El navegador bloqueó la ventana emergente. Habilitá los pop-ups para descargar el PDF.'); return; }
+  win.document.write(`<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>${tituloVentana}</title><style>${printCss()}</style></head>
+  <body>
+    ${bodyHtml}
+    <div class="foot">Generado por el sistema de gestión de ${state.datosEmpresa.nombre} — ${today()}</div>
+    <script>window.onload=function(){ window.print(); };<\/script>
+  </body></html>`);
+  win.document.close();
+}
+function imprimirOrden(id){
+  const o = getOrden(id); if(!o) return;
+  const e = state.datosEmpresa;
+  const prov = getProveedor(o.proveedorId);
+  const obrasCodes = o.tipo==='obra' ? ocObraIds(o).map(oid=>getObra(oid)?.code).filter(Boolean) : [];
+  const estadoTxt = {pendiente:'Pendiente de autorización', autorizada:'Autorizada', comprada:'Comprada', rechazada:'Rechazada'}[o.estado];
+  const condicionesLis = (e.condicionesGenerales||'').split('\n').map(l=>l.trim()).filter(Boolean).map(l=>`<li>${l}</li>`).join('');
+  const header = printHeaderHtml('ORDEN DE COMPRA', o.numero, [
+    `Fecha: ${fmtFecha(o.fecha)}`, `Estado: ${estadoTxt}`, obrasCodes.length?`Obra${obrasCodes.length>1?'s':''} Nº: <b>${obrasCodes.join(', ')}</b>`:null,
+  ].filter(Boolean));
+  abrirVentanaImpresion(`${o.numero} — Orden de compra`, `
+    ${header}
     <div class="box">
       <h4>Proveedor</h4>
       <div><b>${prov?prov.nombre:'—'}</b></div>
@@ -2615,19 +2712,19 @@ function imprimirOrden(id){
     </div>
 
     <table>
-      <thead><tr><th>Producto</th><th class="num">Cantidad</th><th class="num">Precio unitario${o.moneda==='usd'?' (US$)':''}</th><th class="num">Subtotal${o.moneda==='usd'?' (US$)':''}</th></tr></thead>
+      <thead><tr><th>Producto</th><th class="num">Cantidad</th><th class="num">Precio unitario${o.moneda==='usd'?' (US$)':''}</th><th class="num">Subtotal${o.moneda==='usd'?' (US$)':''}</th>${obrasCodes.length>1?'<th>Obra</th>':''}</tr></thead>
       <tbody>
-        ${o.items.map(it=>`<tr><td>${it.producto}</td><td class="num">${it.cantidad}</td><td class="num">${o.moneda==='usd'?fmtUsd(it.unitario):fmt(it.unitario)}</td><td class="num">${o.moneda==='usd'?fmtUsd(it.cantidad*it.unitario):fmt(it.cantidad*it.unitario)}</td></tr>`).join('')}
+        ${o.items.map(it=>`<tr><td>${it.producto}</td><td class="num">${it.cantidad}</td><td class="num">${o.moneda==='usd'?fmtUsdDec(it.unitario):fmtDec(it.unitario)}</td><td class="num">${o.moneda==='usd'?fmtUsdDec(it.cantidad*it.unitario):fmtDec(it.cantidad*it.unitario)}</td>${obrasCodes.length>1?`<td>${getObra(it.obraId)?.code||'—'}</td>`:''}</tr>`).join('')}
       </tbody>
     </table>
     ${o.notaMaterial?`<div class="box"><h4>Nota sobre los materiales</h4><div>${o.notaMaterial}</div></div>`:''}
 
     <div class="totales"><table>
-      ${o.moneda==='usd'?`<tr><td>Subtotal (US$)</td><td class="num">${fmtUsd(o.items.reduce((a,it)=>a+it.cantidad*it.unitario,0))}</td></tr>
+      ${o.moneda==='usd'?`<tr><td>Subtotal (US$)</td><td class="num">${fmtUsdDec(o.items.reduce((a,it)=>a+it.cantidad*it.unitario,0))}</td></tr>
       <tr><td>Cotización USD</td><td class="num">$ ${o.cotizacionUsd} / US$1</td></tr>`:''}
-      ${o.ivaAplica?`<tr><td>Subtotal ($)</td><td class="num">${fmt(o.monto/1.21)}</td></tr>
-      <tr><td>IVA (21%)</td><td class="num">${fmt(o.monto-o.monto/1.21)}</td></tr>
-      <tr><td>Total</td><td class="num">${fmt(o.monto)}</td></tr>`:`<tr><td>Monto estimado ($)</td><td class="num">${fmt(o.monto)}</td></tr>`}
+      ${o.ivaAplica?`<tr><td>Subtotal ($)</td><td class="num">${fmtDec(o.monto/1.21)}</td></tr>
+      <tr><td>IVA (21%)</td><td class="num">${fmtDec(o.monto-o.monto/1.21)}</td></tr>
+      <tr><td>Total</td><td class="num">${fmtDec(o.monto)}</td></tr>`:`<tr><td>Monto estimado ($)</td><td class="num">${fmtDec(o.monto)}</td></tr>`}
       ${o.moneda!=='usd'&&o.cotizacionUsd?`<tr><td>Cotización USD</td><td class="num">$ ${o.cotizacionUsd} / US$1</td></tr>`:''}
     </table></div>
 
@@ -2638,15 +2735,11 @@ function imprimirOrden(id){
       <div>Solicitado por<br>${o.solicitante}</div>
       <div>Aprobación comercial</div>
       <div>Recibí conforme</div>
-    </div>
-    <div class="foot">Generado por el sistema de gestión de ${e.nombre} — ${today()}</div>
-    <script>window.onload=function(){ window.print(); };<\/script>
-  </body></html>`);
-  win.document.close();
+    </div>`);
 }
 function ocProductosTxt(o){ return (o.items||[]).map(it=>it.producto).join(', ') || 'Sin ítems'; }
 function ordenDestinoTxt(o){
-  if(o.tipo==='obra') return getObra(o.obraId)?.code || '—';
+  if(o.tipo==='obra') return ocObraIds(o).map(id=>getObra(id)?.code).filter(Boolean).join(', ') || '—';
   if(o.tipo==='stock') return 'Stock — '+ocProductosTxt(o);
   return 'Negocio general';
 }
@@ -2665,12 +2758,19 @@ function renderOrdenes(){
     if(o.estado==='rechazada') acciones = o.comentarioDueno ? `<span class="hint">Motivo: ${o.comentarioDueno}</span>` : '';
     if(acciones) acciones += ' · ';
     acciones += `<span class="link-btn" onclick="imprimirOrden('${o.id}')" title="Abrir para imprimir o guardar como PDF">⬇ Descargar OC</span>`;
-    return `<tr><td class="mono">${o.numero}</td><td class="mono">${fmtFecha(o.fecha)}</td><td>${o.solicitante}</td><td>${ordenDestinoTxt(o)}</td><td>${prov?prov.nombre:'—'}</td><td class="num">${fmt(o.monto)}</td><td><span class="estado-dot ${estadoDot}"></span>${estadoTxt}</td><td>${acciones}</td></tr>`;
+    return `<tr><td class="mono">${o.numero}</td><td class="mono">${fmtFecha(o.fecha)}</td><td>${o.solicitante}</td><td>${ordenDestinoTxt(o)}</td><td>${prov?prov.nombre:'—'}</td><td class="num">${fmtDec(o.monto)}</td><td><span class="estado-dot ${estadoDot}"></span>${estadoTxt}</td><td>${acciones}</td></tr>`;
   }).join('') : `<tr class="empty-row"><td colspan="8">No hay órdenes de compra en este filtro</td></tr>`;
 }
 function openModalOrdenCompra(id){
   const existing = id ? getOrden(id) : null;
-  const obraOptions = state.obras.map(o=>`<option value="${o.id}" ${existing&&existing.obraId===o.id?'selected':''}>${o.code}</option>`).join('');
+  const obraIdsSel = existing ? ocObraIds(existing) : [];
+  // Una vez comprada y repartida entre varias obras, la asignación queda
+  // fija (se hizo al marcarla como comprada, ver submitEfectivizarOrden) —
+  // no se puede volver a elegir a cuáles va acá, para no desincronizar los
+  // pagos ya generados. Si es de una sola obra, se puede seguir moviendo a
+  // otra (como siempre).
+  const obrasBloqueadas = existing && existing.estado==='comprada' && obraIdsSel.length>1;
+  const obraChecksHtml = state.obras.map(o=>`<label style="display:inline-flex;align-items:center;gap:5px;font-size:12.5px;margin:3px 12px 3px 0;"><input type="checkbox" class="oc-obra-check" value="${o.id}" ${obraIdsSel.includes(o.id)?'checked':''} ${obrasBloqueadas?'disabled':''}> ${o.code}</label>`).join('');
   const tipo = existing?existing.tipo:'obra';
   modalEl.innerHTML = `<h3>${existing?'Editar orden de compra':'Nueva orden de compra'}</h3><div class="modal-sub">${existing?existing.numero:'Se genera un número al guardar'}</div>
     <div class="form-grid">
@@ -2679,7 +2779,7 @@ function openModalOrdenCompra(id){
         <option value="fijo" ${tipo==='fijo'?'selected':''}>Gasto fijo</option>
         <option value="stock" ${tipo==='stock'?'selected':''}>Stock</option>
       </select></div>
-      <div class="field" id="wrap-oc-obra"><label>Obra</label><select id="f-obra">${obraOptions}</select></div>
+      <div class="field span2" id="wrap-oc-obra"><label>Obra(s)${obrasBloqueadas?' — ya comprada y repartida, no se puede cambiar':''}</label><div>${obraChecksHtml}</div></div>
       <div class="field" id="wrap-oc-cat"><label>Categoría</label><select id="f-cat">${catOptionsForTipo(tipo==='fijo'?'fijo':'obra', existing?existing.categoria:null)}</select></div>
       <div class="field span2"><label>Proveedor</label><select id="f-proveedor" onchange="onProveedorSelectChange(this)">${proveedorOptionsHTML(existing?existing.proveedorId:null)}</select><div style="margin-top:4px;font-size:11.5px;color:var(--muted);">Para cargar o corregir CUIT/teléfono/mail de un proveedor ya existente, andá a Pagos → Proveedores → Editar datos.</div></div>
       <div class="field hidden span2" id="wrap-proveedor-nuevo"><label>Nombre del nuevo proveedor</label><input id="f-proveedor-nuevo" placeholder="Nombre"></div>
@@ -2740,14 +2840,14 @@ function renderOcPreview(){
   const sub = ocItemsTotal();
   const previewEl = document.getElementById('oc-preview');
   if(esUsd && !ocCotizacion()){
-    previewEl.innerHTML = `Subtotal: ${fmtUsd(sub)} — <span style="color:var(--bad);">cargá la cotización para calcular el monto en pesos</span>`;
+    previewEl.innerHTML = `Subtotal: ${fmtUsdDec(sub)} — <span style="color:var(--bad);">cargá la cotización para calcular el monto en pesos</span>`;
     return;
   }
   const subArs = ocSubtotalArs();
-  const prefijo = esUsd ? `Subtotal: ${fmtUsd(sub)} = ${fmt(subArs)}` : `Subtotal: ${fmt(subArs)}`;
+  const prefijo = esUsd ? `Subtotal: ${fmtUsdDec(sub)} = ${fmtDec(subArs)}` : `Subtotal: ${fmtDec(subArs)}`;
   previewEl.textContent = ocIvaAplica()
-    ? `${prefijo}  +  IVA (21%): ${fmt(subArs*0.21)}  =  Total: ${fmt(subArs*1.21)}`
-    : (esUsd ? `${prefijo} (monto estimado)` : 'Monto estimado: ' + fmt(subArs));
+    ? `${prefijo}  +  IVA (21%): ${fmtDec(subArs*0.21)}  =  Total: ${fmtDec(subArs*1.21)}`
+    : (esUsd ? `${prefijo} (monto estimado)` : 'Monto estimado: ' + fmtDec(subArs));
 }
 function renderOcItemsTable(){
   const esUsd = ocEsUsd();
@@ -2757,8 +2857,8 @@ function renderOcItemsTable(){
     <tr>
       <td><input class="cell-input" placeholder="Ej: Fijaciones y flejes" value="${it.producto}" oninput="updateOcItem(${i},'producto',this.value)"></td>
       <td><input class="cell-input mono-in" type="number" value="${it.cantidad}" oninput="updateOcItem(${i},'cantidad',this.value)"></td>
-      <td><input class="cell-input mono-in" type="number" value="${it.unitario}" oninput="updateOcItem(${i},'unitario',this.value)"></td>
-      <td class="num" id="oc-item-total-${i}">${esUsd?fmtUsd(it.cantidad*it.unitario):fmt(it.cantidad*it.unitario)}</td>
+      <td><input class="cell-input mono-in" type="number" step="0.01" value="${it.unitario}" oninput="updateOcItem(${i},'unitario',this.value)"></td>
+      <td class="num" id="oc-item-total-${i}">${esUsd?fmtUsdDec(it.cantidad*it.unitario):fmtDec(it.cantidad*it.unitario)}</td>
       <td>${ocItemsDraft.length>1?`<span class="link-btn danger" onclick="removeOcItem(${i})">✕</span>`:''}</td>
     </tr>`).join('');
   renderOcPreview();
@@ -2766,17 +2866,24 @@ function renderOcItemsTable(){
 function updateOcItem(i,field,value){
   ocItemsDraft[i][field] = (field==='producto') ? value : (+value||0);
   const cell = document.getElementById('oc-item-total-'+i);
-  if(cell) cell.textContent = ocEsUsd() ? fmtUsd(ocItemsDraft[i].cantidad*ocItemsDraft[i].unitario) : fmt(ocItemsDraft[i].cantidad*ocItemsDraft[i].unitario);
+  if(cell) cell.textContent = ocEsUsd() ? fmtUsdDec(ocItemsDraft[i].cantidad*ocItemsDraft[i].unitario) : fmtDec(ocItemsDraft[i].cantidad*ocItemsDraft[i].unitario);
   renderOcPreview();
 }
 function addOcItem(){ ocItemsDraft.push({producto:'',cantidad:1,unitario:0}); renderOcItemsTable(); }
 function removeOcItem(i){ ocItemsDraft.splice(i,1); renderOcItemsTable(); }
 function submitOrdenCompra(id){
   const tipo = document.getElementById('f-tipo').value;
-  const obraId = tipo==='obra' ? document.getElementById('f-obra').value : null;
+  const obraIdsElegidas = tipo==='obra' ? Array.from(document.querySelectorAll('.oc-obra-check:checked')).map(el=>el.value) : [];
+  if(tipo==='obra' && !obraIdsElegidas.length){ alert('Elegí al menos una obra.'); return; }
+  const obraId = obraIdsElegidas.length===1 ? obraIdsElegidas[0] : null;
+  const obraIds = obraIdsElegidas.length>1 ? obraIdsElegidas : undefined;
   const categoria = tipo!=='stock' ? document.getElementById('f-cat').value : null;
   const proveedorId = resolveProveedorId();
-  const items = ocItemsDraft.filter(it=>it.producto.trim()).map(it=>({producto:it.producto.trim(), cantidad:it.cantidad, unitario:it.unitario}));
+  // Se preserva el obraId por ítem si ya lo tenía (se asigna recién al
+  // marcar la orden como comprada, ver submitEfectivizarOrden) — así una
+  // edición de monto sobre una compra ya repartida no pierde a qué obra
+  // iba cada material.
+  const items = ocItemsDraft.filter(it=>it.producto.trim()).map(it=>({producto:it.producto.trim(), cantidad:it.cantidad, unitario:it.unitario, obraId:it.obraId||null}));
   if(!items.length){ alert('Cargá al menos un producto en la orden.'); return; }
   const moneda = document.getElementById('f-oc-moneda').value;
   const cotizacionUsd = +document.getElementById('f-cotizacion-usd').value || null;
@@ -2791,9 +2898,43 @@ function submitOrdenCompra(id){
   const notaGeneral = document.getElementById('f-nota-general').value.trim();
   if(id){
     const o = getOrden(id);
+    const idsPrevias = ocObraIds(o);
+    // Ya comprada y repartida entre varias obras: la asignación queda fija
+    // (el checkbox de obras ya viene deshabilitado en el modal para este
+    // caso, pero se valida igual acá por las dudas). Tampoco se puede
+    // convertir de una sola obra a varias después de comprada — para eso
+    // hay que cargar una orden nueva.
+    if(o.estado==='comprada' && idsPrevias.length>1){
+      const mismasObras = obraIdsElegidas.length===idsPrevias.length && idsPrevias.every(x=>obraIdsElegidas.includes(x));
+      if(!mismasObras){ alert('Esta orden ya está comprada y repartida entre varias obras — no se puede cambiar a cuáles. Si necesitás otro destino, cargá una orden nueva.'); return; }
+    }
+    if(o.estado==='comprada' && idsPrevias.length<=1 && obraIdsElegidas.length>1){
+      alert('Esta orden ya fue comprada para una sola obra — no se puede repartir entre varias ahora. Si necesitás repartirla, cargá una orden nueva.');
+      return;
+    }
+    if(o.estado==='comprada' && idsPrevias.length>1){
+      // Reparto proporcional del monto/categoría nuevos entre los pagos ya
+      // generados para cada obra (uno por obra, ver submitEfectivizarOrden)
+      // — no se vuelve a preguntar qué material va a cuál.
+      if(items.some(it=>!it.obraId)){ alert('Hay materiales sin obra asignada en una compra ya repartida entre varias obras — no se pueden agregar materiales nuevos así. Cargá una orden nueva para eso.'); return; }
+      const totalSub = items.reduce((a,it)=>a+it.cantidad*it.unitario,0);
+      idsPrevias.forEach(obId=>{
+        const pago = (o.pagoIds||[]).map(pid=>state.pagos.find(p=>p.id===pid)).find(p=>p && p.obraId===obId);
+        if(!pago) return;
+        const subObra = items.filter(it=>it.obraId===obId).reduce((a,it)=>a+it.cantidad*it.unitario,0);
+        const share = totalSub>0 ? subObra/totalSub : 1/idsPrevias.length;
+        pago.monto = monto*share; pago.categoria = categoria; pago.concepto = ocProductosTxt({items:items.filter(it=>it.obraId===obId)});
+        marcarEditado('pagos', pago.id);
+      });
+      Object.assign(o, {tipo, obraId, obraIds, categoria, proveedorId, items, monto, moneda, ivaAplica, solicitante, fecha, cotizacionUsd, notaMaterial, notaGeneral});
+      marcarEditado('ordenesCompra', o.id);
+      idsPrevias.forEach(obId=>{ const ob=getObra(obId); if(ob) recomputeObraReal(ob); });
+      closeModal(); renderAll();
+      return;
+    }
     const pagoPrevio = o.pagoId ? state.pagos.find(p=>p.id===o.pagoId) : null;
     const previo = {tipo:o.tipo, obraId:o.obraId};
-    Object.assign(o, {tipo, obraId, categoria, proveedorId, items, monto, moneda, ivaAplica, solicitante, fecha, cotizacionUsd, notaMaterial, notaGeneral});
+    Object.assign(o, {tipo, obraId, obraIds, categoria, proveedorId, items, monto, moneda, ivaAplica, solicitante, fecha, cotizacionUsd, notaMaterial, notaGeneral});
     marcarEditado('ordenesCompra', o.id);
     // Si la OC ya está marcada como comprada, tiene un pago real vinculado
     // (creado en submitEfectivizarOrden) y sumó su monto al costo real de
@@ -2809,7 +2950,7 @@ function submitOrdenCompra(id){
       if(tipo==='obra' && obraId){ const obraNueva=getObra(obraId); if(obraNueva) recomputeObraReal(obraNueva); }
     }
   } else {
-    state.ordenesCompra.push({id:newId('oc'), numero: nextOcNumero(), fecha, solicitante, tipo, obraId, categoria, items, monto, moneda, ivaAplica, proveedorId, estado:'pendiente', comentarioDueno:null, pagoId:null, cotizacionUsd, notaMaterial, notaGeneral});
+    state.ordenesCompra.push({id:newId('oc'), numero: nextOcNumero(), fecha, solicitante, tipo, obraId, obraIds, categoria, items, monto, moneda, ivaAplica, proveedorId, estado:'pendiente', comentarioDueno:null, pagoId:null, pagoIds:[], cotizacionUsd, notaMaterial, notaGeneral});
   }
   closeModal(); renderAll();
 }
@@ -2820,9 +2961,9 @@ function openModalAutorizarOrden(id){
       <div class="summary-line"><span>Orden</span><span>${o.numero}</span></div>
       <div class="summary-line"><span>Destino</span><span>${ordenDestinoTxt(o)}</span></div>
       <div class="summary-line"><span>Proveedor</span><span>${prov?prov.nombre:'—'}</span></div>
-      ${(o.items||[]).map(it=>`<div class="summary-line sub"><span>${it.producto} × ${it.cantidad}</span><span>${fmt(it.cantidad*it.unitario)}</span></div>`).join('')}
-      ${o.ivaAplica?`<div class="summary-line sub"><span>IVA (21%)</span><span>${fmt((o.items||[]).reduce((a,it)=>a+it.cantidad*it.unitario,0)*0.21)}</span></div>`:''}
-      <div class="summary-line total"><span>Monto ${o.ivaAplica?'con IVA':'estimado'}</span><span>${fmt(o.monto)}</span></div>
+      ${(o.items||[]).map(it=>`<div class="summary-line sub"><span>${it.producto} × ${it.cantidad}</span><span>${fmtDec(it.cantidad*it.unitario)}</span></div>`).join('')}
+      ${o.ivaAplica?`<div class="summary-line sub"><span>IVA (21%)</span><span>${fmtDec((o.items||[]).reduce((a,it)=>a+it.cantidad*it.unitario,0)*0.21)}</span></div>`:''}
+      <div class="summary-line total"><span>Monto ${o.ivaAplica?'con IVA':'estimado'}</span><span>${fmtDec(o.monto)}</span></div>
     </div>
     <div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" onclick="submitAutorizarOrden('${id}')">Confirmar autorización</button></div>`;
   overlay.classList.add('open');
@@ -2837,6 +2978,15 @@ function openModalRechazarOrden(id){
 function submitRechazarOrden(id){ const o=getOrden(id); o.estado='rechazada'; o.comentarioDueno=document.getElementById('f-motivo').value.trim()||null; marcarEditado('ordenesCompra', id); closeModal(); renderAll(); }
 function openModalEfectivizarOrden(id){
   const o = getOrden(id);
+  const idsOc = ocObraIds(o);
+  // Si la OC se cargó para varias obras, acá es donde se decide qué
+  // material va a cuál — recién ahora se sabe con certeza (a esta altura
+  // ya se compró de verdad), y esta asignación queda fija de acá en más.
+  const repartoHtml = idsOc.length>1 ? `
+    <div class="section-title" style="margin:18px 0 8px;"><h2 style="font-size:13.5px;">Asignar cada material a una obra</h2></div>
+    <div class="card card-table"><table><thead><tr><th>Producto</th><th class="num">Subtotal</th><th>Obra</th></tr></thead><tbody>
+      ${o.items.map((it,i)=>`<tr><td>${it.producto}</td><td class="num">${o.moneda==='usd'?fmtUsdDec(it.cantidad*it.unitario):fmtDec(it.cantidad*it.unitario)}</td><td><select id="f-item-obra-${i}" class="cell-input">${idsOc.map(oid=>`<option value="${oid}" ${it.obraId===oid?'selected':''}>${getObra(oid)?.code||oid}</option>`).join('')}</select></td></tr>`).join('')}
+    </tbody></table></div>` : '';
   modalEl.innerHTML = `<h3>Marcar como comprada</h3><div class="modal-sub">${o.numero} · genera el pago real y suma al gasto</div>
     <div class="form-grid">
       <div class="field span2"><label>Nº remito / factura</label><input id="f-factura" placeholder="Ej: 0001-00004521"></div>
@@ -2847,6 +2997,7 @@ function openModalEfectivizarOrden(id){
       <div class="field checkbox"><input type="checkbox" id="f-sinfecha" checked onchange="document.getElementById('wrap-fecha').classList.toggle('hidden', this.checked)"><label>Sin fecha de pago todavía</label></div>
       <div class="field hidden" id="wrap-fecha"><label>Fecha de pago</label><input id="f-fechapago" type="date"></div>
     </div>
+    ${repartoHtml}
     <div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" onclick="submitEfectivizarOrden('${id}')">Confirmar compra</button></div>`;
   overlay.classList.add('open');
 }
@@ -2873,6 +3024,31 @@ function submitEfectivizarOrden(id){
       state.stockMovimientos.push({id:newId('sm'), fecha: fechaPago||today(), tipo:'compra', stockId:item.id, cantidad:it.cantidad, obraId:null, monto:monto*share});
     });
   }
+  const idsOc = ocObraIds(o);
+  if(o.tipo==='obra' && idsOc.length>1){
+    // Se reparte entre las obras elegidas por ítem — un pago por obra,
+    // proporcional al subtotal de sus materiales (mismo criterio que ya
+    // usa la app para las OC de stock).
+    o.items.forEach((it,i)=>{ it.obraId = document.getElementById('f-item-obra-'+i).value; });
+    const totalSub = o.items.reduce((a,it)=>a+it.cantidad*it.unitario,0);
+    const pagoIds = [];
+    idsOc.forEach(obId=>{
+      const itsObra = o.items.filter(it=>it.obraId===obId);
+      if(!itsObra.length) return;
+      const subObra = itsObra.reduce((a,it)=>a+it.cantidad*it.unitario,0);
+      const share = totalSub>0 ? subObra/totalSub : 1/idsOc.length;
+      const montoObra = monto*share, montoNetoObra = montoNeto*share;
+      const cantidadObra = itsObra.reduce((a,it)=>a+it.cantidad,0);
+      const pago = {id:newId('p'), tipo:'obra', obraId:obId, categoria:o.categoria||'costosFijos', concepto:ocProductosTxt({items:itsObra}), numeroOC:o.numero, cantidad:cantidadObra, unitario:cantidadObra?montoNetoObra/cantidadObra:montoNetoObra, ivaAplica, monto:montoObra, proveedorId:o.proveedorId, numeroFactura, fechaFactura, formaPago, fechaPago, pagosRealizados:[]};
+      state.pagos.push(pago);
+      pagoIds.push(pago.id);
+      const obra = getObra(obId); if(obra) recomputeObraReal(obra);
+    });
+    o.estado='comprada'; o.pagoIds=pagoIds; o.pagoId=null;
+    marcarEditado('ordenesCompra', o.id);
+    closeModal(); renderAll();
+    return;
+  }
   const cantidadTotal = o.items.reduce((a,it)=>a+it.cantidad,0);
   const pago = {id:newId('p'), tipo:o.tipo, obraId:o.obraId, categoria:o.categoria||'costosFijos', concepto:ocProductosTxt(o), numeroOC:o.numero, cantidad:cantidadTotal, unitario:cantidadTotal?montoNeto/cantidadTotal:montoNeto, ivaAplica, monto, proveedorId:o.proveedorId, numeroFactura, fechaFactura, formaPago, fechaPago, pagosRealizados:[]};
   state.pagos.push(pago);
@@ -2896,11 +3072,20 @@ function categoriaOptionsForPagosFilter(){
   if(state.pagosFilter==='obra') return {materiaPrima:catLabel.materiaPrima, manoObra:catLabel.manoObra, combustible:catLabel.combustible, telepase:catLabel.telepase, logistica:catLabel.logistica, estadia:catLabel.estadia, otros:catLabel.otros};
   return {materiaPrima:catLabel.materiaPrima, manoObra:catLabel.manoObra, combustible:catLabel.combustible, telepase:catLabel.telepase, logistica:catLabel.logistica, estadia:catLabel.estadia, ...catFijaLabel};
 }
+// Misma lógica de filtro/orden que usa la tabla en pantalla (renderPagos) —
+// la reutiliza imprimirPagos() para que el PDF muestre exactamente lo que
+// se ve filtrado en ese momento.
+function pagosFiltrados(){
+  let rows = state.pagos; if(state.pagosFilter!=='todos') rows = rows.filter(p=>p.tipo===state.pagosFilter);
+  if(state.pagosCategoriaFilter!=='todas') rows = rows.filter(p=>p.categoria===state.pagosCategoriaFilter);
+  return [...rows].sort((a,b)=>(b.fechaPago||'').localeCompare(a.fechaPago||''));
+}
 function renderPagos(){
   document.getElementById('pagos-table-egresos').classList.toggle('hidden', state.pagosFilter==='fima'||state.pagosFilter==='proveedores');
   document.getElementById('pagos-table-fima').classList.toggle('hidden', state.pagosFilter!=='fima');
   document.getElementById('pagos-table-proveedores').classList.toggle('hidden', !(state.pagosFilter==='proveedores' && !state.selectedProveedorId));
   document.getElementById('pagos-table-proveedor-detalle').classList.toggle('hidden', !(state.pagosFilter==='proveedores' && state.selectedProveedorId));
+  document.getElementById('btn-pdf-pagos').classList.toggle('hidden', state.pagosFilter==='fima'||state.pagosFilter==='proveedores');
 
   const catFilterEl = document.getElementById('pagos-cat-filter');
   const mostrarCatFilter = !['stock','fima','proveedores'].includes(state.pagosFilter);
@@ -2921,13 +3106,11 @@ function renderPagos(){
     else renderProveedoresLista();
     return;
   }
-  let rows = state.pagos; if(state.pagosFilter!=='todos') rows = rows.filter(p=>p.tipo===state.pagosFilter);
-  if(state.pagosCategoriaFilter!=='todas') rows = rows.filter(p=>p.categoria===state.pagosCategoriaFilter);
-  rows = [...rows].sort((a,b)=>(b.fechaPago||'').localeCompare(a.fechaPago||''));
+  const rows = pagosFiltrados();
   document.getElementById('pagos-body').innerHTML = rows.length ? rows.map(p=>{
     const est = pagoEstado(p);
     const {dot:estadoDot, txt:estadoTxt} = pagoEstadoInfo(est);
-    let action = (!state.ordenesCompra.some(oc=>oc.pagoId===p.id) && !p.origenFondo) ? `<span class="link-btn" onclick="openModalCompra(null,'${p.id}')">Editar</span>` : '';
+    let action = (!ocLigadaAPago(p.id) && !p.origenFondo) ? `<span class="link-btn" onclick="openModalCompra(null,'${p.id}')">Editar</span>` : '';
     if(est!=='pagado') action += `${action?' · ':''}<span class="link-btn" onclick="openModalFinalizarPago('${p.id}')">Registrar pago →</span>`;
     if(est==='pagado'||est==='parcial'||est==='programado') action += `${action?' · ':''}<span class="link-btn danger" onclick="revertirPago('${p.id}')">${est==='programado'?'Cancelar programado':'Revertir a pendiente'}</span>`;
     action += `${action?' · ':''}<span class="link-btn danger" onclick="eliminarGasto('${p.id}')">Eliminar</span>`;
@@ -2937,6 +3120,32 @@ function renderPagos(){
     const conceptoTxt = p.concepto + (p.origenFondo ? `<div class="sub" style="font-size:11px;color:var(--muted);margin-top:2px;">Origen: Fondo FIMA — ${fondoLabel[p.origenFondo]}</div>` : '');
     return `<tr><td>${destino}</td><td>${conceptoTxt}</td><td>${ocBadge(p.numeroOC)}</td><td>${provTxt}</td><td class="num">${fmt(p.monto)}</td><td class="num">${fmt(pagoSaldo(p))}</td><td class="mono">${fmtFecha(p.fechaPago)}</td><td><span class="estado-dot ${estadoDot}"></span>${estadoTxt}</td><td>${action}</td></tr>`;
   }).join('') : `<tr class="empty-row"><td colspan="9">No hay pagos registrados</td></tr>`;
+}
+// Exporta exactamente lo que está filtrado en pantalla en ese momento
+// (mismo pagosFiltrados() que usa la tabla) — mismo mecanismo que imprimirOrden.
+function imprimirPagos(){
+  const rows = pagosFiltrados();
+  const filtroTxt = state.pagosFilter==='todos' ? 'Todos los pagos' : {fijo:'Gastos fijos', obra:'Vinculados a obra', stock:'Reposición de stock'}[state.pagosFilter];
+  const catTxt = state.pagosCategoriaFilter!=='todas' ? categoriaOptionsForPagosFilter()[state.pagosCategoriaFilter] : null;
+  const header = printHeaderHtml('PLANILLA DE PAGOS', filtroTxt, [
+    catTxt?`Categoría: ${catTxt}`:null, `${rows.length} pago${rows.length===1?'':'s'}`,
+  ].filter(Boolean));
+  const total = rows.reduce((a,p)=>a+p.monto,0);
+  abrirVentanaImpresion('Planilla de pagos', `
+    ${header}
+    <table>
+      <thead><tr><th>Obra / destino</th><th>Concepto</th><th>Nº OC</th><th>Proveedor / factura</th><th class="num">Monto</th><th class="num">Saldo</th><th>Fecha de pago</th><th>Estado</th></tr></thead>
+      <tbody>
+        ${rows.length ? rows.map(p=>{
+          const {txt:estadoTxt} = pagoEstadoInfo(pagoEstado(p));
+          const destino = p.obraId ? (getObra(p.obraId)?.code||'—') : (p.tipo==='stock' ? 'Stock' : 'Negocio general');
+          const prov = getProveedor(p.proveedorId);
+          const provTxt = prov ? `${prov.nombre}${p.numeroFactura?' · '+p.numeroFactura:''}` : '—';
+          return `<tr><td>${destino}</td><td>${p.concepto}${p.origenFondo?` (Origen: FIMA — ${fondoLabel[p.origenFondo]})`:''}</td><td>${p.numeroOC||'—'}</td><td>${provTxt}</td><td class="num">${fmt(p.monto)}</td><td class="num">${fmt(pagoSaldo(p))}</td><td class="mono">${fmtFecha(p.fechaPago)}</td><td>${estadoTxt}</td></tr>`;
+        }).join('') : `<tr><td colspan="8">No hay pagos en este filtro</td></tr>`}
+      </tbody>
+    </table>
+    <div class="totales"><table><tr><td>Total</td><td class="num">${fmt(total)}</td></tr></table></div>`);
 }
 function proveedorDeuda(provId){ return state.pagos.filter(p=>p.proveedorId===provId).reduce((a,p)=>a+pagoSaldo(p),0); }
 function renderProveedoresLista(){
@@ -3354,7 +3563,7 @@ function eliminarGasto(pagoId){
       return !ligado;
     });
   }
-  state.ordenesCompra.forEach(oc=>{ if(oc.pagoId===p.id){ oc.pagoId=null; oc.estado='pendiente'; marcarEditado('ordenesCompra', oc.id); } });
+  desvincularOcDePago(p.id);
   marcarEliminado('pagos', pagoId);
   state.pagos = state.pagos.filter(x=>x.id!==pagoId);
   if(p.tipo==='obra' && p.obraId){ const o=getObra(p.obraId); if(o) recomputeObraReal(o); }
@@ -3505,6 +3714,25 @@ function renderResultados(){
   document.getElementById('res-cobros-pendientes-body').innerHTML = obrasConSaldo.length ? obrasConSaldo.map(o=>`<tr><td><span class="obra-code">${o.code}</span></td><td class="num">${fmt(o.ingresos.facturado)}</td><td class="num">${fmt(o.ingresos.cobrado)}</td><td class="num">${fmt(o.ingresos.facturado-o.ingresos.cobrado)}</td></tr>`).join('') : `<tr class="empty-row"><td colspan="4">No hay saldos pendientes de cobro</td></tr>`;
 
   renderIvaReporte(mes);
+}
+// Exporta la tabla de "Ingresos del mes" (todas las obras) tal cual está
+// seleccionada en el combo de mes — mismo mecanismo que imprimirOrden.
+function imprimirCobranzas(){
+  const mes = document.getElementById('res-mes').value;
+  const r = computeMesResultado(mes);
+  const total = r.ingresos.reduce((a,i)=>a+i.monto,0);
+  const header = printHeaderHtml('COBRANZAS', mesNombres[mes.slice(5,7)]+' '+mes.slice(0,4), [
+    `${r.ingresos.length} cobro${r.ingresos.length===1?'':'s'}`,
+  ]);
+  abrirVentanaImpresion(`Cobranzas — ${mes}`, `
+    ${header}
+    <table>
+      <thead><tr><th>Fecha</th><th>Obra</th><th>Medio de pago</th><th>Nº factura</th><th>Nº cobranza</th><th class="num">Monto</th></tr></thead>
+      <tbody>
+        ${r.ingresos.length ? [...r.ingresos].sort((a,b)=>a.fecha.localeCompare(b.fecha)).map(i=>`<tr><td class="mono">${fmtFecha(i.fecha)}</td><td>${getObra(i.obraId)?.code||'—'}</td><td>${i.medioPago}</td><td>${i.numeroFactura||'—'}</td><td>${i.numeroCobranza||'—'}</td><td class="num">${fmt(i.monto)}</td></tr>`).join('') : `<tr><td colspan="6">Sin cobros este mes</td></tr>`}
+      </tbody>
+    </table>
+    <div class="totales"><table><tr><td>Total</td><td class="num">${fmt(total)}</td></tr></table></div>`);
 }
 
 /* ======================= REPORTE DE IVA ======================= */

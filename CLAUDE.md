@@ -65,6 +65,16 @@ guardado silencioso..." en el registro de cambios más abajo):
       existentes (`repararIdsFima()`), así que la app funciona bien pero
       esa reparación se repite en cada carga en vez de quedar hecha una
       sola vez.
+- [ ] **Pendiente:** `ordenesCompra`: campos `obraIds` y `pagoIds` (para
+      las OC repartidas entre varias obras, ver "Nuevo: OC con varias
+      obras y reparto de materiales al comprar" en el registro de
+      cambios) — sin este redeploy, el reparto en sí funciona bien y los
+      pagos por obra quedan guardados y persistidos correctamente (usan
+      columnas que ya existían), pero la lista de "a cuáles obras apunta
+      esta OC" y el vínculo de vuelta OC→pagos se pierden al recargar la
+      página (una OC multi-obra ya comprada, tras recargar, va a mostrar
+      "—" como destino en vez de las obras, aunque el costo real de cada
+      obra ya quedó bien sumado y no se pierde).
 
 Cuando se haga este redeploy: pegar todo `backend-AppsScript.gs` en el
 editor de Apps Script del Sheet, guardar, y crear una nueva implementación
@@ -655,3 +665,85 @@ archivo. Una vez desplegado, tildar el ítem de arriba o borrar la sección.
     movimientos de contenido idéntico, confirmando ids únicos y que
     `eliminadosLocalmente`/`editadosLocalmente` registran el id
     correcto en cada caso.
+- **Nuevo: descargar Pagos y Cobranzas en PDF.** Mismo mecanismo que ya
+  existía para las órdenes de compra (`imprimirOrden` — abre una ventana
+  con el logo/datos de la empresa y dispara la impresión del navegador,
+  para guardar como PDF). Se extrajo ese mecanismo a helpers compartidos
+  (`printCss`, `printHeaderHtml`, `abrirVentanaImpresion`) para no
+  duplicar el armado de la ventana en cada uno.
+  - Pagos → botón "Descargar PDF" que exporta la tabla tal cual está
+    filtrada en pantalla (por tipo y categoría), con los mismos datos que
+    se ven (destino, concepto, Nº OC, proveedor, monto, saldo, fecha de
+    pago, estado) más el total. No aparece en las pestañas de "Ingresos a
+    FIMA" ni "Proveedores" (tienen otro formato de tabla).
+  - Resultados → botón "Descargar PDF" junto a "Ingresos del mes" que
+    exporta los cobros de todas las obras del mes elegido, con el total.
+- **Nuevo: sueldos — desglose quincenal y descuento fijo por ausencia.**
+  El sueldo se sigue cargando mensual, pero el pago es quincenal (1ª
+  quincena por transferencia, 2ª en efectivo) — el historial mensual de
+  Jornales ahora muestra el monto de cada quincena por separado, además
+  del total. Cada quincena parte de la mitad del sueldo mensual y le
+  resta el descuento de las ausencias que cayeron en esa quincena
+  puntual (día 1-15 o 16-fin de mes), más las horas extra atribuidas a
+  esa quincena (mismo criterio que ya se usaba para el mes: la fecha de
+  inicio de la obra). Una quincena nunca queda por debajo de $0 ni le
+  pasa el excedente a la otra.
+  - Además, el descuento por día ausente pasó a ser un monto fijo
+    ($100.000) para cualquier persona, en vez de proporcional al sueldo
+    diario de cada quien (que es como funcionaba antes).
+  - Esto sigue siendo solo el cálculo/desglose a mostrar — como ya estaba
+    documentado, el pago del sueldo no genera gasto ni movimiento de
+    FIMA (se gestiona aparte, como costo fijo).
+- **Nuevo: decimales en los montos de las órdenes de compra.** Los
+  precios unitarios y subtotales de las OC ahora se muestran con 2
+  decimales (formulario, listado y PDF) en vez de redondeados al peso —
+  útil para materiales con precio con centavos. Se agregó un formato
+  aparte (`fmtDec`/`fmtUsdDec`) usado solo en las OC, sin tocar el
+  formato del resto de la app (pagos, dashboard, etc.), que sigue
+  mostrando montos redondeados como siempre. Internamente los montos
+  nunca se truncaban — esto era solo una cuestión de cómo se mostraban.
+- **Nuevo: OC con varias obras y reparto de materiales al comprar.** Una
+  orden de compra de tipo "Gasto de obra" ahora puede apuntar a más de
+  una obra (checkboxes en vez del selector único de antes — si se elige
+  una sola, todo funciona exactamente igual que antes). Recién al
+  marcarla como "comprada" aparece un selector de obra por cada material
+  de la orden (obligatorio elegir una), porque es ahí donde se sabe con
+  certeza qué se terminó comprando para cada una.
+  - Al confirmar la compra con varias obras elegidas: se genera **un pago
+    por obra** (no uno solo), con el monto final repartido
+    proporcionalmente según el subtotal de los materiales de cada una
+    (mismo criterio de prorrateo que ya usaba la app para las OC de
+    stock) — y el costo real de cada obra se recalcula con lo que le
+    corresponde.
+  - Si después se edita la OC (por ejemplo para corregir el monto final),
+    el ajuste se reparte proporcionalmente entre las obras ya asignadas
+    — no se vuelve a preguntar qué material va a cuál (a pedido del
+    dueño, para no complicar el caso normal de "corregir un monto"). Por
+    eso, una vez comprada y repartida entre varias obras, el conjunto de
+    obras y la asignación por material quedan fijos — el selector de
+    obras aparece bloqueado al editarla, y agregar un material nuevo sin
+    obra ya asignada bloquea el guardado (hay que cargar una orden nueva
+    para eso). Tampoco se puede convertir una OC ya comprada de una sola
+    obra a varias, ni cambiar a cuáles obras apunta una ya repartida —
+    en esos casos conviene cargar una orden nueva.
+  - El PDF de la orden muestra todas las obras destino, y la tabla de
+    materiales suma una columna "Obra" cuando son varias.
+  - Al eliminar una obra que es una de varias en una OC repartida, solo
+    se desvincula la porción de esa obra puntual (se saca de la lista de
+    obras de la OC y se limpia el `obraId` de sus materiales) — el resto
+    de la orden y de las otras obras queda intacto, mismo criterio que ya
+    existía para una OC de una sola obra.
+  - Probado en un entorno aislado (navegador real): crear una OC para dos
+    obras con un material para cada una, autorizar, marcar como comprada
+    asignando cada material a su obra — se generan los dos pagos con el
+    monto exacto de cada material y el costo real de cada obra sube lo
+    que corresponde; editar después el precio de un material (subiéndolo)
+    y confirmar que el ajuste se reparte proporcionalmente entre los dos
+    pagos y los dos costos reales, sin volver a preguntar la asignación;
+    confirmar que el selector de obras queda bloqueado al reabrir para
+    editar.
+  - **Requiere redeploy del backend** (`ordenesCompra.obraIds` y
+    `.pagoIds`, ver checklist arriba) — mientras tanto, el reparto en sí
+    y los pagos por obra quedan bien calculados y guardados (usan
+    columnas que ya existían), pero la lista de a qué obras apunta la OC
+    se pierde al recargar la página.
