@@ -822,6 +822,20 @@ archivo. Una vez desplegado, tildar el ítem de arriba o borrar la sección.
     mitad a 60) — el segundo compromiso reemplaza al primero en vez de
     sumarse. Es un caso raro y ya era poco claro antes de este arreglo;
     si hace falta avisá para verlo aparte.
+  - **Cuidado con los datos ya cargados antes de este arreglo:** un gasto
+    viejo con una fecha de pago ya pasada y sin nada pagado de verdad
+    (el patrón atascado que motivó este arreglo) **no se toca solo** al
+    desplegar esto — nada corre retroactivamente sobre lo ya cargado.
+    Sigue viéndose "Pendiente" igual que antes hasta que alguien lo
+    edite. Y ahí se puso especial cuidado: si se edita ese gasto viejo
+    por otro motivo (por ejemplo corregir el detalle) sin tocar la fecha
+    ni el medio de pago, el guardado NO arma el compromiso ni descuenta
+    plata — solo se arma/actualiza el compromiso cuando la edición
+    realmente cambia la fecha o el medio (una decisión deliberada), o
+    cuando ya había un compromiso "Programado" (creado con este mismo
+    arreglo) y se le edita el monto. Sin este cuidado, guardar cualquier
+    cambio menor en un gasto viejo con fecha pasada habría descontado la
+    plata de golpe como efecto secundario, sin que nadie lo pidiera.
   - Probado en un entorno aislado: cargar un gasto con fecha futura
     (queda Programado, no descuenta caja) y con fecha de hoy (queda
     Pagado, descuenta caja al toque); editar la fecha de uno Programado
@@ -832,4 +846,8 @@ archivo. Una vez desplegado, tildar el ítem de arriba o borrar la sección.
     descontar); "Registrar compra de stock" con fecha futura (mismo
     comportamiento); "Marcar como comprada" una orden con medio FIMA y
     fecha futura (aparece el selector de fondo, queda Programado sin
-    descontar el fondo todavía).
+    descontar el fondo todavía); un gasto viejo simulado con fecha
+    pasada y sin pago real: editar solo el detalle no activa nada (sigue
+    Pendiente, caja sin cambios), pero cambiar deliberadamente la fecha
+    sí lo aplica; editar solo el monto de un gasto ya Programado
+    actualiza el compromiso pendiente al monto nuevo.

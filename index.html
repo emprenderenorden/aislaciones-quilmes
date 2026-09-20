@@ -3623,10 +3623,20 @@ function submitCompra(editId){
     // Si ya se pagó algo de verdad (parcial o total), no se toca el
     // compromiso acá — para eso está "Revertir a pendiente" primero.
     const yaHayPagoReal = (p.pagosRealizados||[]).some(x=>x.aplicado!==false);
+    // Solo se arma/actualiza el compromiso si esta edición realmente
+    // cambió la fecha/medio de pago, o si ya había un compromiso
+    // programado (sin aplicar) que quedó desactualizado con el monto
+    // nuevo. Si no, guardar un cambio sin relación (ej. corregir el
+    // detalle) en un gasto viejo que ya tenía una fecha pasada cargada
+    // de antes (de cuando esto no generaba compromiso) no debe
+    // descontar plata de golpe como efecto secundario de un guardado
+    // que no tenía nada que ver con eso.
+    const fechaCambio = fechaPago!==p.fechaPago || formaPago!==p.formaPago;
+    const compromisoDesactualizado = (p.pagosRealizados||[]).some(x=>x.aplicado===false && x.monto!==monto);
     Object.assign(p, {tipo, obraId, categoria, concepto, cantidad, unitario, ivaAplica, monto, proveedorId, numeroFactura, numeroOC, fechaFactura, formaPago, fechaPago});
     if(fondo) p.origenFondo = fondo;
     marcarEditado('pagos', editId);
-    if(!yaHayPagoReal) aplicarCompromisoDePago(p, fechaPago, formaPago, fondo);
+    if(!yaHayPagoReal && (fechaCambio || compromisoDesactualizado)) aplicarCompromisoDePago(p, fechaPago, formaPago, fondo);
     if(obraAnteriorId){ const oAnterior=getObra(obraAnteriorId); if(oAnterior) recomputeObraReal(oAnterior); }
     if(tipo==='obra' && obraId && obraId!==obraAnteriorId){ const o=getObra(obraId); if(o) recomputeObraReal(o); }
   } else {
