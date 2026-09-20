@@ -851,3 +851,42 @@ archivo. Una vez desplegado, tildar el ítem de arriba o borrar la sección.
     Pendiente, caja sin cambios), pero cambiar deliberadamente la fecha
     sí lo aplica; editar solo el monto de un gasto ya Programado
     actualiza el compromiso pendiente al monto nuevo.
+- **Nuevo: obra sin presupuesto (total $0) — se inicia y se gestiona
+  igual, pero sin comparaciones que no tienen sentido.** Una obra que se
+  inicia directamente sin pasar por el armador de presupuesto (o que se
+  armó dejando todo en $0 a propósito) se identifica automáticamente
+  (`obraSinPresupuesto()` — suma de materiales+mano de obra+logística+
+  estadía presupuestados = $0) y en toda la app se le deja de comparar
+  el costo real contra un presupuesto que no existe:
+  - **Tabla de Obras y Dashboard:** en vez de la barra de "Desvío
+    costos" (que antes mostraba un % sin sentido, como si todo gasto
+    estuviera "100% por encima" de un presupuesto de $0), muestra "Sin
+    presupuesto — $X gastado".
+  - **Costos por categoría** (en el detalle de la obra): cada card
+    muestra el costo real solo, sin barra de %.
+  - **"Presupuesto → Facturación"**: se oculta entero (no hay nada que
+    mostrar ahí).
+  - **Card de "Ingresos"**: en vez del "X% cobrado" (que con presupuesto
+    $0 siempre daría "0% cobrado" aunque hubiera cobros reales
+    cargados), muestra directo "Cobrado: $X".
+  - **"Presupuestado vs. real — detalle"**: cada fila muestra "--" en
+    Presupuestado y en Diferencia, y el valor real en la columna Real
+    — incluidas las filas de comisión vendedor, ganancia neta y el
+    reparto de socios/AQ (que siguen calculándose con la plata real,
+    solo que ya no hay un valor presupuestado contra el cual compararlas).
+  - **KPI "obras por encima del presupuesto"** (Dashboard): deja afuera
+    del conteo a las obras sin presupuesto — antes las contaba a todas
+    como "por encima" apenas tuvieran algún gasto real cargado.
+  - **"Editar presupuesto"** sigue apareciendo siempre, sin cambios —
+    para si en algún momento se quiere cargar uno (aunque sea solo para
+    fijar la comisión del vendedor o el reparto de socios, sin
+    necesariamente presupuestar costos).
+  - Probado en un entorno aislado: una obra sembrada con presupuesto en
+    $0 pero con cobros y gastos reales cargados muestra "Sin
+    presupuesto" en Dashboard y en la lista de Obras, no muestra la
+    card "Presupuesto → Facturación", muestra "Sin presupuesto" en las
+    cards de costos por categoría, "--" en la tabla de presupuestado
+    vs. real, "Cobrado: $X" en Ingresos, y el botón "Editar presupuesto"
+    sigue presente; una obra con presupuesto normal, probada en paralelo,
+    sigue mostrando todo exactamente igual que antes (sin "Sin
+    presupuesto" en ningún lado, con sus % de desvío normales).

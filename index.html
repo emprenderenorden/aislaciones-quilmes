@@ -1245,6 +1245,12 @@ function aplicarCompromisoDePago(p, fechaPago, formaPago, fondo){
 const obraManoObraReal = (o)=> (o.real.manoObra||0) + obraJornalesCostoReal(o);
 const obraRealTotal = (o)=> o.real.materiaPrima+obraManoObraReal(o)+o.real.logistica+o.real.estadia+o.real.otros;
 const obraPresTotal = (o)=> o.presupuesto.materiaPrima+o.presupuesto.manoObra+o.presupuesto.logistica+o.presupuesto.estadia;
+// Una obra que nunca pasó por el armador de presupuesto (o que se armó
+// dejando todo en $0 a propósito) — se inicia y se gestiona igual, pero
+// no tiene contra qué comparar el costo real, así que en toda la app se
+// muestra distinto (sin desvío, sin "Presupuesto → Facturación", "--" en
+// vez de un presupuestado inexistente).
+const obraSinPresupuesto = (o)=> obraPresTotal(o)===0;
 const liquidezTotal = ()=> state.caja + Object.values(state.fondos).reduce((a,b)=>a+b,0);
 
 /* ======================= NAV ======================= */
@@ -1282,6 +1288,16 @@ function showObraSubview(which){
   document.getElementById('obra-sub-detalle').classList.toggle('hidden', which!=='detalle');
   if(which==='lista') renderObraLista();
 }
+// Celda de "Desvío costos" que comparten la tabla de Obras y el Dashboard
+// — sin presupuesto no hay contra qué medir el desvío, así que se muestra
+// el costo real solo, sin barra ni color de alerta.
+function desvioCostosHtml(o){
+  if(obraSinPresupuesto(o)) return `<span class="hint">Sin presupuesto — ${fmt(obraRealTotal(o))} gastado</span>`;
+  const pres=obraPresTotal(o), real=obraRealTotal(o);
+  const pct = pres>0? Math.round(real/pres*100) : (real>0?100:0);
+  const fillClass = pct>105?'bad':(pct>=90?'warn':'good');
+  return `<div class="layerbar-wrap"><div class="layerbar"><div class="fill ${fillClass}" style="width:${Math.min(pct,100)}%;"></div></div><div class="layerbar-labels"><span>${pct}%</span></div></div>`;
+}
 function renderObraLista(){
   const q = (document.getElementById('obra-filter-q')?.value||'').toLowerCase();
   const estadoF = document.getElementById('obra-filter-estado')?.value||'todos';
@@ -1295,15 +1311,16 @@ function renderObraLista(){
     return true;
   });
   document.getElementById('obra-lista-body').innerHTML = rows.length ? rows.map(o=>{
+    const sinPres = obraSinPresupuesto(o);
     const pres=obraPresTotal(o), real=obraRealTotal(o);
     const pct = pres>0? Math.round(real/pres*100) : (real>0?100:0);
-    const fillClass = pct>105?'bad':(pct>=90?'warn':'good');
+    const fillClass = sinPres ? 'info' : (pct>105?'bad':(pct>=90?'warn':'good'));
     return `<tr style="cursor:pointer;" onclick="goToObra('${o.id}')">
       <td><span class="obra-code">${o.code}</span></td>
       <td>${o.cliente? o.cliente+' · ':''}${o.encargado}</td>
       <td class="mono">${fmtFecha(o.fechaInicio)}</td>
       <td><span class="estado-dot ${fillClass}"></span>${o.estado}</td>
-      <td><div class="layerbar-wrap"><div class="layerbar"><div class="fill ${fillClass}" style="width:${Math.min(pct,100)}%;"></div></div><div class="layerbar-labels"><span>${pct}%</span></div></div></td>
+      <td>${desvioCostosHtml(o)}</td>
       <td><span class="link-btn">Ver detalle →</span></td>
     </tr>`;
   }).join('') : `<tr class="empty-row"><td colspan="6">No hay obras que coincidan con el filtro</td></tr>`;
@@ -1318,15 +1335,16 @@ function renderDashboard(){
   document.getElementById('kpi-row').innerHTML = `
     <div class="card kpi"><div class="kpi-label">Liquidez disponible</div><div class="kpi-value">${fmt(liquidezTotal())}</div><div class="kpi-note">Caja + saldos FIMA</div></div>
     <div class="card kpi"><div class="kpi-label">Ganancia real acumulada</div><div class="kpi-value">${fmt(gananciaReal)}</div><div class="kpi-note">Proyectada ${fmt(gananciaProy)}</div></div>
-    <div class="card kpi"><div class="kpi-label">Obras activas</div><div class="kpi-value">${state.obras.filter(o=>o.estado==='en curso').length}</div><div class="kpi-note">${state.obras.filter(o=>obraRealTotal(o)>obraPresTotal(o)).length} por encima del presupuesto</div></div>
+    <div class="card kpi"><div class="kpi-label">Obras activas</div><div class="kpi-value">${state.obras.filter(o=>o.estado==='en curso').length}</div><div class="kpi-note">${state.obras.filter(o=>!obraSinPresupuesto(o) && obraRealTotal(o)>obraPresTotal(o)).length} por encima del presupuesto</div></div>
     <div class="card kpi"><div class="kpi-label">Pagos pendientes <span class="tag warn">${pendientes.length}</span></div><div class="kpi-value">${fmt(pendientesTotal)}</div><div class="kpi-note">${pendientes[0]? (pendientes[0].fechaPago?fmtFecha(pendientes[0].fechaPago):'sin fecha asignada') : 'Sin pendientes'}</div></div>
   `;
   document.getElementById('obras-dashboard-body').innerHTML = state.obras.map(o=>{
+    const sinPres = obraSinPresupuesto(o);
     const pres = obraPresTotal(o), real = obraRealTotal(o);
     const pct = pres>0? Math.round(real/pres*100) : (real>0?100:0);
-    const fillClass = pct>105?'bad':(pct>=90?'warn':'good');
+    const fillClass = sinPres ? 'info' : (pct>105?'bad':(pct>=90?'warn':'good'));
     return `<tr><td><span class="obra-code">${o.code}</span></td><td>${o.encargado}</td>
-      <td><div class="layerbar-wrap"><div class="layerbar"><div class="fill ${fillClass}" style="width:${Math.min(pct,100)}%;"></div></div><div class="layerbar-labels"><span>${pct}%</span></div></div></td>
+      <td>${desvioCostosHtml(o)}</td>
       <td><span class="estado-dot ${fillClass}"></span>${o.estado}</td><td><span class="link-btn" onclick="goToObra('${o.id}')">Ver detalle →</span></td></tr>`;
   }).join('') || `<tr class="empty-row"><td colspan="5">No hay obras cargadas</td></tr>`;
   const pend = state.pagos.filter(p=>['pendiente','parcial','programado'].includes(pagoEstado(p))).sort((a,b)=>(a.fechaPago||'').localeCompare(b.fechaPago||''));
@@ -1501,7 +1519,10 @@ function renderObraDetail(){
   if(o.estado==='finalizada') actions.innerHTML = `<button class="btn btn-ghost btn-sm" onclick="openPresupuestoBuilder('${o.id}')">Editar presupuesto</button>`;
   actions.innerHTML += `<button class="btn btn-ghost btn-sm" style="color:var(--bad);border-color:var(--bad);" onclick="eliminarObra('${o.id}')">Eliminar obra</button>`;
 
+  const sinPresupuesto = obraSinPresupuesto(o);
   const catCardHTML = (label,icon,pres,real)=>{
+    if(sinPresupuesto) return `<div class="card cat-card"><div class="cat-name"><div class="cat-icon">${icon}</div>${label}</div>
+      <div class="layerbar-wrap"><div class="layerbar-labels"><span>Sin presupuesto</span><span>${fmt(real)}</span></div></div></div>`;
     const pct = pres>0? Math.round(real/pres*100) : (real>0?100:0);
     const fillClass = pct>105?'bad':(pct>=90?'warn':'good');
     return `<div class="card cat-card"><div class="cat-name"><div class="cat-icon">${icon}</div>${label}</div>
@@ -1539,7 +1560,11 @@ function renderObraDetail(){
   const pr = o.presupuestoResumen;
   const cotizacion = pd.cotizacion || 0;
   const usdTag = (n)=> cotizacion>0 ? ` <span style="color:var(--muted);font-size:11.5px;">(${fmtUsd(n/cotizacion)})</span>` : '';
-  const diffRow = (label,pres,real)=>`<tr><td>${label}</td><td class="num">${fmt(pres)}</td><td class="num">${fmt(real)}</td><td class="num" style="color:${real-pres>0?'var(--bad)':'var(--good)'};">${real-pres>=0?'+':''}${fmt(real-pres)}</td></tr>`;
+  // Sin presupuesto no hay contra qué comparar — "Presupuestado" y
+  // "Diferencia" quedan en "--", solo se muestra el valor real.
+  const diffRow = (label,pres,real)=> sinPresupuesto
+    ? `<tr><td>${label}</td><td class="num">--</td><td class="num">${fmt(real)}</td><td class="num">--</td></tr>`
+    : `<tr><td>${label}</td><td class="num">${fmt(pres)}</td><td class="num">${fmt(real)}</td><td class="num" style="color:${real-pres>0?'var(--bad)':'var(--good)'};">${real-pres>=0?'+':''}${fmt(real-pres)}</td></tr>`;
 
   document.getElementById('obra-detail-content').innerHTML = `
     <div class="card" style="margin-bottom:16px;padding:16px 18px;font-family:'Montserrat',sans-serif;background:${resultReal>=0?'var(--good-soft)':'var(--bad-soft)'};">
@@ -1552,9 +1577,10 @@ function renderObraDetail(){
 
     ${renderObraJornalesCard(o)}
 
-    <div class="section-title"><h2>Costos por categoría</h2><span class="hint">Presupuestado vs. real</span></div>
+    <div class="section-title"><h2>Costos por categoría</h2><span class="hint">${sinPresupuesto?'Sin presupuesto — costos reales':'Presupuestado vs. real'}</span></div>
     <div class="cat-grid">${catCards}</div>
 
+    ${sinPresupuesto ? '' : `
     <div class="section-title"><h2>Presupuesto → Facturación</h2><span class="hint">Costos, beneficio, impuestos e IVA</span></div>
     <div class="card" style="font-family:'Montserrat',sans-serif;font-size:13px;">
       <div class="summary-line"><span>Costos (materiales + mano de obra)</span><span>${fmt(o.presupuestoResumen.costos)}</span></div>
@@ -1567,7 +1593,7 @@ function renderObraDetail(){
       <div class="summary-line total"><span>Presupuesto sin IVA</span><span>${fmt(o.presupuestoResumen.presupuestoSinIva ?? o.presupuestoResumen.totalPresupuesto ?? 0)}</span></div>
       <div class="summary-line sub"><span>+ IVA</span><span>${fmt(o.presupuestoResumen.iva)}</span></div>
       <div class="summary-line grand"><span>Presupuesto con IVA (facturado)</span><span>${fmt(o.presupuestoResumen.totalConIva)}</span></div>
-    </div>
+    </div>`}
 
     <div class="section-title"><h2>Materiales y gastos reales de la obra</h2><div class="st-actions">
       <select id="obra-gastos-cat-filter" class="filter-tab" style="padding:6px 10px;" onchange="setObraGastosCategoriaFilter(this.value)">
@@ -1586,7 +1612,9 @@ function renderObraDetail(){
       <button class="btn btn-ghost btn-sm" onclick="openModalIngreso('${o.id}')">+ Registrar cobro</button>
     </div></div>
     <div class="card cat-card">
-      <div class="layerbar-wrap"><div class="layerbar"><div class="fill good" style="width:${o.sinCobrosPendientes?100:Math.min(cobradoPct,100)}%;"></div></div><div class="layerbar-labels"><span>${o.sinCobrosPendientes?'100% cobrado (marcado sin pendientes)':cobradoPct+'% cobrado'}</span><span>${fmt(o.ingresos.cobrado)} / ${fmt(o.ingresos.facturado)}</span></div></div>
+      ${sinPresupuesto
+        ? `<div class="layerbar-wrap"><div class="layerbar-labels"><span>Sin presupuesto</span><span>Cobrado: ${fmt(o.ingresos.cobrado)}</span></div></div>`
+        : `<div class="layerbar-wrap"><div class="layerbar"><div class="fill good" style="width:${o.sinCobrosPendientes?100:Math.min(cobradoPct,100)}%;"></div></div><div class="layerbar-labels"><span>${o.sinCobrosPendientes?'100% cobrado (marcado sin pendientes)':cobradoPct+'% cobrado'}</span><span>${fmt(o.ingresos.cobrado)} / ${fmt(o.ingresos.facturado)}</span></div></div>`}
     </div>
     <div class="card card-table" style="margin-top:10px;"><table>
       <thead><tr><th>Fecha</th><th>Medio de pago</th><th>Nº factura</th><th>Nº cobranza</th><th class="num">Monto</th><th></th></tr></thead>
@@ -1599,7 +1627,7 @@ function renderObraDetail(){
       <tbody>${obraDocumentosRows(o.id)}</tbody>
     </table></div>
 
-    <div class="section-title"><h2>Presupuestado vs. real — detalle</h2><span class="hint">Para ver en qué categoría no coincide</span></div>
+    <div class="section-title"><h2>Presupuestado vs. real — detalle</h2><span class="hint">${sinPresupuesto?'Sin presupuesto cargado — solo se muestran los valores reales':'Para ver en qué categoría no coincide'}</span></div>
     <div class="card card-table dark"><table>
       <thead><tr><th>Categoría</th><th class="num">Presupuestado</th><th class="num">Real</th><th class="num">Diferencia</th></tr></thead>
       <tbody>
@@ -1611,7 +1639,9 @@ function renderObraDetail(){
         <tr class="subtotal-row">${diffRow('Costos totales', obraPresTotal(o), realTotal).replace('<tr>','').replace('</tr>','')}</tr>
         ${diffRow('Ingresos (facturado / cobrado)', o.ingresos.facturado, o.ingresos.cobrado)}
         <tr class="subtotal-row">${diffRow('Resultado (ganancia)', resultProy, resultReal).replace('<tr>','').replace('</tr>','')}</tr>
-        <tr><td>Comisión vendedor${co?' <span class="tag warn">editada</span>':''} <span class="link-btn" style="margin-left:6px;" onclick="openModalComisionObra('${o.id}')">Editar</span></td><td class="num">${fmt(pr.comisionVendedor||0)}</td><td class="num">${fmt(comisionVendedorReal)}</td><td class="num" style="color:${comisionVendedorReal-(pr.comisionVendedor||0)>0?'var(--bad)':'var(--good)'};">${comisionVendedorReal-(pr.comisionVendedor||0)>=0?'+':''}${fmt(comisionVendedorReal-(pr.comisionVendedor||0))}</td></tr>
+        <tr><td>Comisión vendedor${co?' <span class="tag warn">editada</span>':''} <span class="link-btn" style="margin-left:6px;" onclick="openModalComisionObra('${o.id}')">Editar</span></td>${sinPresupuesto
+          ? `<td class="num">--</td><td class="num">${fmt(comisionVendedorReal)}</td><td class="num">--</td>`
+          : `<td class="num">${fmt(pr.comisionVendedor||0)}</td><td class="num">${fmt(comisionVendedorReal)}</td><td class="num" style="color:${comisionVendedorReal-(pr.comisionVendedor||0)>0?'var(--bad)':'var(--good)'};">${comisionVendedorReal-(pr.comisionVendedor||0)>=0?'+':''}${fmt(comisionVendedorReal-(pr.comisionVendedor||0))}</td>`}</tr>
         ${diffRow('Ganancia neta a repartir (sin restar comisión)', pr.gananciaNeta||0, gananciaNetaReal)}
         ${diffRow(socio1Nombre, pr.socio1Monto||0, socio1Real)}
         ${diffRow(socio2Nombre, pr.socio2Monto||0, socio2Real)}
