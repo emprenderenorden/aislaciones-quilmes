@@ -1311,6 +1311,153 @@ function renderDashboard(){
   }).join('') : `<tr class="empty-row"><td colspan="5">No hay pagos con fecha pendiente</td></tr>`;
 }
 
+// Comisión del vendedor y reparto de la ganancia neta real entre los
+// socios y AQ (empresa, se queda con el resto) — mismo cálculo que se usa
+// tanto en "Presupuestado vs. real" como en la Planilla de Pagos, para no
+// tener la fórmula duplicada en dos lugares.
+function obraDistribucionGanancia(o){
+  const pd = o.presupuestoDetalle || {};
+  const ivaPct = pd.ivaPct ?? 21;
+  const co = o.comisionOverride;
+  const vendedorModo = co ? co.modo : (pd.vendedorModo||'pct');
+  const vendedorValor = co ? co.valor : (vendedorModo==='monto' ? (pd.vendedorMonto||0) : (pd.vendedorPct??0));
+  const facturadoSinIvaReal = o.ingresos.cobrado / (1+ivaPct/100);
+  const cobradoRatio = o.ingresos.facturado>0 ? o.ingresos.cobrado/o.ingresos.facturado : 0;
+  const comisionVendedor = vendedorModo==='monto' ? vendedorValor*cobradoRatio : facturadoSinIvaReal*(vendedorValor/100);
+  const gananciaNeta = o.ingresos.cobrado - obraRealTotal(o);
+  const socio1Nombre = pd.socio1Nombre || 'Socio 1', socio1Pct = pd.socio1Pct ?? 0;
+  const socio2Nombre = pd.socio2Nombre || 'Socio 2', socio2Pct = pd.socio2Pct ?? 0;
+  const socio1Monto = gananciaNeta*socio1Pct/100, socio2Monto = gananciaNeta*socio2Pct/100;
+  const aqMonto = gananciaNeta - socio1Monto - socio2Monto;
+  return { comisionVendedor, facturadoSinIvaReal, gananciaNeta, socio1Nombre, socio1Pct, socio1Monto, socio2Nombre, socio2Pct, socio2Monto, aqMonto };
+}
+// Junta los items de la "Planilla de Pagos" de la obra (la hoja final que
+// se imprimía en Excel y se le pasaba a otra persona del equipo para
+// gestionar las compras/pagos pendientes) — impuestos, materiales de stock
+// a reponer, combustible y comisiones. No incluye los costos que ya se
+// pagan por el circuito normal de Pagos/OC (esos ya se ven en "Materiales
+// y gastos reales de la obra"), es específicamente lo que hay que
+// gestionar aparte. Se usa tanto para mostrarla en pantalla como para el PDF.
+function obraPlanillaPagos(o){
+  const pd = o.presupuestoDetalle || {};
+  const iibbPct = pd.iibbPct ?? 0;
+  const dist = obraDistribucionGanancia(o);
+  // IVA de la obra: débito (de sus cobros) menos crédito (de sus gastos
+  // con IVA) — mismo criterio que el Reporte de IVA general (ver
+  // allIngresosCobrados/pagoIvaMonto), pero acumulado de toda la obra en
+  // vez de cortado por mes.
+  const ivaDebito = (o.ingresosList||[]).reduce((a,i)=>a + (i.monto - i.monto/1.21), 0);
+  const ivaCredito = state.pagos.filter(p=>p.obraId===o.id && p.ivaAplica).reduce((a,p)=>a + pagoIvaMonto(p), 0);
+  const iva = ivaDebito - ivaCredito;
+  const iibb = dist.facturadoSinIvaReal * (iibbPct/100);
+  // Materiales a reponer: solo lo que se usó de stock para esta obra (lo
+  // que ya se compró directo para la obra se paga por el circuito normal
+  // de Pagos/OC, no entra acá).
+  const porMaterial = {};
+  state.stockMovimientos.forEach(m=>{
+    if(m.tipo!=='consumo' || m.obraId!==o.id) return;
+    if(!porMaterial[m.stockId]) porMaterial[m.stockId] = {cantidad:0, monto:0};
+    porMaterial[m.stockId].cantidad += m.cantidad;
+    porMaterial[m.stockId].monto += m.monto;
+  });
+  const materiales = Object.entries(porMaterial).map(([stockId,v])=>{
+    const item = getStockItem(stockId);
+    return { nombre: item?item.nombre:'Material eliminado', unidad: item?item.unidad:'', cantidad:v.cantidad, monto:v.monto };
+  });
+  const materialesTotal = materiales.reduce((a,m)=>a+m.monto,0);
+  // Combustible: mismo cálculo que ya usa la card "Combustible" de la obra.
+  const pagosObra = state.pagos.filter(p=>p.obraId===o.id);
+  const combustibleDirecto = pagosObra.filter(p=>p.categoria==='combustible').reduce((a,p)=>a+p.monto,0);
+  const telepase = pagosObra.filter(p=>p.categoria==='telepase').reduce((a,p)=>a+p.monto,0);
+  const logisticaSinDividir = Math.max(0, o.real.logistica - combustibleDirecto - telepase);
+  const combustible = combustibleDirecto + logisticaSinDividir;
+  const comisionesTotal = dist.comisionVendedor + dist.socio1Monto + dist.socio2Monto + dist.aqMonto;
+  const totalPagos = iva + iibb + materialesTotal + combustible + comisionesTotal;
+  const cobrado = o.ingresos.cobrado;
+  const diferencia = cobrado - totalPagos;
+  return { iva, iibb, materiales, materialesTotal, combustible, dist, comisionesTotal, totalPagos, cobrado, diferencia };
+}
+function renderObraPlanillaPagosCard(o){
+  const p = obraPlanillaPagos(o);
+  const notaRow = (txt)=>`<tr><td colspan="2" style="font-size:11px;color:var(--muted);font-style:italic;padding:4px 9px;">${txt}</td></tr>`;
+  const seccionRow = (txt)=>`<tr class="subtotal-row"><td colspan="2">${txt}</td></tr>`;
+  const filaMaterial = (m)=>`<tr><td>${m.nombre} (${m.cantidad}${m.unidad?' '+m.unidad:''})</td><td class="num">${fmt(m.monto)}</td></tr>`;
+  return `
+    <div class="section-title"><h2>Planilla de Pagos</h2><div class="st-actions"><span class="link-btn" onclick="imprimirPlanillaPagos('${o.id}')" title="Abrir para imprimir o guardar como PDF">⬇ Descargar PDF</span></div></div>
+    <div class="card card-table dark"><table>
+      <thead><tr><th>Concepto</th><th class="num">Monto</th></tr></thead>
+      <tbody>
+        ${seccionRow('Impuestos')}
+        <tr><td>IVA</td><td class="num">${fmt(p.iva)}</td></tr>
+        ${notaRow('IVA: poner en FIMA para pagar a 60 días')}
+        <tr><td>IIBB</td><td class="num">${fmt(p.iibb)}</td></tr>
+        ${notaRow('Consultar Ingresos Brutos')}
+        ${seccionRow('Materiales a reponer')}
+        ${p.materiales.length ? p.materiales.map(filaMaterial).join('') : '<tr class="empty-row"><td colspan="2">Sin materiales de stock consumidos en esta obra</td></tr>'}
+        <tr><td>Total</td><td class="num">${fmt(p.materialesTotal)}</td></tr>
+        ${notaRow('Conseguir el mejor precio')}
+        ${seccionRow('Combustible')}
+        <tr><td>Combustible (reponer)</td><td class="num">${fmt(p.combustible)}</td></tr>
+        ${notaRow('Transferir a Edenred')}
+        ${seccionRow('Comisiones')}
+        <tr><td>Vendedor</td><td class="num">${fmt(p.dist.comisionVendedor)}</td></tr>
+        <tr><td>${p.dist.socio1Nombre} (${p.dist.socio1Pct}%)</td><td class="num">${fmt(p.dist.socio1Monto)}</td></tr>
+        <tr><td>${p.dist.socio2Nombre} (${p.dist.socio2Pct}%)</td><td class="num">${fmt(p.dist.socio2Monto)}</td></tr>
+        <tr><td>AQ (resto)</td><td class="num">${fmt(p.dist.aqMonto)}</td></tr>
+        ${notaRow('La ganancia de AQ va al fondo FIMA para gastos fijos')}
+        ${seccionRow('Total')}
+        <tr><td>Total pagos</td><td class="num">${fmt(p.totalPagos)}</td></tr>
+        <tr><td>Cobrado</td><td class="num">${fmt(p.cobrado)}</td></tr>
+        <tr class="subtotal-row"><td>Diferencia</td><td class="num" style="color:${p.diferencia>=0?'var(--good)':'var(--bad)'};">${fmt(p.diferencia)}</td></tr>
+        ${notaRow('La diferencia se usará para pagar parte de los jornales')}
+      </tbody>
+    </table></div>`;
+}
+function imprimirPlanillaPagos(obraId){
+  const o = getObra(obraId); if(!o) return;
+  const p = obraPlanillaPagos(o);
+  const notaRow = (txt)=>`<tr><td colspan="2" style="font-size:10.5px;color:#6B7573;font-style:italic;">${txt}</td></tr>`;
+  const filaMaterial = (m)=>`<tr><td>${m.nombre} (${m.cantidad}${m.unidad?' '+m.unidad:''})</td><td class="num">${fmt(m.monto)}</td></tr>`;
+  const header = printHeaderHtml('PLANILLA DE PAGOS', o.code, [`Cliente: ${o.cliente}`]);
+  abrirVentanaImpresion(`Planilla de pagos — ${o.code}`, `
+    ${header}
+    <div class="box"><h4>Impuestos</h4>
+      <table><tbody>
+        <tr><td>IVA</td><td class="num">${fmt(p.iva)}</td></tr>
+        ${notaRow('IVA: poner en FIMA para pagar a 60 días')}
+        <tr><td>IIBB</td><td class="num">${fmt(p.iibb)}</td></tr>
+        ${notaRow('Consultar Ingresos Brutos')}
+      </tbody></table>
+    </div>
+    <div class="box"><h4>Materiales a reponer</h4>
+      <table><tbody>
+        ${p.materiales.length ? p.materiales.map(filaMaterial).join('') : '<tr><td colspan="2">Sin materiales de stock consumidos en esta obra</td></tr>'}
+        <tr><td><b>Total</b></td><td class="num"><b>${fmt(p.materialesTotal)}</b></td></tr>
+        ${notaRow('Conseguir el mejor precio')}
+      </tbody></table>
+    </div>
+    <div class="box"><h4>Combustible</h4>
+      <table><tbody>
+        <tr><td>Combustible (reponer)</td><td class="num">${fmt(p.combustible)}</td></tr>
+        ${notaRow('Transferir a Edenred')}
+      </tbody></table>
+    </div>
+    <div class="box"><h4>Comisiones</h4>
+      <table><tbody>
+        <tr><td>Vendedor</td><td class="num">${fmt(p.dist.comisionVendedor)}</td></tr>
+        <tr><td>${p.dist.socio1Nombre} (${p.dist.socio1Pct}%)</td><td class="num">${fmt(p.dist.socio1Monto)}</td></tr>
+        <tr><td>${p.dist.socio2Nombre} (${p.dist.socio2Pct}%)</td><td class="num">${fmt(p.dist.socio2Monto)}</td></tr>
+        <tr><td>AQ (resto)</td><td class="num">${fmt(p.dist.aqMonto)}</td></tr>
+        ${notaRow('La ganancia de AQ va al fondo FIMA para gastos fijos')}
+      </tbody></table>
+    </div>
+    <div class="totales"><table>
+      <tr><td>Total pagos</td><td class="num">${fmt(p.totalPagos)}</td></tr>
+      <tr><td>Cobrado</td><td class="num">${fmt(p.cobrado)}</td></tr>
+      <tr><td>Diferencia</td><td class="num">${fmt(p.diferencia)}</td></tr>
+    </table></div>
+    <div class="box"><div style="font-size:11px;color:#6B7573;font-style:italic;">La diferencia se usará para pagar parte de los jornales.</div></div>`);
+}
 /* ======================= RENDER: OBRA ======================= */
 function renderObraDetail(){
   if(!state.obras.length){ document.getElementById('obra-detail-content').innerHTML = `<div class="foot-note">Todavía no hay obras. Usá "+ Nueva obra" o importá un Excel.</div>`; document.getElementById('obra-picker-code').textContent='—'; document.getElementById('obra-meta-row').innerHTML=''; document.getElementById('obra-lifecycle-actions').innerHTML=''; return; }
@@ -1358,17 +1505,11 @@ function renderObraDetail(){
   const resultProy = (o.presupuestoResumen.beneficio||0) - (o.presupuestoResumen.descuento||0);
 
   const pd = o.presupuestoDetalle || {};
-  const ivaPct = pd.ivaPct ?? 21;
   const co = o.comisionOverride;
-  const vendedorModo = co ? co.modo : (pd.vendedorModo||'pct');
-  const vendedorValor = co ? co.valor : (vendedorModo==='monto' ? (pd.vendedorMonto||0) : (pd.vendedorPct??0));
-  const socio1Nombre = pd.socio1Nombre || 'Socio 1', socio1Pct = pd.socio1Pct ?? 0;
-  const socio2Nombre = pd.socio2Nombre || 'Socio 2', socio2Pct = pd.socio2Pct ?? 0;
-  const facturadoSinIvaReal = o.ingresos.cobrado / (1+ivaPct/100);
-  const cobradoRatio = o.ingresos.facturado>0 ? o.ingresos.cobrado/o.ingresos.facturado : 0;
-  const comisionVendedorReal = vendedorModo==='monto' ? vendedorValor*cobradoRatio : facturadoSinIvaReal*(vendedorValor/100);
-  const gananciaNetaReal = resultReal;
-  const socio1Real = gananciaNetaReal*socio1Pct/100, socio2Real = gananciaNetaReal*socio2Pct/100, aqReal = gananciaNetaReal-socio1Real-socio2Real;
+  const dist = obraDistribucionGanancia(o);
+  const comisionVendedorReal = dist.comisionVendedor, gananciaNetaReal = dist.gananciaNeta;
+  const socio1Nombre = dist.socio1Nombre, socio2Nombre = dist.socio2Nombre;
+  const socio1Real = dist.socio1Monto, socio2Real = dist.socio2Monto, aqReal = dist.aqMonto;
   const pr = o.presupuestoResumen;
   const cotizacion = pd.cotizacion || 0;
   const usdTag = (n)=> cotizacion>0 ? ` <span style="color:var(--muted);font-size:11.5px;">(${fmtUsd(n/cotizacion)})</span>` : '';
@@ -1451,6 +1592,8 @@ function renderObraDetail(){
         ${diffRow('AQ — empresa (resto)', pr.aqMonto||0, aqReal)}
       </tbody>
     </table></div>
+
+    ${renderObraPlanillaPagosCard(o)}
   `;
 }
 function obraPagosRows(obraId){

@@ -747,3 +747,40 @@ archivo. Una vez desplegado, tildar el ítem de arriba o borrar la sección.
     y los pagos por obra quedan bien calculados y guardados (usan
     columnas que ya existían), pero la lista de a qué obras apunta la OC
     se pierde al recargar la página.
+- **Nuevo: Planilla de Pagos por obra.** Recrea la última hoja que se
+  usaba en Excel — un resumen imprimible con las compras/pagos pendientes
+  de gestionar para esa obra en particular, para pasárselo a otra persona
+  del equipo. Se arma sola con los datos ya cargados de la obra (no se
+  carga nada a mano) y aparece como la última sección del detalle de cada
+  obra, con un botón "Descargar PDF" (mismo mecanismo que ya usan
+  OC/Pagos/Cobranzas).
+  - **Impuestos:** IVA de la obra (débito de sus cobros menos crédito de
+    sus gastos con IVA — mismo criterio que el Reporte de IVA general,
+    pero acumulado de toda la obra en vez de por mes) e IIBB (sobre lo
+    cobrado sin IVA, a la tasa de IIBB que se eligió en el presupuesto de
+    esa obra puntual — no una tasa fija, para no pagar de más o de menos
+    si alguna obra quedó con otra provincia).
+  - **Materiales a reponer:** el stock que se consumió para esta obra
+    (no lo que ya se compró directo para la obra — eso se paga por el
+    circuito normal de Pagos/OC), con cantidad y costo por material.
+  - **Combustible:** mismo cálculo que ya se veía en la card
+    "Combustible" de la obra.
+  - **Comisiones:** comisión del vendedor + el reparto de la ganancia
+    neta entre los dos socios configurados en el presupuesto y AQ (la
+    empresa, se queda con el resto) — se sacó ese cálculo a una función
+    compartida (`obraDistribucionGanancia`) para no tener la fórmula
+    duplicada con la que ya usaba "Presupuestado vs. real".
+  - **Total pagos / Cobrado / Diferencia:** el total es la suma de lo de
+    arriba (no de todos los costos de la obra, es específicamente lo que
+    hay que gestionar aparte), y la diferencia contra lo cobrado es la
+    plata que queda para ayudar a pagar los jornales.
+  - Incluye las mismas notas fijas de la planilla vieja (poner el IVA en
+    FIMA para pagar a 60 días, consultar Ingresos Brutos, conseguir el
+    mejor precio, transferir a Edenred, que la ganancia de AQ va al fondo
+    FIMA, que la diferencia se usa para los jornales).
+  - Probado en un entorno aislado con una obra con cobros, un gasto con
+    IVA, un gasto de combustible y stock consumido: los montos de IVA,
+    IIBB, materiales a reponer, combustible y el reparto de comisiones
+    coinciden exactamente con el cálculo esperado a mano; la sección
+    aparece al final del detalle de la obra (después de "Presupuestado
+    vs. real — detalle") y el PDF se genera sin errores.
