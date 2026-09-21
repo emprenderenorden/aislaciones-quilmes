@@ -885,3 +885,27 @@ volver a desplegar (ver instrucciones al principio de
     supera su presupuesto aparece contada y nombrada en la card nueva,
     mientras que una obra con gasto ese mes pero dentro de presupuesto
     no se cuenta.
+- **Nuevo: Planilla de Pagos — sección de pagos pendientes/programados.**
+  Hasta ahora la Planilla de Pagos de cada obra (`obraPlanillaPagos`) solo
+  sumaba Impuestos, Materiales a reponer (solo stock consumido, no lo
+  comprado directo para la obra), Combustible y Comisiones — los gastos
+  "normales" de la obra (materiales, mano de obra, logística, etc.)
+  todavía sin pagar no aparecían en ningún lado de la planilla, así que
+  el equipo no veía ahí cuánto había que separar para esas compras ya
+  comprometidas.
+  - Se agregó una sección "Pagos pendientes / programados" (card y PDF)
+    que lista cada gasto de la obra (`tipo:'obra'`) cuyo estado sea
+    Pendiente o Programado — concepto, categoría, proveedor, monto,
+    fecha de pago y estado — con su subtotal.
+  - Ese subtotal ahora se suma al "Total pagos" (y resta de la
+    "Diferencia" para jornales), porque es plata que el equipo va a
+    tener que pagar sí o sí.
+  - Deja afuera lo ya Pagado/Parcial (ya salió, o ya cuenta como costo
+    real) y las órdenes de compra todavía no marcadas "comprada" (esas
+    no generaron un pago con monto/fecha firme todavía).
+  - Probado en un entorno aislado: una obra con 6 gastos sembrados (uno
+    pagado, uno sin fecha, uno con fecha pasada sin compromiso aplicado,
+    uno programado a futuro, uno parcial y uno de stock con `obraId`
+    nulo) — la sección solo lista los 3 que corresponden (sin fecha,
+    fecha pasada y programado), con el subtotal correcto, tanto en la
+    card como en el PDF; los demás no aparecen.

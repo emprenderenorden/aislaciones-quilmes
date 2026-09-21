@@ -1423,16 +1423,27 @@ function obraPlanillaPagos(o){
   const logisticaSinDividir = Math.max(0, o.real.logistica - combustibleDirecto - telepase);
   const combustible = combustibleDirecto + logisticaSinDividir;
   const comisionesTotal = dist.comisionVendedor + dist.socio1Monto + dist.socio2Monto + dist.aqMonto;
-  const totalPagos = iva + iibb + materialesTotal + combustible + comisionesTotal;
+  // Pagos de la obra todavía sin salir de caja/fondo (Pendiente o
+  // Programado) — para que el equipo sepa cuánto separar además de lo de
+  // arriba. Deja afuera Pagado/Parcial (ya salió o ya cuenta como costo
+  // real) y las OC todavía no marcadas "comprada" (no generaron un pago).
+  const pendientes = pagosObra.filter(p=>p.tipo==='obra' && ['pendiente','sin_fecha','programado'].includes(pagoEstado(p))).map(p=>({
+    id:p.id, concepto:p.concepto, categoria: catLabel[p.categoria]||p.categoria,
+    proveedor: getProveedor(p.proveedorId)?.nombre || '—', monto:p.monto, fechaPago:p.fechaPago,
+    estado: pagoEstadoInfo(pagoEstado(p)).txt
+  }));
+  const pendientesTotal = pendientes.reduce((a,p)=>a+p.monto,0);
+  const totalPagos = iva + iibb + materialesTotal + combustible + comisionesTotal + pendientesTotal;
   const cobrado = o.ingresos.cobrado;
   const diferencia = cobrado - totalPagos;
-  return { iva, iibb, materiales, materialesTotal, combustible, dist, comisionesTotal, totalPagos, cobrado, diferencia };
+  return { iva, iibb, materiales, materialesTotal, combustible, dist, comisionesTotal, pendientes, pendientesTotal, totalPagos, cobrado, diferencia };
 }
 function renderObraPlanillaPagosCard(o){
   const p = obraPlanillaPagos(o);
   const notaRow = (txt)=>`<tr><td colspan="2" style="font-size:11px;color:var(--muted);font-style:italic;padding:4px 9px;">${txt}</td></tr>`;
   const seccionRow = (txt)=>`<tr class="subtotal-row"><td colspan="2">${txt}</td></tr>`;
   const filaMaterial = (m)=>`<tr><td>${m.nombre} (${m.cantidad}${m.unidad?' '+m.unidad:''})</td><td class="num">${fmt(m.monto)}</td></tr>`;
+  const filaPendiente = (x)=>`<tr><td>${x.concepto} — ${x.categoria}${x.proveedor!=='—'?' · '+x.proveedor:''}<div class="sub" style="font-size:11px;color:var(--muted);margin-top:2px;">${x.estado}${x.fechaPago?' · '+fmtFecha(x.fechaPago):''}</div></td><td class="num">${fmt(x.monto)}</td></tr>`;
   return `
     <div class="section-title"><h2>Planilla de Pagos</h2><div class="st-actions"><span class="link-btn" onclick="imprimirPlanillaPagos('${o.id}')" title="Abrir para imprimir o guardar como PDF">⬇ Descargar PDF</span></div></div>
     <div class="card card-table dark"><table>
@@ -1443,6 +1454,10 @@ function renderObraPlanillaPagosCard(o){
         ${notaRow('IVA: poner en FIMA para pagar a 60 días')}
         <tr><td>IIBB</td><td class="num">${fmt(p.iibb)}</td></tr>
         ${notaRow('Consultar Ingresos Brutos')}
+        ${seccionRow('Pagos pendientes / programados')}
+        ${p.pendientes.length ? p.pendientes.map(filaPendiente).join('') : '<tr class="empty-row"><td colspan="2">Sin pagos pendientes ni programados en esta obra</td></tr>'}
+        <tr><td>Total</td><td class="num">${fmt(p.pendientesTotal)}</td></tr>
+        ${notaRow('Separar esta plata para las compras/facturas ya comprometidas')}
         ${seccionRow('Materiales a reponer')}
         ${p.materiales.length ? p.materiales.map(filaMaterial).join('') : '<tr class="empty-row"><td colspan="2">Sin materiales de stock consumidos en esta obra</td></tr>'}
         <tr><td>Total</td><td class="num">${fmt(p.materialesTotal)}</td></tr>
@@ -1469,6 +1484,7 @@ function imprimirPlanillaPagos(obraId){
   const p = obraPlanillaPagos(o);
   const notaRow = (txt)=>`<tr><td colspan="2" style="font-size:10.5px;color:#6B7573;font-style:italic;">${txt}</td></tr>`;
   const filaMaterial = (m)=>`<tr><td>${m.nombre} (${m.cantidad}${m.unidad?' '+m.unidad:''})</td><td class="num">${fmt(m.monto)}</td></tr>`;
+  const filaPendiente = (x)=>`<tr><td>${x.concepto} — ${x.categoria}${x.proveedor!=='—'?' · '+x.proveedor:''} <span style="color:#6B7573;">(${x.estado}${x.fechaPago?' · '+fmtFecha(x.fechaPago):''})</span></td><td class="num">${fmt(x.monto)}</td></tr>`;
   const header = printHeaderHtml('PLANILLA DE PAGOS', o.code, [`Cliente: ${o.cliente}`]);
   abrirVentanaImpresion(`Planilla de pagos — ${o.code}`, `
     ${header}
@@ -1478,6 +1494,13 @@ function imprimirPlanillaPagos(obraId){
         ${notaRow('IVA: poner en FIMA para pagar a 60 días')}
         <tr><td>IIBB</td><td class="num">${fmt(p.iibb)}</td></tr>
         ${notaRow('Consultar Ingresos Brutos')}
+      </tbody></table>
+    </div>
+    <div class="box"><h4>Pagos pendientes / programados</h4>
+      <table><tbody>
+        ${p.pendientes.length ? p.pendientes.map(filaPendiente).join('') : '<tr><td colspan="2">Sin pagos pendientes ni programados en esta obra</td></tr>'}
+        <tr><td><b>Total</b></td><td class="num"><b>${fmt(p.pendientesTotal)}</b></td></tr>
+        ${notaRow('Separar esta plata para las compras/facturas ya comprometidas')}
       </tbody></table>
     </div>
     <div class="box"><h4>Materiales a reponer</h4>
