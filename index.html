@@ -663,6 +663,25 @@ function recomputeObraReal(obra){
   });
   obra.real = real;
 }
+// Mismo problema que tenía `real`: los saldos de fondo de FIMA
+// (state.fondos) se sumaban/restaban a mano en ~10 lugares del código
+// (registrar/editar/eliminar un movimiento, marcar una OC comprada con
+// fondo FIMA, "Registrar pago ->", revertir un pago, eliminar un gasto,
+// etc.) y además quedaban afuera de la combinación tras un conflicto de
+// guardado o el auto-refresco (esos solo recombinan listas como
+// movimientosFima, nunca estos contadores) — un cambio local a un saldo
+// hecho justo en el medio de esas operaciones se perdía sin dejar rastro,
+// y quedaba pegado para siempre porque nada lo recalculaba. Ahora se
+// recalculan siempre desde el origen real de la plata: la suma de
+// movimientosFima de cada fondo (ingresos suman, egresos restan).
+function recomputeFondos(){
+  const fondos = { costosFijos:0, jornales:0, impuestos:0, emergencias:0, inversiones:0, obras:0, otros:0 };
+  state.movimientosFima.forEach(m=>{
+    if(fondos[m.fondo]===undefined) return;
+    fondos[m.fondo] += (m.tipo==='in' ? m.monto : -m.monto);
+  });
+  state.fondos = fondos;
+}
 function catOptionsForTipo(tipo, selected){
   const opts = tipo==='obra'
     ? {materiaPrima:'Materiales', manoObra:'Mano de obra', combustible:'Combustible', telepase:'Telepase', estadia:'Estadía de obra', otros:'Otros no previstos'}
@@ -1072,6 +1091,10 @@ async function saveStateCore(reintentos){
     // real se recalcula recién acá, con pagos/stockMovimientos ya combinados
     // (antes de esto, mergeObraTrasConflicto dejó un valor transitorio sin usar).
     state.obras.forEach(o=>recomputeObraReal(o));
+    // Los saldos de fondo también se recalculan acá, ya con movimientosFima
+    // combinado — antes quedaban afuera de esta combinación y se pisaban
+    // directo con la copia del servidor (ver recomputeFondos).
+    recomputeFondos();
     // Repintamos la pantalla con lo combinado, pero sin pasar por renderAll()
     // acá: renderAll() vuelve a programar un guardado propio (scheduleSave),
     // y como ya estamos reintentando explícitamente más abajo, eso generaba
@@ -1171,6 +1194,7 @@ async function refrescarDesdeServidorCore(){
   });
   state.jornales = mergeJornalesTrasConflicto(local.jornales, state.jornales, eliminadosLocalmente.jornales, editadosLocalmente.diasJornales);
   state.obras.forEach(o=>recomputeObraReal(o));
+  recomputeFondos();
   renderAllSinGuardar();
 }
 function programarRefrescoAuto(){
@@ -1235,8 +1259,8 @@ function aplicarCompromisoDePago(p, fechaPago, formaPago, fondo){
   p.pagosRealizados.push({fecha:fechaPago, monto:p.monto, fondo, formaPago, aplicado});
   if(aplicado){
     if(fondo){
-      state.fondos[fondo] -= p.monto;
       state.movimientosFima.push({id:newId('fm'), fecha:fechaPago, fondo, obraId:p.obraId, concepto:p.concepto, tipo:'out', monto:p.monto});
+      recomputeFondos();
     } else {
       state.caja -= p.monto;
     }
@@ -2617,7 +2641,6 @@ function eliminarMovimientoFima(idx){
   let advertencia = `¿Eliminar este movimiento de ${fondoLabel[m.fondo]} (${m.tipo==='in'?'Ingreso':'Egreso'} de ${fmt(m.monto)} — ${m.concepto})? Se le devuelve el monto al fondo. Esta acción no se puede deshacer.`;
   if(pagoLigado) advertencia += `\n\nEste movimiento tiene un gasto propio cargado junto con él ("${pagoLigado.concepto}") — también se va a eliminar.`;
   if(!confirm(advertencia)) return;
-  state.fondos[m.fondo] += (m.tipo==='in'? -m.monto : m.monto);
   marcarEliminado('movimientosFima', m.id);
   if(pagoLigado){
     marcarEliminado('pagos', pagoLigado.id);
@@ -2625,6 +2648,7 @@ function eliminarMovimientoFima(idx){
     state.pagos = state.pagos.filter(p=>p!==pagoLigado);
   }
   state.movimientosFima.splice(idx,1);
+  recomputeFondos();
   renderAll();
 }
 function openModalEditarMovimientoFima(idx){
@@ -2643,11 +2667,7 @@ function submitEditarMovimientoFima(idx){
   if(!m) return;
   const nuevoConcepto = document.getElementById('f-fima-edit-concepto').value.trim() || m.concepto;
   const nuevoMonto = +document.getElementById('f-fima-edit-monto').value || 0;
-  const deltaMonto = nuevoMonto - m.monto;
   const pagoLigado = pagoLigadoAMovimientoFima(m);
-  // El saldo del fondo ya se había movido según el monto viejo — se ajusta
-  // acá por la diferencia para que quede reflejando el monto nuevo.
-  state.fondos[m.fondo] += (m.tipo==='in'? deltaMonto : -deltaMonto);
   if(pagoLigado){
     pagoLigado.concepto = nuevoConcepto; pagoLigado.monto = nuevoMonto; pagoLigado.unitario = nuevoMonto;
     if(pagoLigado.pagosRealizados[0]) pagoLigado.pagosRealizados[0].monto = nuevoMonto;
@@ -2655,6 +2675,7 @@ function submitEditarMovimientoFima(idx){
   }
   marcarEditado('movimientosFima', m.id);
   m.concepto = nuevoConcepto; m.monto = nuevoMonto;
+  recomputeFondos();
   closeModal(); renderAll();
 }
 function setFimaSubcatFiltro(value){
@@ -2662,15 +2683,25 @@ function setFimaSubcatFiltro(value){
   renderFima();
 }
 function openModalEditarFondo(fondo){
-  modalEl.innerHTML = `<h3>Editar fondo — ${fondoLabel[fondo]}</h3><div class="modal-sub">Ajustá el monto actual del fondo — por ejemplo, para cargar un saldo inicial</div>
+  modalEl.innerHTML = `<h3>Editar fondo — ${fondoLabel[fondo]}</h3><div class="modal-sub">Ajustá el monto actual del fondo — por ejemplo, para cargar un saldo inicial. La diferencia queda cargada como un movimiento "Ajuste manual de saldo" en el historial de FIMA.</div>
     <div class="form-grid">
       <div class="field span2"><label>Monto actual ($)</label><input id="f-fondo-monto" class="mono-in" type="number" value="${state.fondos[fondo]}"></div>
     </div>
     <div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" onclick="submitEditarFondo('${fondo}')">Guardar</button></div>`;
   overlay.classList.add('open');
 }
+// El saldo de un fondo ya no es un valor que se pueda sobrescribir directo
+// (ver recomputeFondos) — la diferencia con el valor actual se carga como
+// un movimiento más, así el ajuste queda visible en el historial y el
+// saldo se sigue calculando siempre desde ahí (si no, el próximo
+// recálculo lo volvería a pisar).
 function submitEditarFondo(fondo){
-  state.fondos[fondo] = +document.getElementById('f-fondo-monto').value || 0;
+  const nuevoValor = +document.getElementById('f-fondo-monto').value || 0;
+  const delta = nuevoValor - state.fondos[fondo];
+  if(delta!==0){
+    state.movimientosFima.push({id:newId('fm'), fecha:today(), fondo, obraId:null, subcategoria: fondo==='obras'?null:'Ajuste manual', concepto:'Ajuste manual de saldo', tipo: delta>0?'in':'out', monto:Math.abs(delta)});
+    recomputeFondos();
+  }
   closeModal(); renderAll();
 }
 
@@ -3501,8 +3532,8 @@ function submitPagoProveedor(provId){
   const aplicadoTotal = monto - restante;
   if(aplicadoTotal>0){
     if(fondo){
-      state.fondos[fondo] -= aplicadoTotal;
       state.movimientosFima.push({id:newId('fm'), fecha, fondo, obraId:null, concepto:'Pago a proveedor — '+getProveedor(provId).nombre, tipo:'out', monto:aplicadoTotal});
+      recomputeFondos();
     } else {
       state.caja -= aplicadoTotal;
     }
@@ -3752,8 +3783,8 @@ function submitFinalizarPago(pagoId){
   marcarEditado('pagos', pagoId);
   if(!esFutura){
     if(fondo){
-      state.fondos[fondo] -= monto;
       state.movimientosFima.push({id:newId('fm'), fecha, fondo, obraId:p.obraId, concepto:p.concepto, tipo:'out', monto});
+      recomputeFondos();
     } else {
       state.caja -= monto;
     }
@@ -3770,7 +3801,6 @@ function reconciliarPagosProgramados(){
     (p.pagosRealizados||[]).forEach(pr=>{
       if(pr.aplicado===false && pr.fecha<=hoy){
         if(pr.fondo){
-          state.fondos[pr.fondo] -= pr.monto;
           state.movimientosFima.push({id:newId('fm'), fecha:pr.fecha, fondo:pr.fondo, obraId:p.obraId, concepto:p.concepto, tipo:'out', monto:pr.monto});
         } else {
           state.caja -= pr.monto;
@@ -3781,6 +3811,7 @@ function reconciliarPagosProgramados(){
       }
     });
   });
+  if(huboCambios) recomputeFondos();
   return huboCambios;
 }
 function revertirPago(pagoId){
@@ -3792,14 +3823,14 @@ function revertirPago(pagoId){
     : `¿Cancelar el pago programado de "${p.concepto}"? Todavía no se descontó plata (tenía fecha futura), así que solo se borra la programación.`;
   if(!confirm(mensaje)) return;
   aplicados.forEach(pr=>{
-    if(pr.fondo) state.fondos[pr.fondo] += pr.monto;
-    else state.caja += pr.monto;
+    if(!pr.fondo) state.caja += pr.monto;
   });
   state.movimientosFima = state.movimientosFima.filter(m=>{
     const ligado = aplicados.some(pr=>pr.fondo && m.tipo==='out' && m.fondo===pr.fondo && m.obraId===p.obraId && m.concepto===p.concepto && m.monto===pr.monto);
     if(ligado) marcarEliminado('movimientosFima', m.id);
     return !ligado;
   });
+  recomputeFondos();
   p.pagosRealizados = [];
   p.fechaPago = null;
   p.origenFondo = null;
@@ -3817,14 +3848,14 @@ function eliminarGasto(pagoId){
   if(!confirm(advertencia)) return;
   if(tienePagoReal){
     p.pagosRealizados.forEach(pr=>{
-      if(pr.fondo) state.fondos[pr.fondo] += pr.monto;
-      else state.caja += pr.monto;
+      if(!pr.fondo) state.caja += pr.monto;
     });
     state.movimientosFima = state.movimientosFima.filter(m=>{
       const ligado = p.pagosRealizados.some(pr=>pr.fondo && m.tipo==='out' && m.fondo===pr.fondo && m.obraId===p.obraId && m.concepto===p.concepto && m.monto===pr.monto);
       if(ligado) marcarEliminado('movimientosFima', m.id);
       return !ligado;
     });
+    recomputeFondos();
   }
   desvincularOcDePago(p.id);
   marcarEliminado('pagos', pagoId);
@@ -3883,8 +3914,8 @@ function submitMovimientoFima(){
   const fecha = document.getElementById('f-fecha').value || today();
   const obraId = fondo==='obras' ? (document.getElementById('f-fima-obra').value || null) : null;
   const subcategoria = fondo==='obras' ? null : (document.getElementById('f-fima-subcat').value.trim() || null);
-  state.fondos[fondo] += (tipo==='in'? monto:-monto);
   state.movimientosFima.push({id:newId('fm'), fecha, fondo, obraId, subcategoria, concepto, tipo, monto});
+  recomputeFondos();
   if(tipo==='out'){
     const proveedorId = resolveProveedorId();
     const numeroFactura = document.getElementById('f-factura').value.trim() || null;
@@ -4052,6 +4083,15 @@ function repararRealObras(){
   });
   return hubo;
 }
+// Mismo patrón que repararRealObras: corrige, una vez al abrir la app,
+// cualquier saldo de fondo de FIMA que haya quedado desincronizado por
+// algún bug viejo de guardado/conflicto (ver recomputeFondos) — de acá en
+// más ya no puede volver a desincronizarse de la misma forma.
+function repararFondos(){
+  const anterior = JSON.stringify(state.fondos);
+  recomputeFondos();
+  return JSON.stringify(state.fondos)!==anterior;
+}
 (async function bootstrap(){
   await cargarEstadoInicial();
   // Correcciones automáticas antes de mostrar nada: reparar fechas viejas
@@ -4064,6 +4104,7 @@ function repararRealObras(){
   const huboReparacionIngresos = repararIngresosSinId();
   const huboReparacionReal = repararRealObras();
   const huboReparacionIdsFima = repararIdsFima();
+  const huboReparacionFondos = repararFondos();
   showObraSubview('lista');
   renderAll();
   // La primera vez que se renderiza es lo que se acaba de leer del Sheet:
@@ -4072,7 +4113,7 @@ function repararRealObras(){
   // la vez no genera avisos de "conflicto" sin que nadie haya cambiado nada.
   bootCompleto = true;
   programarRefrescoAuto();
-  if(huboReparacionFechas || huboMaduraciones || huboMigracionJornales || huboReparacionIngresos || huboReparacionReal || huboReparacionIdsFima) saveState();
+  if(huboReparacionFechas || huboMaduraciones || huboMigracionJornales || huboReparacionIngresos || huboReparacionReal || huboReparacionIdsFima || huboReparacionFondos) saveState();
   const overlay = document.getElementById('loading-overlay');
   if(overlay){ overlay.style.opacity='0'; setTimeout(()=>overlay.remove(), 300); }
   const initialView = location.hash.slice(1);

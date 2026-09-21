@@ -909,3 +909,60 @@ volver a desplegar (ver instrucciones al principio de
     nulo) — la sección solo lista los 3 que corresponden (sin fecha,
     fecha pasada y programado), con el subtotal correcto, tanto en la
     card como en el PDF; los demás no aparecen.
+- **Fix crítico: los saldos de los 7 fondos de FIMA podían quedar mal
+  calculados, incluso arrastrando contaminación vieja para siempre.** El
+  dueño reportó fondos "Obras" y "Costos Fijos" en negativo
+  (`-$400.000` y `-$150.000`) a pesar de que los movimientos cargados
+  (un aporte de $7.100.000 a Obras, varios ingresos a Costos Fijos, unos
+  pocos egresos) daban saldos muy positivos a mano.
+  - **Causa de fondo — mismo problema que ya tuvo `real` (costo de las
+    obras):** `state.fondos` **no se calculaba solo** — era un contador
+    que se sumaba/restaba a mano en ~10 lugares del código (registrar,
+    editar o eliminar un movimiento de FIMA, "Registrar pago →",
+    revertir un pago, eliminar un gasto, marcar una OC/stock comprado
+    con fondo FIMA, un pago programado que madura). Cualquier bug
+    histórico de sincronización en cualquiera de esos puntos podía
+    haber dejado el número mal en algún momento, y como nada lo
+    recalculaba desde cero, el error quedaba pegado para siempre.
+  - **Causa concreta encontrada:** al combinar tras un conflicto de
+    guardado o en el auto-refresco (cada 60s), la app trae el estado
+    del servidor y lo recombina con lo local — pero **`state.fondos` (y
+    `state.caja`) quedaban afuera de esa combinación**: solo se
+    recombinan las listas (pagos, movimientos, obras, etc.), así que un
+    cambio local a un saldo de fondo hecho justo en el medio de esas
+    operaciones se pisaba directo con la copia del servidor de ese
+    instante y se perdía sin dejar rastro. Ya estaba anotado como
+    límite conocido en este archivo — con meses de uso y varios bugs de
+    sincronización ya arreglados en el camino, la contaminación se fue
+    acumulando.
+  - **Arreglo:** los 7 saldos de fondo ahora se calculan siempre desde
+    el origen real de la plata (`recomputeFondos()`) — la suma de
+    `movimientosFima` de cada fondo (ingresos suman, egresos restan) —
+    en vez de mantenerse a mano. Se recalcula después de cualquier
+    alta/edición/baja de un movimiento o de un pago con fondo FIMA, y
+    también después de combinar tras un conflicto de guardado o el
+    auto-refresco (que es donde hoy se pierden). El botón "✎ Editar
+    fondo" (para cargar un saldo inicial o corregir a mano) ya no
+    sobreescribe el número directo — ahora carga un movimiento "Ajuste
+    manual de saldo" por la diferencia, así el ajuste queda visible en
+    el historial y el total se sigue calculando siempre desde ahí.
+  - **Reparación automática al abrir la app:** `bootstrap()` recalcula
+    los 7 fondos una vez al cargar (`repararFondos()`, mismo patrón que
+    ya existía para el costo real de las obras) y, si corrige algo, lo
+    guarda enseguida — así los fondos ya contaminados (los reportados y
+    cualquier otro con el mismo problema, aunque hoy no se note) se
+    corrigen solos en cuanto alguien abra la app con esta versión.
+  - `state.caja` tiene el mismo riesgo de fondo (también queda afuera de
+    la combinación tras un conflicto/auto-refresco) pero no está atada a
+    una sola lista como `movimientosFima` — recalcularla necesita mirar
+    cobros de todas las obras más pagos aplicados. Queda pendiente para
+    una vuelta aparte si hace falta.
+  - Probado en un entorno aislado: (a) se sembraron los 9 movimientos
+    exactos reportados por el dueño junto con los saldos contaminados
+    (`obras:-400.000`, `costosFijos:-150.000`) y `repararFondos()` los
+    corrige a los valores esperados a mano (`obras:5.967.000`,
+    `costosFijos:590.000`); (b) un ingreso nuevo a un fondo solo mueve
+    ese fondo; (c) eliminar y editar un movimiento ajustan el saldo
+    correctamente; (d) "Editar fondo" genera el movimiento de ajuste
+    esperado; (e) "Registrar pago →" con fondo FIMA descuenta el fondo
+    elegido — sin errores de consola en ningún caso.
