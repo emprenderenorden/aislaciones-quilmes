@@ -428,7 +428,7 @@
       </div>
     </div>
     <div class="card card-table"><table>
-      <thead><tr><th>Personal</th><th>Puesto</th><th class="num">Sueldo mensual</th><th class="num">Sueldo diario</th><th class="num">Días trabajados</th><th class="num">Días ausentes</th><th class="num">Horas extra</th><th class="num">1ª quincena (transf.)</th><th class="num">2ª quincena (efvo.)</th><th class="num">Sueldo a cobrar</th><th></th></tr></thead>
+      <thead><tr><th>Personal</th><th>Puesto</th><th class="num">Sueldo mensual</th><th class="num">Sueldo diario</th><th class="num">Días trabajados</th><th class="num">Días ausentes</th><th class="num">Horas extra</th><th class="num">Viaje</th><th class="num">1ª quincena (transf.)</th><th class="num">2ª quincena (efvo.)</th><th class="num">Sueldo a cobrar</th><th></th></tr></thead>
       <tbody id="jornales-historial-body"></tbody>
     </table></div>
   </div>
@@ -784,6 +784,13 @@ function repararIdsFima(){
 }
 const today = ()=> new Date().toISOString().slice(0,10);
 const VALOR_HORA_EXTRA = 10000;
+// Extra por día trabajado de viaje (obras en las que el equipo viaja) — a
+// diferencia de las horas extra (un número suelto por obra, sin atar a
+// días puntuales), este extra sale de los días ya marcados "trabajado" en
+// esa obra para el trabajador marcado como "de viaje" — así la quincena a
+// la que se atribuye es la de la fecha real de cada día, no la fecha de
+// inicio de la obra.
+const VALOR_VIAJE = 80000;
 function esHabil_(y,m0,d){ const wd = new Date(y,m0,d).getDay(); return wd>=1 && wd<=5; }
 function diasHabilesDelMes(yyyyMM){
   const [y,m] = yyyyMM.split('-').map(Number);
@@ -1004,11 +1011,12 @@ function mergeObraTrasConflicto(obraLocal, obraServidor){
     presupuesto: campo('presupuesto'), presupuestoDetalle: campo('presupuestoDetalle'), presupuestoResumen: campo('presupuestoResumen'),
     facturasVenta: campo('facturasVenta'),
   };
-  const cfgLocal = obraLocal.jornalesConfig || {asignados:[], horasExtra:{}};
-  const cfgServidor = obraServidor.jornalesConfig || {asignados:[], horasExtra:{}};
+  const cfgLocal = obraLocal.jornalesConfig || {asignados:[], horasExtra:{}, viaje:{}};
+  const cfgServidor = obraServidor.jornalesConfig || {asignados:[], horasExtra:{}, viaje:{}};
   merged.jornalesConfig = {
     asignados: [...new Set([...(cfgServidor.asignados||[]), ...(cfgLocal.asignados||[])])],
     horasExtra: {...(cfgServidor.horasExtra||{}), ...(cfgLocal.horasExtra||{})},
+    viaje: {...(cfgServidor.viaje||{}), ...(cfgLocal.viaje||{})},
   };
   // ingresosList: igual que las demás colecciones planas, un cobro que ya
   // existía en las dos listas (editar monto/fecha de un cobro ya cargado,
@@ -1721,7 +1729,7 @@ function obraPagosRows(obraId){
   });
   const stockRows = (catFiltro==='todas' || catFiltro==='materiaPrima') ? state.stockMovimientos.filter(m=>m.tipo==='consumo' && m.obraId===obraId).map(m=>{
     const item = getStockItem(m.stockId);
-    return `<tr><td>Materiales</td><td>${item?item.nombre:'—'} (de stock, x${m.cantidad})</td><td>—</td><td>—</td><td class="num">${fmt(m.monto)}</td><td class="num">$ 0</td><td class="mono">${fmtFecha(m.fecha)}</td><td><span class="estado-dot good"></span>No aplica</td><td></td></tr>`;
+    return `<tr><td>Materiales</td><td>${item?item.nombre:'—'} (de stock, x${m.cantidad})</td><td>—</td><td>—</td><td class="num">${fmt(m.monto)}</td><td class="num">$ 0</td><td class="mono">${fmtFecha(m.fecha)}</td><td><span class="estado-dot good"></span>No aplica</td><td><span class="link-btn danger" onclick="eliminarConsumoStock('${m.id}')">Eliminar</span></td></tr>`;
   }) : [];
   const rows = [...pagoRows, ...stockRows];
   if(!rows.length) return `<tr class="empty-row"><td colspan="9">${catFiltro==='todas' ? 'Todavía no hay compras registradas en esta obra' : 'No hay gastos en esa categoría'}</td></tr>`;
@@ -2062,7 +2070,7 @@ function savePresupuesto(){
     state.obras.push({ id, code, cliente, encargado, fechaInicio:fecha, estado:estadoInicial,
       presupuestoDetalle:detalle, presupuesto, presupuestoResumen,
       real:{materiaPrima:0, manoObra:0, logistica:0, estadia:0, otros:0}, ingresos:{facturado:c.totalConIva, cobrado}, ingresosList, facturasVenta, documentos:[],
-      jornalesConfig: {asignados:[], horasExtra:{}}, comisionOverride: null });
+      jornalesConfig: {asignados:[], horasExtra:{}, viaje:{}}, comisionOverride: null });
     if(importado){
       // Se crea un gasto por cada categoría importada en vez de escribir
       // `real` directo, para que sea la misma fuente de la que
@@ -2311,17 +2319,49 @@ function horasExtraPorQuincena(trabajadorId, mes){
   });
   return res;
 }
+// El extra de viaje, a diferencia de las horas extra, sale de los días ya
+// marcados "trabajado" (no de un número suelto por obra) — así la
+// quincena que corresponde es la de la fecha real de cada día, no la de
+// inicio de la obra.
+function viajeExtraDelMes(trabajadorId, mes){
+  let total = 0;
+  state.jornales.forEach(row=>{
+    if(row.trabajadorId!==trabajadorId) return;
+    row.dias.forEach((cell,i)=>{
+      if(cell.estado!=='trabajado' || !cell.obraId) return;
+      if(addDays(row.semanaInicio, i).slice(0,7)!==mes) return;
+      const obra = getObra(cell.obraId);
+      if(obra && obra.jornalesConfig && obra.jornalesConfig.viaje && obra.jornalesConfig.viaje[trabajadorId]) total += VALOR_VIAJE;
+    });
+  });
+  return total;
+}
+function viajeExtraPorQuincena(trabajadorId, mes){
+  const res = {1:0, 2:0};
+  state.jornales.forEach(row=>{
+    if(row.trabajadorId!==trabajadorId) return;
+    row.dias.forEach((cell,i)=>{
+      if(cell.estado!=='trabajado' || !cell.obraId) return;
+      const fecha = addDays(row.semanaInicio, i);
+      if(fecha.slice(0,7)!==mes) return;
+      const obra = getObra(cell.obraId);
+      if(obra && obra.jornalesConfig && obra.jornalesConfig.viaje && obra.jornalesConfig.viaje[trabajadorId]) res[quincenaDeFecha(fecha)] += VALOR_VIAJE;
+    });
+  });
+  return res;
+}
 // Sueldo por quincena: mitad del sueldo mensual, menos $100.000 fijos por
 // cada ausencia que cayó en esa quincena puntual (nunca por debajo de $0,
-// no se arrastra el excedente a la otra quincena), más las horas extra de
-// esa quincena. El pago del sueldo en sí sigue sin generar gasto ni
-// movimiento de FIMA — esto es solo el desglose de cuánto corresponde en
-// cada una (ver CLAUDE.md).
+// no se arrastra el excedente a la otra quincena), más las horas extra y
+// el extra de viaje de esa quincena. El pago del sueldo en sí sigue sin
+// generar gasto ni movimiento de FIMA — esto es solo el desglose de
+// cuánto corresponde en cada una (ver CLAUDE.md).
 function sueldoPorQuincena(trabajador, mes){
   const base = (trabajador.sueldoMensual||0)/2;
   const porQ = diasDelMesPorQuincena(trabajador.id, mes);
   const horasExtra = horasExtraPorQuincena(trabajador.id, mes);
-  const calc = (q) => Math.max(0, base - porQ[q].ausente*DESCUENTO_AUSENCIA) + horasExtra[q]*VALOR_HORA_EXTRA;
+  const viaje = viajeExtraPorQuincena(trabajador.id, mes);
+  const calc = (q) => Math.max(0, base - porQ[q].ausente*DESCUENTO_AUSENCIA) + horasExtra[q]*VALOR_HORA_EXTRA + viaje[q];
   return { q1: calc(1), q2: calc(2) };
 }
 function sueldoACobrar(trabajador, mes){
@@ -2336,17 +2376,18 @@ function renderJornalesHistorial(){
   ids.sort((a,b)=> getTrabajador(a).nombre.localeCompare(getTrabajador(b).nombre));
 
   const body = document.getElementById('jornales-historial-body');
-  if(!ids.length){ body.innerHTML = `<tr class="empty-row"><td colspan="9">No hay personal cargado</td></tr>`; return; }
-  let granT=0, granA=0, granQ1=0, granQ2=0;
+  if(!ids.length){ body.innerHTML = `<tr class="empty-row"><td colspan="10">No hay personal cargado</td></tr>`; return; }
+  let granT=0, granA=0, granV=0, granQ1=0, granQ2=0;
   body.innerHTML = ids.map(id=>{
     const t = getTrabajador(id);
     const {trabajado, ausente} = diasDelMes(id, mes);
     const diario = sueldoDiarioTrabajador(t, mes);
     const horasExtra = horasExtraDelMes(id, mes);
+    const viaje = viajeExtraDelMes(id, mes);
     const {q1, q2} = sueldoPorQuincena(t, mes);
-    granT+=trabajado; granA+=ausente; granQ1+=q1; granQ2+=q2;
-    return `<tr><td style="font-weight:600;">${t.nombre}</td><td>${t.puesto}</td><td class="num">${fmt(t.sueldoMensual||0)}</td><td class="num">${fmt(diario)}</td><td class="num">${trabajado}</td><td class="num">${ausente}</td><td class="num">${horasExtra}</td><td class="num">${fmt(q1)}</td><td class="num">${fmt(q2)}</td><td class="num">${fmt(q1+q2)}</td><td><span class="link-btn" onclick="openModalObrasTrabajador('${id}','${mes}')">Ver obras</span> · <span class="link-btn" onclick="openModalTrabajador('${id}')">Editar</span></td></tr>`;
-  }).join('') + `<tr class="subtotal-row"><td colspan="4">Total general</td><td class="num">${granT}</td><td class="num">${granA}</td><td></td><td class="num">${fmt(granQ1)}</td><td class="num">${fmt(granQ2)}</td><td class="num">${fmt(granQ1+granQ2)}</td><td></td></tr>`;
+    granT+=trabajado; granA+=ausente; granV+=viaje; granQ1+=q1; granQ2+=q2;
+    return `<tr><td style="font-weight:600;">${t.nombre}</td><td>${t.puesto}</td><td class="num">${fmt(t.sueldoMensual||0)}</td><td class="num">${fmt(diario)}</td><td class="num">${trabajado}</td><td class="num">${ausente}</td><td class="num">${horasExtra}</td><td class="num">${fmt(viaje)}</td><td class="num">${fmt(q1)}</td><td class="num">${fmt(q2)}</td><td class="num">${fmt(q1+q2)}</td><td><span class="link-btn" onclick="openModalObrasTrabajador('${id}','${mes}')">Ver obras</span> · <span class="link-btn" onclick="openModalTrabajador('${id}')">Editar</span></td></tr>`;
+  }).join('') + `<tr class="subtotal-row"><td colspan="4">Total general</td><td class="num">${granT}</td><td class="num">${granA}</td><td></td><td class="num">${fmt(granV)}</td><td class="num">${fmt(granQ1)}</td><td class="num">${fmt(granQ2)}</td><td class="num">${fmt(granQ1+granQ2)}</td><td></td></tr>`;
 }
 function diasPorObra(trabajadorId, mes){
   const porObra = {};
@@ -2437,6 +2478,7 @@ function submitTrabajador(id){
 // costo fijo.
 function obraJornalesCostoReal(obra){
   let total = 0;
+  const viaje = (obra.jornalesConfig && obra.jornalesConfig.viaje) || {};
   state.jornales.forEach(row=>{
     row.dias.forEach((cell,i)=>{
       if(cell.estado!=='trabajado' || cell.obraId!==obra.id) return;
@@ -2444,6 +2486,7 @@ function obraJornalesCostoReal(obra){
       if(!trabajador) return;
       const fecha = addDays(row.semanaInicio, i);
       total += sueldoDiarioTrabajador(trabajador, fecha.slice(0,7));
+      if(viaje[row.trabajadorId]) total += VALOR_VIAJE;
     });
   });
   const horasExtra = (obra.jornalesConfig && obra.jornalesConfig.horasExtra) || {};
@@ -2467,19 +2510,20 @@ function changeObraJornalesWeek(obraId, delta){
 function asignarTrabajadorObra(obraId, trabajadorId){
   if(!trabajadorId) return;
   const o = getObra(obraId);
-  o.jornalesConfig = o.jornalesConfig || {asignados:[], horasExtra:{}};
+  o.jornalesConfig = o.jornalesConfig || {asignados:[], horasExtra:{}, viaje:{}};
   if(!o.jornalesConfig.asignados.includes(trabajadorId)) o.jornalesConfig.asignados.push(trabajadorId);
   renderAll();
 }
 // Quitar a un trabajador de una obra también borra los días que ya le
-// hubiera marcado "trabajado" en esa obra puntual (y sus horas extra ahí) —
-// baja el costo real de Mano de obra de esta obra. No toca otras obras ni
-// otros trabajadores.
+// hubiera marcado "trabajado" en esa obra puntual (y sus horas extra/viaje
+// ahí) — baja el costo real de Mano de obra de esta obra. No toca otras
+// obras ni otros trabajadores.
 function quitarTrabajadorObra(obraId, trabajadorId){
   const o = getObra(obraId);
   if(!o.jornalesConfig) return;
   o.jornalesConfig.asignados = (o.jornalesConfig.asignados||[]).filter(id=>id!==trabajadorId);
   if(o.jornalesConfig.horasExtra) delete o.jornalesConfig.horasExtra[trabajadorId];
+  if(o.jornalesConfig.viaje) delete o.jornalesConfig.viaje[trabajadorId];
   state.jornales.forEach(row=>{
     if(row.trabajadorId!==trabajadorId) return;
     row.dias.forEach((cell,idx)=>{
@@ -2490,12 +2534,25 @@ function quitarTrabajadorObra(obraId, trabajadorId){
 }
 function setHorasExtraObra(obraId, trabajadorId, valor){
   const o = getObra(obraId);
-  o.jornalesConfig = o.jornalesConfig || {asignados:[], horasExtra:{}};
+  o.jornalesConfig = o.jornalesConfig || {asignados:[], horasExtra:{}, viaje:{}};
   o.jornalesConfig.horasExtra[trabajadorId] = Math.max(0, +valor||0);
   renderAll();
 }
+// Marca a un trabajador como "de viaje" en esta obra — el extra de
+// $80.000 (VALOR_VIAJE) se suma solo, por cada día que ya tenga marcado
+// "trabajado" en esta obra (ver obraJornalesCostoReal y viajeExtraPorDia),
+// no es un monto que se cargue a mano como las horas extra.
+function setViajeObra(obraId, trabajadorId, checked){
+  const o = getObra(obraId);
+  o.jornalesConfig = o.jornalesConfig || {asignados:[], horasExtra:{}, viaje:{}};
+  o.jornalesConfig.viaje = o.jornalesConfig.viaje || {};
+  if(checked) o.jornalesConfig.viaje[trabajadorId] = true;
+  else delete o.jornalesConfig.viaje[trabajadorId];
+  renderAll();
+}
 function renderObraJornalesCard(o){
-  const cfg = o.jornalesConfig = o.jornalesConfig || {asignados:[], horasExtra:{}};
+  const cfg = o.jornalesConfig = o.jornalesConfig || {asignados:[], horasExtra:{}, viaje:{}};
+  cfg.viaje = cfg.viaje || {};
   const viewedWeek = getObraJornalesViewedWeek(o);
   const minWeek = obraJornalesWeekStart(o);
   const asignados = cfg.asignados || [];
@@ -2516,7 +2573,8 @@ function renderObraJornalesCard(o){
     const trabajados = row.dias.filter(c=>c.estado==='trabajado'&&c.obraId===o.id).length;
     const ausentes = row.dias.filter(c=>c.estado==='ausente').length;
     const horasExtra = cfg.horasExtra[tid] || 0;
-    return `<tr><td style="font-weight:600;">${t.nombre}</td><td>${t.puesto}</td>${dayCells}<td class="num">${trabajados}</td><td class="num">${ausentes}</td><td><input class="cell-input mono-in" type="number" min="0" style="width:80px;" value="${horasExtra}" onchange="setHorasExtraObra('${o.id}','${tid}',this.value)"></td><td><span class="link-btn danger" onclick="quitarTrabajadorObra('${o.id}','${tid}')">Quitar</span></td></tr>`;
+    const esViaje = !!cfg.viaje[tid];
+    return `<tr><td style="font-weight:600;">${t.nombre}</td><td>${t.puesto}</td>${dayCells}<td class="num">${trabajados}</td><td class="num">${ausentes}</td><td><input class="cell-input mono-in" type="number" min="0" style="width:80px;" value="${horasExtra}" onchange="setHorasExtraObra('${o.id}','${tid}',this.value)"></td><td style="text-align:center;"><input type="checkbox" title="Suma ${fmt(VALOR_VIAJE)} por cada día trabajado en esta obra" ${esViaje?'checked':''} onchange="setViajeObra('${o.id}','${tid}',this.checked)"></td><td><span class="link-btn danger" onclick="quitarTrabajadorObra('${o.id}','${tid}')">Quitar</span></td></tr>`;
   }).join('');
   return `
     <div class="section-title"><h2>Jornales de la obra</h2><span class="hint">Se ve también en Jornales, con el número de esta obra</span></div>
@@ -2536,8 +2594,8 @@ function renderObraJornalesCard(o){
       <button class="nav-arrow" onclick="changeObraJornalesWeek('${o.id}',1)">›</button>
     </div>
     <div class="card card-table"><table>
-      <thead><tr><th>Personal</th><th>Puesto</th><th>L</th><th>M</th><th>M</th><th>J</th><th>V</th><th>S</th><th>D</th><th class="num">Trabajados</th><th class="num">Ausentes</th><th>Horas extra</th><th></th></tr></thead>
-      <tbody>${filas || `<tr class="empty-row"><td colspan="13">Todavía no hay trabajadores asignados a esta obra</td></tr>`}</tbody>
+      <thead><tr><th>Personal</th><th>Puesto</th><th>L</th><th>M</th><th>M</th><th>J</th><th>V</th><th>S</th><th>D</th><th class="num">Trabajados</th><th class="num">Ausentes</th><th>Horas extra</th><th>Viaje</th><th></th></tr></thead>
+      <tbody>${filas || `<tr class="empty-row"><td colspan="14">Todavía no hay trabajadores asignados a esta obra</td></tr>`}</tbody>
     </table></div>
   `;
 }
@@ -3673,6 +3731,22 @@ function previewCompraMonto(){
   const uni=+document.getElementById('f-unitario').value||0;
   const base=cant*uni; const iva = document.getElementById('f-iva').checked? base*0.21:0;
   document.getElementById('compra-preview').textContent = `Subtotal: ${fmt(base)}  +  IVA: ${fmt(iva)}  =  Total: ${fmt(base+iva)}`;
+}
+// El consumo de stock cargado en una obra ("Usar de stock" al registrar un
+// gasto) no tenía forma de borrarse — a diferencia de un gasto normal, no
+// aparecía ningún "Eliminar" en su fila. Le devuelve la cantidad al stock
+// y recalcula el costo real de la obra (recomputeObraReal), igual que
+// cualquier otra baja que toque esas listas.
+function eliminarConsumoStock(id){
+  const m = state.stockMovimientos.find(x=>x.id===id);
+  if(!m) return;
+  const item = getStockItem(m.stockId);
+  if(!confirm(`¿Eliminar este consumo de stock (${item?item.nombre:'material eliminado'}, x${m.cantidad})? Se le devuelve la cantidad al stock. Esta acción no se puede deshacer.`)) return;
+  if(item){ item.cantidad += m.cantidad; marcarEditado('stock', item.id); }
+  marcarEliminado('stockMovimientos', m.id);
+  state.stockMovimientos = state.stockMovimientos.filter(x=>x.id!==id);
+  const o = getObra(m.obraId); if(o) recomputeObraReal(o);
+  renderAll();
 }
 function submitCompra(editId){
   const tipo = document.getElementById('f-tipo').value;

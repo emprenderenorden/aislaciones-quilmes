@@ -966,3 +966,41 @@ volver a desplegar (ver instrucciones al principio de
     correctamente; (d) "Editar fondo" genera el movimiento de ajuste
     esperado; (e) "Registrar pago →" con fondo FIMA descuenta el fondo
     elegido — sin errores de consola en ningún caso.
+- **Nuevo: eliminar un consumo de stock cargado en una obra.** El material
+  que se descuenta de stock al registrar un gasto con "Usar de stock" no
+  tenía forma de borrarse — a diferencia del resto de los gastos de la
+  obra, esa fila no tenía ningún link de "Eliminar". Ahora sí: le devuelve
+  la cantidad al material en Stock y recalcula el costo real de
+  Materiales de la obra (`recomputeObraReal`), igual que cualquier otra
+  baja que toque esas listas. Probado en un entorno aislado: registrar un
+  consumo (baja el stock y sube el real de la obra) y eliminarlo después
+  (el stock vuelve al valor original y el real de la obra vuelve a $0).
+- **Nuevo: extra de viaje para obras en las que el equipo viaja
+  ($80.000 por día trabajado).** En el cuadro de "Jornales de la obra" se
+  agregó una columna "Viaje" (checkbox por trabajador asignado, al lado
+  de "Horas extra") — a diferencia de las horas extra (un número que se
+  carga suelto por obra, sin atar a un día puntual), el extra de viaje
+  sale solo de los días que ese trabajador ya tiene marcados "trabajado"
+  en esa obra puntual: no hay nada que cargar aparte, así nunca se
+  desincroniza de lo que realmente está tildado en el calendario.
+  - Se refleja en el costo real de Mano de obra de la obra
+    (`obraJornalesCostoReal`, igual que ya hacían las horas extra) y en
+    Jornales → historial mensual, con una columna "Viaje" nueva — a
+    diferencia de las horas extra (que se atribuyen enteras a la
+    quincena de la fecha de inicio de la obra, una aproximación ya
+    conocida), el extra de viaje se atribuye a la 1ª o 2ª quincena según
+    **la fecha real de cada día trabajado**, sea cual sea la fecha de
+    inicio de la obra.
+  - No necesitó redeploy de backend: viaja adentro del mismo JSON
+    (`jornalesConfigJSON`) donde ya se guardaban `asignados` y
+    `horasExtra`, así que un campo nuevo ahí adentro no toca el esquema
+    del Sheet.
+  - Sigue sin generar gasto ni movimiento de FIMA — mismo criterio que
+    el resto del sueldo (se gestiona aparte, como costo fijo).
+  - Probado en un entorno aislado: marcar a un trabajador como "de
+    viaje" en una obra y tildarle 2 días trabajados (uno en cada
+    quincena de septiembre) — el extra del mes da $160.000 exactos, el
+    desglose por quincena da $80.000 en cada una, `sueldoPorQuincena`
+    suma ese monto a cada quincena, el costo real de Mano de obra de la
+    obra incluye los $160.000, y el historial mensual de Jornales
+    muestra el monto en la columna nueva — sin errores de consola.
