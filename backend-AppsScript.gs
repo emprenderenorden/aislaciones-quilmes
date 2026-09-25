@@ -47,6 +47,7 @@ const SHEET_NAMES = {
   jornales: 'Jornales',
   movimientosFima: 'MovimientosFima',
   datosEmpresa: 'DatosEmpresa',
+  eliminados: 'Eliminados',
 };
 
 const SCHEMAS = {
@@ -70,7 +71,56 @@ const SCHEMAS = {
   movimientosFima: ['fecha', 'fondo', 'obraId', 'concepto', 'tipo', 'monto', 'subcategoria', 'id'],
   datosEmpresa: ['nombre', 'cuit', 'telefono', 'email', 'direccion', 'localidad',
     'condicionImpositiva', 'condicionesGenerales', 'logoDataUrl'],
+  eliminados: ['coleccion', 'id', 'fecha'],
 };
+
+// ---- Registro de borrados ("Eliminados") ----
+// La app reescribe la planilla entera en cada guardado, así que una
+// pestaña vieja (abierta desde antes de que alguien borrara algo, o con
+// una versión anterior de la app) podía volver a guardar un registro ya
+// borrado y "resucitarlo". Para cortar eso de raíz, acá se guarda la lista
+// de todo lo que se borró (colección + id) y el backend nunca vuelve a
+// escribir ni a devolver un registro que esté en esa lista — venga de
+// donde venga el guardado. Esta hoja no se reescribe nunca: solo se le
+// agregan filas.
+const COLECCIONES_BORRABLES_ = ['obras', 'pagos', 'ordenesCompra', 'proveedores', 'stock',
+  'stockMovimientos', 'trabajadores', 'jornales', 'movimientosFima'];
+
+function leerEliminados_(ss) {
+  const sh = getOrCreateSheet_(ss, SHEET_NAMES.eliminados, SCHEMAS.eliminados);
+  return sheetToRows_(sh, SCHEMAS.eliminados)
+    .map(r => ({ coleccion: String(r.coleccion), id: String(r.id) }))
+    .filter(e => e.coleccion && e.id);
+}
+
+function setDeEliminados_(lista) {
+  const set = {};
+  lista.forEach(e => { set[e.coleccion + '|' + e.id] = true; });
+  return set;
+}
+
+/** Agrega a la hoja los borrados nuevos que manda la app (los ya registrados se ignoran). */
+function registrarEliminados_(ss, set, nuevos) {
+  const hoy = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  const filas = [];
+  (nuevos || []).forEach(e => {
+    if (!e || COLECCIONES_BORRABLES_.indexOf(e.coleccion) === -1) return;
+    const id = String(e.id || '');
+    if (!id || id.length > 200 || set[e.coleccion + '|' + id]) return;
+    set[e.coleccion + '|' + id] = true;
+    filas.push([e.coleccion, id, hoy]);
+  });
+  if (!filas.length) return;
+  const sh = getOrCreateSheet_(ss, SHEET_NAMES.eliminados, SCHEMAS.eliminados);
+  sh.getRange(sh.getLastRow() + 1, 1, filas.length, SCHEMAS.eliminados.length).setValues(filas);
+}
+
+/** Saca del state cualquier registro que figure como borrado. */
+function filtrarEliminados_(state, set) {
+  COLECCIONES_BORRABLES_.forEach(k => {
+    if (Array.isArray(state[k])) state[k] = state[k].filter(x => !(x && x.id && set[k + '|' + x.id]));
+  });
+}
 
 function getSs_() {
   return SpreadsheetApp.getActiveSpreadsheet();
@@ -327,7 +377,11 @@ function doGet(e) {
   const secret = e.parameter.secret;
   if (!checkAuth_(secret)) return jsonOut_({ error: 'unauthorized' });
   try {
-    return jsonOut_({ ok: true, state: readState_() });
+    const ss = getSs_();
+    const eliminados = leerEliminados_(ss);
+    const state = readState_();
+    filtrarEliminados_(state, setDeEliminados_(eliminados));
+    return jsonOut_({ ok: true, state: state, eliminados: eliminados });
   } catch (err) {
     return jsonOut_({ error: String(err) });
   }
@@ -375,6 +429,12 @@ function doPost(e) {
     }
     const newRev = currentRev + 1;
     body.state.rev = newRev;
+    // Registra los borrados que manda la app y saca del guardado cualquier
+    // registro ya borrado (aunque venga de una pestaña vieja que no se
+    // enteró del borrado) — ver "Registro de borrados" más arriba.
+    const setEliminados = setDeEliminados_(leerEliminados_(ss));
+    registrarEliminados_(ss, setEliminados, body.eliminados);
+    filtrarEliminados_(body.state, setEliminados);
     writeState_(body.state);
     return jsonOut_({ ok: true, rev: newRev });
   } catch (err) {

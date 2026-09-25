@@ -53,10 +53,19 @@ implementación:
 - [x] `ordenesCompra`: campos `obraIds` y `pagoIds` (para las OC
       repartidas entre varias obras).
 
-No hay ningún redeploy pendiente por ahora. Cuando se sume un cambio de
-backend nuevo, se anota acá como pendiente y se agrupan varios antes de
-volver a desplegar (ver instrucciones al principio de
-`backend-AppsScript.gs`).
+**Pendiente (25/09) — redeploy necesario:**
+
+- [ ] Hoja `Eliminados` (registro de borrados): el backend guarda la lista
+      de todo lo borrado y nunca vuelve a escribir ni a devolver un registro
+      que figure ahí, aunque lo mande una pestaña vieja. Ver "Fix
+      definitivo: lo borrado volvía a aparecer" en el registro de abajo. Al
+      pegar el archivo, **cambiar `SECRET` por la clave real** (el repo
+      tiene el placeholder) y hacer Implementar → Administrar
+      implementaciones → lápiz → Nueva versión (misma URL).
+
+Cuando se sume un cambio de backend nuevo, se anota acá como pendiente y
+se agrupan varios antes de volver a desplegar (ver instrucciones al
+principio de `backend-AppsScript.gs`).
 
 ## Registro de cambios (funcionalidad agregada vía Claude Code)
 
@@ -1073,3 +1082,66 @@ volver a desplegar (ver instrucciones al principio de
     (0,1+0,2 y 500,05+500,05) quedan "Pagado" con saldo $0,00, "Editar
     fondo" sin cambios no genera ajuste, y capturas de Dashboard, Pagos,
     FIMA y detalle de obra sin errores de consola.
+- **Fix definitivo: lo borrado volvía a aparecer (y otras variantes del
+  mismo problema de sincronización).** El dueño reportó que borraba los
+  duplicados de FIMA y "alguien entra y los vuelve a ver". Reproducido con
+  dos pestañas: el registro de borrados (`eliminadosLocalmente`) solo
+  conocía lo borrado por ESA pestaña. Una pestaña abierta desde antes del
+  borrado seguía teniendo el registro en memoria y, al sincronizar, veía
+  "lo tengo yo y el servidor no" — lo mismo que algo recién cargado sin
+  guardar — así que lo volvía a agregar y lo guardaba de nuevo. Afectaba
+  cualquier borrado de la app (no solo FIMA). Además los arreglos
+  anteriores "no quedaban" porque una pestaña/celular abierto hace días
+  sigue corriendo la versión vieja de la app hasta que se recarga.
+  Se cerró en cuatro capas:
+  - **1) Cada pestaña recuerda qué vio en el servidor**
+    (`vistosEnServidor`, registrado en `loadState` y al confirmar un
+    guardado con la foto de lo enviado — `idsDeEstado`). En el merge
+    (`unionPorId`, `mergeJornalesTrasConflicto`, `mergeObrasTrasConflicto`):
+    si algo solo está en lo local pero YA estuvo en el servidor, lo borró
+    otra persona → no se resucita; si nunca estuvo, es nuevo de acá → se
+    conserva como siempre. Resguardo (`listaServidorSospechosa`): si el
+    servidor devuelve una lista vacía y acá había ≥5 registros ya vistos,
+    se toma como lectura fallida y no se borra nada.
+  - **2) Anidados de la obra**, que eran los gaps ya anotados como
+    pendientes: trabajadores asignados (`jornalesConfig.asignados` —
+    "Quitar" ya no vuelve), documentos (borrar ya no vuelve), horas extra y
+    viaje (se resuelven por trabajador: antes lo local pisaba SIEMPRE, así
+    que una copia vieja podía pisar la corrección de otra persona) y
+    comisión editada (`comisionOverride`, mismo problema — ahora por
+    `marcarEditadoObra`).
+  - **3) Backend: hoja `Eliminados`** (colección + id + fecha). La app
+    manda sus borrados en cada guardado (`eliminadosParaEnviar`); el
+    backend los registra, y tanto al guardar como al leer saca cualquier
+    registro que figure ahí (`filtrarEliminados_`) — así ni una pestaña con
+    la versión vieja de la app puede volver a guardar algo borrado. `doGet`
+    devuelve también la lista (`eliminados`) y la app la respeta en el
+    merge (`eliminadosEnServidor`). **Requiere redeploy** (checklist
+    arriba); hasta entonces las capas 1, 2 y 4 ya funcionan solas.
+  - **4) Actualización automática de versión** (`iniciarControlDeVersion`):
+    cada 5 minutos (y al volver a la pestaña) la app compara el hash de su
+    propio `index.html` publicado con el que cargó al abrir; si cambió,
+    muestra un aviso "Hay una versión nueva — Actualizar ahora" y se
+    recarga sola apenas es seguro (sin guardado pendiente, sin formulario
+    abierto, sin estar en el armador de presupuesto, sin foco en un
+    campo). Solo corre servida por http(s), no abierta como archivo.
+  - De paso: en un refresco, los movimientos de FIMA viejos sin `id` que
+    vinieran del servidor se combinaban todos bajo el mismo id vacío —
+    ahora `loadState` les asigna el id determinístico antes de combinar.
+  - **Pruebas guardadas en el repo** (`tests/sincronizacion/`, ver su
+    README): corren la app en Chromium contra el `backend-AppsScript.gs`
+    REAL sobre un Google Sheet simulado en memoria. Cubren: borrar
+    duplicado con otra pestaña abierta que refresca y guarda (T1), la
+    misma carrera vía conflicto de guardado (T2), una pestaña con la
+    versión VIEJA de la app que intenta resucitar (T3, la frena el
+    backend), quitar trabajador/horas extra/documento/comisión con una
+    copia vieja abierta (T4), altas simultáneas en dos pestañas con
+    borrados de por medio sin perder nada y ambas convergiendo a lo mismo
+    que el servidor (T5), un alta y luego un borrado de otro dispositivo
+    que aparecen/desaparecen solos (T6), y el resguardo de lista vacía
+    (T7). Se verificó que T1 falla con la versión anterior (reproduce el
+    bug reportado) y pasa con la nueva. También se probó la actualización
+    automática sirviendo la app por http (no recarga si no cambió; con un
+    formulario abierto no recarga pero muestra el aviso; al cerrarlo se
+    recarga sola) y se re-corrieron las pruebas de duplicados de FIMA y de
+    centavos, sin cambios.

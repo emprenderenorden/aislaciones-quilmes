@@ -1,0 +1,9 @@
+{"caja":0,"fondos":{},"obras":[{"id":"ob1","code":"748","cliente":"C","encargado":"E","fechaInicio":"2026-09-01","estado":"en curso","presupuesto":{"materiaPrima":0,"manoObra":0,"logistica":0,"estadia":0},"presupuestoDetalle":null,"presupuestoResumen":{},"real":{},"ingresos":{"facturado":0,"cobrado":0},"ingresosList":[],"facturasVenta":[],"documentos":[{"id":"doc1","nombre":"Plano","tipo":"otro","fecha":"2026-09-01","url":""}],"sinCobrosPendientes":false,"jornalesConfig":{"asignados":["t1","t2"],"horasExtra":{"t1":2},"viaje":{}},"comisionOverride":null}],
+"pagos":[{"id":"pg1","tipo":"fijo","obraId":null,"categoria":"otros","concepto":"Gasto X","cantidad":1,"unitario":100,"ivaAplica":false,"monto":100,"proveedorId":null,"numeroFactura":null,"fechaFactura":"2026-09-01","formaPago":"A definir","fechaPago":null,"numeroOC":null,"origenFondo":null,"pagosRealizados":[]}],
+"ordenesCompra":[],"proveedores":[],"stock":[],"stockMovimientos":[],
+"trabajadores":[{"id":"t1","nombre":"Ana","puesto":"Oficial","sueldoMensual":0},{"id":"t2","nombre":"Beto","puesto":"Ayudante","sueldoMensual":0}],
+"jornales":[],"datosEmpresa":{},
+"movimientosFima":[
+ {"id":"fmA","fecha":"2026-09-10","fondo":"obras","obraId":null,"subcategoria":null,"concepto":"Aporte","tipo":"in","monto":7100000},
+ {"id":"fmB","fecha":"2026-09-10","fondo":"obras","obraId":null,"subcategoria":null,"concepto":"Aporte","tipo":"in","monto":7100000},
+ {"id":"fmC","fecha":"2026-09-11","fondo":"costosFijos","obraId":null,"subcategoria":null,"concepto":"Luz","tipo":"out","monto":300}]}

@@ -903,6 +903,13 @@ function loadState(opts){
         // El Sheet siempre manda, tal cual esté (incluso vacío) — nunca se
         // pisa con datos viejos una vez que hay un backend conectado.
         Object.assign(state, data.state);
+        // Movimientos de FIMA viejos sin id: se les asigna el mismo id
+        // determinístico que en el arranque (ver repararIdsFima) ANTES de
+        // combinar — si no, en un refresco se combinaban todos bajo el
+        // mismo id vacío.
+        if(!esCargaInicial) repararIdsFima(); // en el arranque lo hace bootstrap() (y guarda si cambió algo)
+        (data.eliminados||[]).forEach(e=>{ if(e && e.coleccion && e.id) eliminadosEnServidor.add(e.coleccion+'|'+e.id); });
+        registrarVistos(idsDeEstado(state));
         if(esCargaInicial){
           state.selectedObraId = (data.state.obras&&data.state.obras[0]&&data.state.obras[0].id) || null;
           state.ordenesFilter = 'pendiente'; state.selectedProveedorId = null; state.pagosFilter = 'todos';
@@ -945,6 +952,8 @@ const eliminadosLocalmente = {
   obras: new Set(), pagos: new Set(), ordenesCompra: new Set(), proveedores: new Set(),
   stock: new Set(), stockMovimientos: new Set(), trabajadores: new Set(), jornales: new Set(),
   movimientosFima: new Set(),
+  documentos: new Set(), // id del documento (dentro de una obra)
+  asignados: new Set(),  // "idDeLaObra|idDelTrabajador" (quitado de la obra)
 };
 function marcarEliminado(coleccion, id){ if(id!==undefined) eliminadosLocalmente[coleccion].add(id); }
 // Igual que eliminadosLocalmente, pero para EDICIONES en el lugar (no altas
@@ -967,10 +976,55 @@ const editadosLocalmente = {
   stock: new Set(), trabajadores: new Set(), ingresos: new Set(), movimientosFima: new Set(),
   diasJornales: new Set(), // "idDeLaFilaDeJornales|índiceDelDía" (0-6)
   camposObra: new Set(),   // "idDeLaObra|nombreDelCampo"
+  asignados: new Set(),    // "idDeLaObra|idDelTrabajador" (asignado a la obra acá)
+  jornalesCfg: new Set(),  // "idDeLaObra|idDelTrabajador" (horas extra / viaje editados acá)
 };
 function marcarEditado(coleccion, id){ if(id!==undefined) editadosLocalmente[coleccion].add(id); }
 function marcarEditadoDia(jornalId, dayIdx){ editadosLocalmente.diasJornales.add(jornalId+'|'+dayIdx); }
 function marcarEditadoObra(obraId, campo){ editadosLocalmente.camposObra.add(obraId+'|'+campo); }
+// ---- Borrados hechos en OTRA pestaña / por OTRA persona ----
+// eliminadosLocalmente solo sabe lo que borró ESTA pestaña. Cuando otra
+// persona borraba algo (ej. los duplicados de FIMA), una pestaña que ya
+// estaba abierta de antes seguía teniendo ese registro en memoria; al
+// sincronizar veía "esto lo tengo yo pero el servidor no" — exactamente lo
+// mismo que ve con algo recién cargado todavía sin guardar — y lo volvía a
+// agregar, y lo guardaba de nuevo en la planilla en su próximo guardado.
+// Por eso ahora cada pestaña recuerda qué registros ya VIO guardados en el
+// servidor (vistosEnServidor): si algo que ya estuvo en el servidor deja de
+// estar, es porque alguien lo borró — no se resucita. Algo que nunca estuvo
+// en el servidor sí es nuevo de acá, y se conserva como siempre.
+const vistosEnServidor = {
+  obras: new Set(), pagos: new Set(), ordenesCompra: new Set(), proveedores: new Set(),
+  stock: new Set(), stockMovimientos: new Set(), trabajadores: new Set(), jornales: new Set(),
+  movimientosFima: new Set(),
+  documentos: new Set(), ingresos: new Set(), asignados: new Set(), // anidados en cada obra
+};
+const COLECCIONES_PLANAS = ['pagos','ordenesCompra','proveedores','stock','stockMovimientos','trabajadores','movimientosFima'];
+const COLECCIONES_CON_ID = ['obras','jornales',...COLECCIONES_PLANAS];
+// Borrados que el backend ya tiene registrados (hoja "Eliminados") como
+// "coleccion|id" — cubre también lo borrado por otros dispositivos aunque
+// esta pestaña nunca haya llegado a ver ese registro guardado.
+const eliminadosEnServidor = new Set();
+// Toma una "foto" de los ids de un estado (el que vino del servidor, o el
+// que se acaba de guardar bien) — se registra en vistosEnServidor recién
+// cuando se confirma que eso está en el servidor.
+function idsDeEstado(s){
+  const out = [];
+  COLECCIONES_CON_ID.forEach(k=>(s[k]||[]).forEach(x=>{ if(x && x.id) out.push([k, x.id]); }));
+  (s.obras||[]).forEach(o=>{
+    if(!o) return;
+    (o.documentos||[]).forEach(d=>{ if(d && d.id) out.push(['documentos', d.id]); });
+    (o.ingresosList||[]).forEach(i=>{ if(i && i.id) out.push(['ingresos', i.id]); });
+    ((o.jornalesConfig&&o.jornalesConfig.asignados)||[]).forEach(tid=>out.push(['asignados', o.id+'|'+tid]));
+  });
+  return out;
+}
+function registrarVistos(ids){ ids.forEach(([k,id])=>vistosEnServidor[k].add(id)); }
+function eliminadosParaEnviar(){
+  const out = [];
+  COLECCIONES_CON_ID.forEach(k=>eliminadosLocalmente[k].forEach(id=>{ if(id) out.push({coleccion:k, id}); }));
+  return out;
+}
 // Combina por id: la base es la lista del servidor (ya guardada), y se le
 // suman los elementos que solo existen en la lista local (lo que acabamos
 // de agregar acá y todavía no se había guardado). Si un mismo id existe en
@@ -980,16 +1034,35 @@ function marcarEditadoObra(obraId, campo){ editadosLocalmente.camposObra.add(obr
 // del estado. `eliminados` (opcional) saca de la base del servidor
 // cualquier id que se haya borrado localmente, para que el merge no lo
 // resucite.
-function unionPorId(local, servidor, eliminados, editados){
-  const base = eliminados && eliminados.size ? (servidor||[]).filter(x=>x && !eliminados.has(x.id)) : (servidor||[]);
-  const porId = new Map(base.filter(Boolean).map(x=>[x.id,x]));
+// `vistos` (opcional): ids que esta pestaña ya vio guardados en el
+// servidor. Un registro que solo está en lo local pero que YA estuvo en el
+// servidor fue borrado por otra persona/pestaña — no se vuelve a agregar.
+// `coleccion` (opcional): para respetar también los borrados que el backend
+// tiene registrados (eliminadosEnServidor).
+function unionPorId(local, servidor, eliminados, editados, vistos, coleccion){
+  const borradoEnServidor = (id)=> !!coleccion && eliminadosEnServidor.has(coleccion+'|'+id);
+  const base = (servidor||[]).filter(x=>x && !(eliminados&&eliminados.has(x.id)) && !borradoEnServidor(x.id));
+  const porId = new Map(base.map(x=>[x.id,x]));
+  const confiarEnBorrados = !listaServidorSospechosa(local, servidor, vistos);
   (local||[]).forEach(x=>{
-    if(!x || x.id===undefined || (eliminados&&eliminados.has(x.id))) return;
-    if(!porId.has(x.id)){ porId.set(x.id, x); return; } // nuevo, solo local -> se agrega
+    if(!x || x.id===undefined || x.id===null || (eliminados&&eliminados.has(x.id)) || borradoEnServidor(x.id)) return;
+    if(!porId.has(x.id)){
+      // ya estuvo en el servidor y ahora no -> lo borró otra persona
+      if(confiarEnBorrados && vistos && vistos.has(x.id) && !(editados && editados.has(x.id))) return;
+      porId.set(x.id, x); return; // nuevo, solo local -> se agrega
+    }
     if(editados && editados.has(x.id)) porId.set(x.id, x); // lo editamos nosotros -> gana lo local
     // si no lo editamos nosotros y ya existe en el servidor, se queda esa versión sin tocar
   });
   return [...porId.values()];
+}
+// Resguardo: si el servidor devuelve una lista VACÍA pero acá teníamos
+// varios registros que ya habíamos visto guardados, eso es mucho más
+// probablemente una lectura fallida/incompleta de la planilla que alguien
+// borrando todo — en ese caso no se toma como borrado (se conservan).
+function listaServidorSospechosa(local, servidor, vistos){
+  if(!vistos || (servidor||[]).length>0) return false;
+  return (local||[]).filter(x=>x && vistos.has(x.id)).length >= 5;
 }
 // Igual que unionPorId, pero a nivel de cada DÍA dentro de la fila (no de
 // toda la fila): una fila de jornales (trabajador+semana) se edita muy
@@ -1004,12 +1077,17 @@ function unionPorId(local, servidor, eliminados, editados){
 // justo acababa de limpiar a propósito (un tercer click legítimo en el
 // ciclo de estados, no un día "sin tocar").
 function mergeJornalesTrasConflicto(local, servidor, eliminados, editadosDias){
-  const base = eliminados && eliminados.size ? (servidor||[]).filter(x=>x && !eliminados.has(x.id)) : (servidor||[]);
-  const porId = new Map(base.filter(Boolean).map(x=>[x.id,x]));
+  const borradoEnServidor = (id)=> eliminadosEnServidor.has('jornales|'+id);
+  const base = (servidor||[]).filter(x=>x && !(eliminados&&eliminados.has(x.id)) && !borradoEnServidor(x.id));
+  const porId = new Map(base.map(x=>[x.id,x]));
+  const confiarEnBorrados = !listaServidorSospechosa(local, servidor, vistosEnServidor.jornales);
   (local||[]).forEach(row=>{
-    if(!row || row.id===undefined || (eliminados&&eliminados.has(row.id))) return;
+    if(!row || row.id===undefined || (eliminados&&eliminados.has(row.id)) || borradoEnServidor(row.id)) return;
     const enServidor = porId.get(row.id);
-    if(!enServidor){ porId.set(row.id, row); return; } // fila nueva, solo local
+    if(!enServidor){
+      if(confiarEnBorrados && vistosEnServidor.jornales.has(row.id)) return; // la borró otra persona
+      porId.set(row.id, row); return; // fila nueva, solo local
+    }
     const dias = enServidor.dias.map((diaServidor, idx)=>
       (editadosDias && editadosDias.has(row.id+'|'+idx)) ? row.dias[idx] : diaServidor
     );
@@ -1050,29 +1128,56 @@ function mergeObraTrasConflicto(obraLocal, obraServidor){
     presupuesto: campo('presupuesto'), presupuestoDetalle: campo('presupuestoDetalle'), presupuestoResumen: campo('presupuestoResumen'),
     facturasVenta: campo('facturasVenta'),
   };
+  // Trabajadores asignados, horas extra y viaje: antes se combinaban
+  // sumando todo (asignados) o con lo local pisando siempre (horas extra y
+  // viaje) — así, "Quitar" a un trabajador de una obra volvía solo si otra
+  // pestaña lo tenía todavía asignado, y una pestaña vieja podía pisar las
+  // horas extra que otra persona acababa de corregir. Ahora cada trabajador
+  // se resuelve por separado: si lo tocamos acá gana lo local, si no, lo
+  // del servidor (y lo que ya estuvo en el servidor y no está más, se
+  // respeta como quitado).
   const cfgLocal = obraLocal.jornalesConfig || {asignados:[], horasExtra:{}, viaje:{}};
   const cfgServidor = obraServidor.jornalesConfig || {asignados:[], horasExtra:{}, viaje:{}};
+  const key = (tid)=> obraLocal.id+'|'+tid;
+  const asigServidor = (cfgServidor.asignados||[]).filter(tid=>!eliminadosLocalmente.asignados.has(key(tid)));
+  const asigLocalesNuevos = (cfgLocal.asignados||[]).filter(tid=>
+    !asigServidor.includes(tid) && !eliminadosLocalmente.asignados.has(key(tid)) &&
+    (editadosLocalmente.asignados.has(key(tid)) || !vistosEnServidor.asignados.has(key(tid))));
+  const porTrabajador = (mapaLocal, mapaServidor)=>{
+    const out = {...(mapaServidor||{})};
+    Object.keys({...(mapaServidor||{}), ...(mapaLocal||{})}).forEach(tid=>{
+      if(!editadosLocalmente.jornalesCfg.has(key(tid))) return;
+      if(mapaLocal && mapaLocal[tid]!==undefined) out[tid] = mapaLocal[tid]; else delete out[tid];
+    });
+    return out;
+  };
   merged.jornalesConfig = {
-    asignados: [...new Set([...(cfgServidor.asignados||[]), ...(cfgLocal.asignados||[])])],
-    horasExtra: {...(cfgServidor.horasExtra||{}), ...(cfgLocal.horasExtra||{})},
-    viaje: {...(cfgServidor.viaje||{}), ...(cfgLocal.viaje||{})},
+    asignados: [...asigServidor, ...asigLocalesNuevos],
+    horasExtra: porTrabajador(cfgLocal.horasExtra, cfgServidor.horasExtra),
+    viaje: porTrabajador(cfgLocal.viaje, cfgServidor.viaje),
   };
   // ingresosList: igual que las demás colecciones planas, un cobro que ya
   // existía en las dos listas (editar monto/fecha de un cobro ya cargado,
   // no agregar uno nuevo) ganaba siempre el del servidor — se protege del
   // mismo modo, vía editadosLocalmente.ingresos.
-  merged.ingresosList = unionPorId(obraLocal.ingresosList, obraServidor.ingresosList, null, editadosLocalmente.ingresos);
-  merged.documentos = unionPorId(obraLocal.documentos, obraServidor.documentos);
-  if(obraLocal.comisionOverride) merged.comisionOverride = obraLocal.comisionOverride;
+  merged.ingresosList = unionPorId(obraLocal.ingresosList, obraServidor.ingresosList, null, editadosLocalmente.ingresos, vistosEnServidor.ingresos);
+  merged.documentos = unionPorId(obraLocal.documentos, obraServidor.documentos, eliminadosLocalmente.documentos, null, vistosEnServidor.documentos);
+  // Antes: si la obra local tenía comisión editada, pisaba SIEMPRE la del
+  // servidor (aunque fuera una copia vieja y otra persona la hubiera
+  // cambiado o sacado). Ahora solo gana lo local si se editó acá.
+  merged.comisionOverride = campo('comisionOverride');
   const facturado = editadosLocalmente.camposObra.has(obraLocal.id+'|ingresosFacturado') ? obraLocal.ingresos.facturado : obraServidor.ingresos.facturado;
   merged.ingresos = { facturado, cobrado: merged.ingresosList.reduce((a,i)=>a+i.monto,0) };
   return merged;
 }
 function mergeObrasTrasConflicto(local, servidor){
   const eliminadas = eliminadosLocalmente.obras;
-  const porId = new Map((servidor||[]).filter(Boolean).filter(o=>!eliminadas.has(o.id)).map(o=>[o.id,o]));
+  const borradaEnServidor = (id)=> eliminadosEnServidor.has('obras|'+id);
+  const porId = new Map((servidor||[]).filter(o=>o && !eliminadas.has(o.id) && !borradaEnServidor(o.id)).map(o=>[o.id,o]));
+  const confiarEnBorrados = !listaServidorSospechosa(local, servidor, vistosEnServidor.obras);
   (local||[]).forEach(o=>{
-    if(!o || o.id===undefined || eliminadas.has(o.id)) return;
+    if(!o || o.id===undefined || eliminadas.has(o.id) || borradaEnServidor(o.id)) return;
+    if(!porId.has(o.id) && confiarEnBorrados && vistosEnServidor.obras.has(o.id)) return; // la borró otra persona
     porId.set(o.id, porId.has(o.id) ? mergeObraTrasConflicto(o, porId.get(o.id)) : o);
   });
   return [...porId.values()];
@@ -1100,10 +1205,15 @@ async function saveStateCore(reintentos){
   if(!isBackendConfigured()) return;
   if(reintentos===undefined) reintentos = 5;
   try{
-    const res = await fetch(STATE_API_URL, {method:'POST', body:JSON.stringify({secret:API_SECRET, state})});
+    // Foto de lo que se manda — recién se registra como "visto en el
+    // servidor" si el guardado se confirma (si falla, algo recién cargado
+    // acá no debe quedar marcado como ya guardado).
+    const idsEnviados = idsDeEstado(state);
+    const res = await fetch(STATE_API_URL, {method:'POST', body:JSON.stringify({secret:API_SECRET, state, eliminados: eliminadosParaEnviar()})});
     const data = await res.json();
     if(data && data.ok){
       state.rev = data.rev;
+      registrarVistos(idsEnviados);
       hayGuardadoPendiente = false;
       ocultarAvisoGuardadoFallido();
       return;
@@ -1132,7 +1242,7 @@ async function saveStateCore(reintentos){
     await loadState({silencioso:true});
     state.obras = mergeObrasTrasConflicto(local.obras, state.obras);
     ['pagos','ordenesCompra','proveedores','stock','stockMovimientos','trabajadores','movimientosFima'].forEach(key=>{
-      state[key] = unionPorId(local[key], state[key], eliminadosLocalmente[key], editadosLocalmente[key]);
+      state[key] = unionPorId(local[key], state[key], eliminadosLocalmente[key], editadosLocalmente[key], vistosEnServidor[key], key);
     });
     state.jornales = mergeJornalesTrasConflicto(local.jornales, state.jornales, eliminadosLocalmente.jornales, editadosLocalmente.diasJornales);
     // real se recalcula recién acá, con pagos/stockMovimientos ya combinados
@@ -1237,7 +1347,7 @@ async function refrescarDesdeServidorCore(){
   await loadState({silencioso:true});
   state.obras = mergeObrasTrasConflicto(local.obras, state.obras);
   ['pagos','ordenesCompra','proveedores','stock','stockMovimientos','trabajadores','movimientosFima'].forEach(key=>{
-    state[key] = unionPorId(local[key], state[key], eliminadosLocalmente[key], editadosLocalmente[key]);
+    state[key] = unionPorId(local[key], state[key], eliminadosLocalmente[key], editadosLocalmente[key], vistosEnServidor[key], key);
   });
   state.jornales = mergeJornalesTrasConflicto(local.jornales, state.jornales, eliminadosLocalmente.jornales, editadosLocalmente.diasJornales);
   state.obras.forEach(o=>recomputeObraReal(o));
@@ -1249,6 +1359,56 @@ function programarRefrescoAuto(){
   refrescoAutoTimer = setInterval(refrescarDesdeServidor, 60000);
   document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState==='visible') refrescarDesdeServidor(); });
   window.addEventListener('focus', refrescarDesdeServidor);
+}
+// ---- Actualización automática cuando se sube una versión nueva ----
+// Una pestaña (o un celular) que quedó abierta días seguía corriendo la
+// versión vieja de la app aunque ya se hubiera subido un arreglo — por eso
+// varios arreglos de sincronización "no quedaban": con que una sola
+// pestaña vieja siguiera abierta, seguía guardando con el comportamiento
+// viejo. Ahora la app compara cada tanto su propio archivo publicado con
+// el que cargó al abrir; si cambió, se recarga sola apenas sea seguro
+// (sin guardado pendiente, sin un formulario abierto, sin estar armando un
+// presupuesto ni escribiendo en un campo) — y mientras tanto muestra un
+// aviso con un botón para actualizar a mano.
+let huellaVersionCargada = null;
+let hayVersionNueva = false;
+async function huellaDeLaAppPublicada(){
+  const res = await fetch(location.origin + location.pathname + '?_v=' + Date.now(), {cache:'no-store'});
+  if(!res.ok) throw new Error('HTTP '+res.status);
+  return hashTexto(await res.text());
+}
+function puedeRecargarSinPerderNada(){
+  if(hayGuardadoPendiente) return false;
+  if(overlay.classList.contains('open')) return false;
+  const vistaPresupuesto = document.getElementById('view-presupuesto');
+  if(vistaPresupuesto && vistaPresupuesto.classList.contains('active')) return false;
+  const activo = document.activeElement;
+  if(activo && ['INPUT','TEXTAREA','SELECT'].includes(activo.tagName)) return false;
+  return true;
+}
+function mostrarAvisoVersionNueva(){
+  if(document.getElementById('aviso-version-nueva')) return;
+  const b = document.createElement('div');
+  b.id = 'aviso-version-nueva';
+  b.style.cssText = 'position:fixed;bottom:16px;right:16px;z-index:9999;background:#14181C;color:#fff;padding:12px 16px;border-radius:8px;font-family:Montserrat,sans-serif;font-size:12.5px;max-width:320px;line-height:1.5;box-shadow:0 6px 20px rgba(0,0,0,.35);';
+  b.innerHTML = 'Hay una versión nueva de la app. <span style="text-decoration:underline;cursor:pointer;font-weight:600;" onclick="if(!hayGuardadoPendiente) location.reload(); else alert(\'Esperá unos segundos a que termine de guardarse tu último cambio y volvé a tocar.\')">Actualizar ahora</span>';
+  document.body.appendChild(b);
+}
+async function chequearVersionNueva(){
+  try{
+    if(!huellaVersionCargada){ huellaVersionCargada = await huellaDeLaAppPublicada(); return; }
+    if(!hayVersionNueva && (await huellaDeLaAppPublicada())!==huellaVersionCargada){
+      hayVersionNueva = true;
+      mostrarAvisoVersionNueva();
+    }
+  } catch(e){ return; } // sin conexión o similar: se vuelve a probar en el próximo chequeo
+  if(hayVersionNueva && puedeRecargarSinPerderNada()) location.reload();
+}
+function iniciarControlDeVersion(){
+  if(!/^https?:$/.test(location.protocol)) return; // abierta como archivo local (pruebas): no aplica
+  chequearVersionNueva();
+  setInterval(chequearVersionNueva, 5*60*1000);
+  document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState==='visible') chequearVersionNueva(); });
 }
 function subirArchivoDrive(file){
   if(!isBackendConfigured()) return Promise.reject(new Error('El backend todavía no está configurado.'));
@@ -1815,6 +1975,7 @@ async function submitDocumentoObra(obraId){
 }
 function eliminarDocumentoObra(obraId, docId){
   const o = getObra(obraId);
+  marcarEliminado('documentos', docId);
   o.documentos = (o.documentos||[]).filter(d=>d.id!==docId);
   renderAll();
 }
@@ -1856,9 +2017,10 @@ function submitComisionObra(obraId){
   const modo = document.getElementById('f-com-modo').value;
   const valor = modo==='monto' ? (+document.getElementById('f-com-monto').value||0) : (+document.getElementById('f-com-pct').value||0);
   getObra(obraId).comisionOverride = {modo, valor};
+  marcarEditadoObra(obraId, 'comisionOverride');
   closeModal(); renderAll();
 }
-function quitarComisionOverride(obraId){ getObra(obraId).comisionOverride = null; closeModal(); renderAll(); }
+function quitarComisionOverride(obraId){ getObra(obraId).comisionOverride = null; marcarEditadoObra(obraId, 'comisionOverride'); closeModal(); renderAll(); }
 function eliminarObra(id){
   const o = getObra(id);
   if(!o) return;
@@ -2494,6 +2656,10 @@ function eliminarTrabajador(id){
     if(!o.jornalesConfig) return;
     o.jornalesConfig.asignados = (o.jornalesConfig.asignados||[]).filter(tid=>tid!==id);
     if(o.jornalesConfig.horasExtra) delete o.jornalesConfig.horasExtra[id];
+    if(o.jornalesConfig.viaje) delete o.jornalesConfig.viaje[id];
+    eliminadosLocalmente.asignados.add(o.id+'|'+id);
+    editadosLocalmente.asignados.delete(o.id+'|'+id);
+    editadosLocalmente.jornalesCfg.add(o.id+'|'+id);
   });
   marcarEliminado('trabajadores', id);
   state.trabajadores = state.trabajadores.filter(x=>x.id!==id);
@@ -2551,6 +2717,8 @@ function asignarTrabajadorObra(obraId, trabajadorId){
   const o = getObra(obraId);
   o.jornalesConfig = o.jornalesConfig || {asignados:[], horasExtra:{}, viaje:{}};
   if(!o.jornalesConfig.asignados.includes(trabajadorId)) o.jornalesConfig.asignados.push(trabajadorId);
+  editadosLocalmente.asignados.add(obraId+'|'+trabajadorId);
+  eliminadosLocalmente.asignados.delete(obraId+'|'+trabajadorId);
   renderAll();
 }
 // Quitar a un trabajador de una obra también borra los días que ya le
@@ -2563,6 +2731,9 @@ function quitarTrabajadorObra(obraId, trabajadorId){
   o.jornalesConfig.asignados = (o.jornalesConfig.asignados||[]).filter(id=>id!==trabajadorId);
   if(o.jornalesConfig.horasExtra) delete o.jornalesConfig.horasExtra[trabajadorId];
   if(o.jornalesConfig.viaje) delete o.jornalesConfig.viaje[trabajadorId];
+  eliminadosLocalmente.asignados.add(obraId+'|'+trabajadorId);
+  editadosLocalmente.asignados.delete(obraId+'|'+trabajadorId);
+  editadosLocalmente.jornalesCfg.add(obraId+'|'+trabajadorId);
   state.jornales.forEach(row=>{
     if(row.trabajadorId!==trabajadorId) return;
     row.dias.forEach((cell,idx)=>{
@@ -2575,6 +2746,7 @@ function setHorasExtraObra(obraId, trabajadorId, valor){
   const o = getObra(obraId);
   o.jornalesConfig = o.jornalesConfig || {asignados:[], horasExtra:{}, viaje:{}};
   o.jornalesConfig.horasExtra[trabajadorId] = Math.max(0, +valor||0);
+  editadosLocalmente.jornalesCfg.add(obraId+'|'+trabajadorId);
   renderAll();
 }
 // Marca a un trabajador como "de viaje" en esta obra — el extra de
@@ -2587,6 +2759,7 @@ function setViajeObra(obraId, trabajadorId, checked){
   o.jornalesConfig.viaje = o.jornalesConfig.viaje || {};
   if(checked) o.jornalesConfig.viaje[trabajadorId] = true;
   else delete o.jornalesConfig.viaje[trabajadorId];
+  editadosLocalmente.jornalesCfg.add(obraId+'|'+trabajadorId);
   renderAll();
 }
 function renderObraJornalesCard(o){
@@ -4295,6 +4468,7 @@ function repararFondos(){
   // la vez no genera avisos de "conflicto" sin que nadie haya cambiado nada.
   bootCompleto = true;
   programarRefrescoAuto();
+  iniciarControlDeVersion();
   if(huboReparacionFechas || huboMaduraciones || huboMigracionJornales || huboReparacionIngresos || huboReparacionReal || huboReparacionIdsFima || huboReparacionFondos) saveState();
   const overlay = document.getElementById('loading-overlay');
   if(overlay){ overlay.style.opacity='0'; setTimeout(()=>overlay.remove(), 300); }
