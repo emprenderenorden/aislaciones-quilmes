@@ -1075,6 +1075,17 @@ principio de `backend-AppsScript.gs`).
     cambiar nada.
   - Las celdas de montos (`.num`, pantalla y PDFs) ya no se parten en dos
     renglones con los números más largos (`white-space:nowrap`).
+  - **Corrección posterior (reportada por el dueño):** ese `nowrap` también
+    se aplicaba a los títulos de columna (`th.num`), así que las tablas
+    anchas (historial de Jornales, Pagos) quedaban más anchas que su
+    recuadro y el texto se salía por la derecha. Ahora los títulos sí se
+    parten en dos renglones (`th.num{white-space:normal}`), el espacio
+    entre columnas bajó de 12px a 9px, y `.card-table` tiene
+    `overflow-x:auto` — si una tabla igual no entra (celular), se desliza
+    de costado dentro del recuadro en vez de salirse. Probado a 1366px:
+    Jornales y Pagos entran completas sin desbordar. Pendiente aparte (ya
+    existía antes): en celular, los botones de filtro de Pagos no bajan
+    de renglón y hacen que la página entera se desborde de costado.
   - No toca el backend (los montos ya se guardaban con decimales).
   - Probado en un entorno aislado: formatos ($ 1.234,50 / US$ 1,234.50 /
     cards redondeadas), un movimiento de FIMA cargado con $1.234,56 queda

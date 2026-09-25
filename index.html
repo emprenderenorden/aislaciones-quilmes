@@ -83,8 +83,8 @@
   .layerbar .fill.good{background-color:var(--good);} .layerbar .fill.warn{background-color:var(--warn);} .layerbar .fill.bad{background-color:var(--bad);}
 
   table{width:100%;border-collapse:collapse;font-size:13px;}
-  thead th{text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:600;padding:0 12px 10px;border-bottom:1px solid var(--line);}
-  tbody td{padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:middle;}
+  thead th{text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:600;padding:0 9px 10px;border-bottom:1px solid var(--line);}
+  tbody td{padding:10px 9px;border-bottom:1px solid var(--line);vertical-align:middle;}
   tbody tr:last-child td{border-bottom:none;}
   tbody tr:hover{background:#FAFBFB;}
   .obra-code{font-family:'Montserrat',sans-serif;font-weight:600;background:var(--teal-soft);color:var(--teal-deep);padding:2px 7px;border-radius:5px;font-size:12px;}
@@ -93,10 +93,13 @@
   .link-btn:hover{text-decoration:underline;}
   .link-btn.danger{color:var(--bad);}
   .num{font-family:'Montserrat',sans-serif;text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap;}
-  th.num{text-align:right;}
+  th.num{text-align:right;white-space:normal;} /* los títulos sí pueden partirse en dos renglones */
   .estado-dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:6px;}
   .estado-dot.good{background:var(--good);} .estado-dot.warn{background:var(--warn);} .estado-dot.bad{background:var(--bad);} .estado-dot.info{background:var(--teal);}
-  .card-table{padding:6px 4px 4px;}
+  /* Con los montos con centavos las tablas anchas (Jornales, Pagos) no
+     entraban en el recuadro y se salían por la derecha: ahora, si no
+     entran, se deslizan de costado DENTRO del recuadro. */
+  .card-table{padding:6px 4px 4px;overflow-x:auto;-webkit-overflow-scrolling:touch;}
   .subtotal-row td{font-weight:700;background:#FAFBFB;}
   .card-table.dark{background:var(--ink);border-color:var(--ink);}
   .card-table.dark thead th{color:#9AA5A3;border-bottom-color:#2A3339;}
