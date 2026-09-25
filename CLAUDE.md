@@ -1044,3 +1044,32 @@ volver a desplegar (ver instrucciones al principio de
     queda 1 y 1; el aviso aparece con monto igual dentro de ±3 días
     (Cancelar no guarda, Aceptar sí) y no aparece con fecha a 9 días ni
     con otro monto.
+- **Nuevo: centavos en toda la app.** A pedido del dueño, todos los montos
+  se muestran siempre con 2 decimales (`fmt`/`fmtUsd` pasaron a formatear
+  con centavos; `fmtDec`/`fmtUsdDec`, que antes eran el formato con
+  centavos reservado para las OC, quedaron como alias). Internamente los
+  montos nunca se truncaban — era solo cómo se mostraban. Excepción
+  deliberada: las 3 cards grandes del Dashboard (liquidez, ganancia real,
+  pagos pendientes) y los saldos de los 7 fondos de FIMA siguen
+  redondeados al peso (`fmtRedondo`), para leerse de un vistazo.
+  - Todos los campos numéricos de carga aceptan centavos (`step="0.01"`,
+    salvo los de horas con paso 0,5). Los campos que se prellenan con un
+    monto calculado (monto final de una OC con IVA, saldo/deuda a pagar,
+    saldo del fondo al editarlo) se redondean a centavos (`r2`).
+  - **Bug evitado de paso:** con centavos, sumar pagos parciales puede dar
+    1000.0999999 en vez de 1000.10 (así maneja los decimales la
+    computadora) y dejaba un gasto "Parcial" para siempre con saldo
+    "$ 0,00". `pagoEstado`, `pagoSaldo`, el pago a proveedor
+    (`submitPagoProveedor`) y "Editar fondo" ahora comparan con un margen
+    de medio centavo (`MEDIO_CENTAVO`) — este último para no generar un
+    "Ajuste manual de saldo" de fracciones de centavo al guardar sin
+    cambiar nada.
+  - Las celdas de montos (`.num`, pantalla y PDFs) ya no se parten en dos
+    renglones con los números más largos (`white-space:nowrap`).
+  - No toca el backend (los montos ya se guardaban con decimales).
+  - Probado en un entorno aislado: formatos ($ 1.234,50 / US$ 1,234.50 /
+    cards redondeadas), un movimiento de FIMA cargado con $1.234,56 queda
+    guardado y mostrado exacto, pagos parciales con centavos
+    (0,1+0,2 y 500,05+500,05) quedan "Pagado" con saldo $0,00, "Editar
+    fondo" sin cambios no genera ajuste, y capturas de Dashboard, Pagos,
+    FIMA y detalle de obra sin errores de consola.

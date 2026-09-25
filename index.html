@@ -92,7 +92,7 @@
   .link-btn{color:var(--teal);font-weight:600;cursor:pointer;font-size:12.5px;white-space:nowrap;}
   .link-btn:hover{text-decoration:underline;}
   .link-btn.danger{color:var(--bad);}
-  .num{font-family:'Montserrat',sans-serif;text-align:right;font-variant-numeric:tabular-nums;}
+  .num{font-family:'Montserrat',sans-serif;text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap;}
   th.num{text-align:right;}
   .estado-dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:6px;}
   .estado-dot.good{background:var(--good);} .estado-dot.warn{background:var(--warn);} .estado-dot.bad{background:var(--bad);} .estado-dot.info{background:var(--teal);}
@@ -332,7 +332,7 @@
         <div class="field"><label>Encargado</label><input id="pb-encargado" placeholder="Nombre"></div>
         <div class="field"><label>Fecha de inicio</label><input id="pb-fecha" type="date"></div>
         <div class="field"><label>Fecha de facturación (para IVA débito)</label><input id="pb-fecha-factura" type="date"></div>
-        <div class="field"><label>Cotización USD (referencia)</label><input id="pb-cotizacion" class="cell-input mono-in" type="number" value="1450" oninput="recomputeBuildTotals()"></div>
+        <div class="field"><label>Cotización USD (referencia)</label><input id="pb-cotizacion" class="cell-input mono-in" type="number" step="0.01" value="1450" oninput="recomputeBuildTotals()"></div>
       </div>
     </div>
 
@@ -352,8 +352,8 @@
     <div class="card card-table">
       <table><thead><tr><th>Puesto</th><th class="num">Salario/día</th><th class="num">Nº trabajadores</th><th class="num">Subtotal/día</th></tr></thead><tbody id="mo-roles-body"></tbody></table>
       <div class="form-grid" style="padding:14px;">
-        <div class="field"><label>Tiempo de obra (días)</label><input id="pb-dias" class="cell-input mono-in" type="number" value="0" oninput="recomputeBuildTotals()"></div>
-        <div class="field"><label>Cargas sociales ($, total de la obra)</label><input id="pb-cargas-sociales" class="cell-input mono-in" type="number" value="0" oninput="recomputeBuildTotals()"></div>
+        <div class="field"><label>Tiempo de obra (días)</label><input id="pb-dias" class="cell-input mono-in" type="number" step="0.01" value="0" oninput="recomputeBuildTotals()"></div>
+        <div class="field"><label>Cargas sociales ($, total de la obra)</label><input id="pb-cargas-sociales" class="cell-input mono-in" type="number" step="0.01" value="0" oninput="recomputeBuildTotals()"></div>
       </div>
     </div>
 
@@ -383,7 +383,7 @@
           </select>
         </div>
         <div class="field" id="wrap-vendedor-pct"><label>% Comisión vendedor</label><input id="pb-vendedor-pct" class="cell-input mono-in" type="number" step="0.5" value="8" oninput="recomputeBuildTotals()"></div>
-        <div class="field hidden" id="wrap-vendedor-monto"><label>Monto fijo comisión ($)</label><input id="pb-vendedor-monto" class="cell-input mono-in" type="number" step="1000" value="0" oninput="recomputeBuildTotals()"></div>
+        <div class="field hidden" id="wrap-vendedor-monto"><label>Monto fijo comisión ($)</label><input id="pb-vendedor-monto" class="cell-input mono-in" type="number" step="0.01" value="0" oninput="recomputeBuildTotals()"></div>
         <div class="field"></div>
         <div class="field"><label>Nombre socio 1</label><input id="pb-socio1-nombre" class="cell-input" value="AL" oninput="recomputeBuildTotals()"></div>
         <div class="field"><label>% Socio 1 (s/ ganancia neta)</label><input id="pb-socio1-pct" class="cell-input mono-in" type="number" step="0.5" value="10" oninput="recomputeBuildTotals()"></div>
@@ -692,13 +692,25 @@ function catOptionsForTipo(tipo, selected){
 }
 const fondoLabel = {costosFijos:'Costos Fijos', jornales:'Jornales', impuestos:'Impuestos', emergencias:'Emergencias', inversiones:'Inversiones', obras:'Obras', otros:'Otros'};
 function fondoOptionsHTML(selected){ return Object.entries(fondoLabel).map(([k,l])=>`<option value="${k}" ${selected===k?'selected':''}>${l}</option>`).join(''); }
-const fmt = (n)=> '$ ' + Math.round(n||0).toLocaleString('es-AR');
-const fmtUsd = (n)=> 'US$ ' + Math.round(n||0).toLocaleString('en-US');
-// Igual que fmt/fmtUsd pero con 2 decimales — reservado para las órdenes de
-// compra (precios unitarios de materiales, que sí suelen venir con
-// centavos), sin tocar el resto de la app donde los montos van redondeados.
-const fmtDec = (n)=> '$ ' + (n||0).toLocaleString('es-AR', {minimumFractionDigits:2, maximumFractionDigits:2});
-const fmtUsdDec = (n)=> 'US$ ' + (n||0).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+// Todos los montos se muestran siempre con 2 decimales (centavos) — a pedido
+// del dueño. Internamente los montos nunca se truncaron: esto es solo cómo se
+// muestran. fmtDec/fmtUsdDec quedan como alias (antes eran el formato con
+// centavos reservado para las órdenes de compra).
+const fmt = (n)=> '$ ' + (+n||0).toLocaleString('es-AR', {minimumFractionDigits:2, maximumFractionDigits:2});
+const fmtUsd = (n)=> 'US$ ' + (+n||0).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+const fmtDec = fmt;
+const fmtUsdDec = fmtUsd;
+// Redondeado al peso — solo para las cards grandes del Dashboard y los
+// saldos de los fondos de FIMA, que se leen de un vistazo.
+const fmtRedondo = (n)=> '$ ' + Math.round(+n||0).toLocaleString('es-AR');
+// Con centavos, sumar pagos parciales puede dar 1000.0999999 en vez de
+// 1000.10 (así maneja los decimales la computadora) — las comparaciones de
+// montos usan este margen de medio centavo para no dejar, por ejemplo, un
+// gasto "Parcial" para siempre con saldo $ 0,00.
+const MEDIO_CENTAVO = 0.005;
+// Redondea a centavos — para prellenar campos con montos calculados (total
+// con IVA, saldo, deuda) sin mostrar algo como 1452,3456789.
+const r2 = (n)=> Math.round((+n||0)*100)/100;
 // Las fechas se guardan/comparan siempre en formato ISO (YYYY-MM-DD); esto
 // solo se usa para MOSTRARLAS como dd/mm/aaaa. Si llega algo que no tiene
 // pinta de fecha ISO (por ejemplo un valor viejo que quedó mal guardado como
@@ -1261,11 +1273,11 @@ const getProveedor = (id)=> state.proveedores.find(p=>p.id===id);
 // diferido) que todavía no salió de la caja/fondo — por eso no cuenta como
 // plata efectivamente pagada hasta que se aplica (ver reconciliarPagosProgramados).
 const pagoMontoPagado = (p)=> (p.pagosRealizados||[]).filter(x=>x.aplicado!==false).reduce((a,x)=>a+x.monto,0);
-const pagoSaldo = (p)=> Math.max(0, p.monto - pagoMontoPagado(p));
+const pagoSaldo = (p)=>{ const s = p.monto - pagoMontoPagado(p); return s < MEDIO_CENTAVO ? 0 : s; };
 const pagoEstado = (p)=>{
   const pagado = pagoMontoPagado(p);
-  if(pagado >= p.monto && p.monto>0) return 'pagado';
-  if(pagado > 0) return 'parcial';
+  if(pagado >= p.monto - MEDIO_CENTAVO && p.monto>0) return 'pagado';
+  if(pagado >= MEDIO_CENTAVO) return 'parcial';
   if((p.pagosRealizados||[]).some(x=>x.aplicado===false)) return 'programado';
   return p.fechaPago ? 'pendiente' : 'sin_fecha';
 };
@@ -1399,10 +1411,10 @@ function renderDashboard(){
   const pendientes = state.pagos.filter(p=>pagoEstado(p)!=='pagado' && pagoEstado(p)!=='programado');
   const pendientesTotal = pendientes.reduce((a,p)=>a+pagoSaldo(p),0);
   document.getElementById('kpi-row').innerHTML = `
-    <div class="card kpi"><div class="kpi-label">Liquidez disponible</div><div class="kpi-value">${fmt(liquidezTotal())}</div><div class="kpi-note">Caja + saldos FIMA</div></div>
-    <div class="card kpi"><div class="kpi-label">Ganancia real acumulada</div><div class="kpi-value">${fmt(gananciaReal)}</div><div class="kpi-note">Proyectada ${fmt(gananciaProy)}</div></div>
+    <div class="card kpi"><div class="kpi-label">Liquidez disponible</div><div class="kpi-value">${fmtRedondo(liquidezTotal())}</div><div class="kpi-note">Caja + saldos FIMA</div></div>
+    <div class="card kpi"><div class="kpi-label">Ganancia real acumulada</div><div class="kpi-value">${fmtRedondo(gananciaReal)}</div><div class="kpi-note">Proyectada ${fmt(gananciaProy)}</div></div>
     <div class="card kpi"><div class="kpi-label">Obras activas</div><div class="kpi-value">${state.obras.filter(o=>o.estado==='en curso').length}</div><div class="kpi-note">${state.obras.filter(o=>!obraSinPresupuesto(o) && obraRealTotal(o)>obraPresTotal(o)).length} por encima del presupuesto</div></div>
-    <div class="card kpi"><div class="kpi-label">Pagos pendientes <span class="tag warn">${pendientes.length}</span></div><div class="kpi-value">${fmt(pendientesTotal)}</div><div class="kpi-note">${pendientes[0]? (pendientes[0].fechaPago?fmtFecha(pendientes[0].fechaPago):'sin fecha asignada') : 'Sin pendientes'}</div></div>
+    <div class="card kpi"><div class="kpi-label">Pagos pendientes <span class="tag warn">${pendientes.length}</span></div><div class="kpi-value">${fmtRedondo(pendientesTotal)}</div><div class="kpi-note">${pendientes[0]? (pendientes[0].fechaPago?fmtFecha(pendientes[0].fechaPago):'sin fecha asignada') : 'Sin pendientes'}</div></div>
   `;
   document.getElementById('obras-dashboard-body').innerHTML = state.obras.map(o=>{
     const sinPres = obraSinPresupuesto(o);
@@ -1831,7 +1843,7 @@ function openModalComisionObra(obraId){
         </select>
       </div>
       <div class="field ${modo!=='pct'?'hidden':''}" id="wrap-com-pct"><label>% Comisión</label><input id="f-com-pct" class="cell-input mono-in" type="number" step="0.5" value="${modo==='pct'?valor:(pd.vendedorPct??0)}"></div>
-      <div class="field ${modo!=='monto'?'hidden':''}" id="wrap-com-monto"><label>Monto fijo ($)</label><input id="f-com-monto" class="cell-input mono-in" type="number" step="1000" value="${modo==='monto'?valor:(pd.vendedorMonto||0)}"></div>
+      <div class="field ${modo!=='monto'?'hidden':''}" id="wrap-com-monto"><label>Monto fijo ($)</label><input id="f-com-monto" class="cell-input mono-in" type="number" step="0.01" value="${modo==='monto'?valor:(pd.vendedorMonto||0)}"></div>
     </div>
     <div class="modal-actions">
       <button class="btn btn-ghost" onclick="closeModal()">Cancelar</button>
@@ -1960,8 +1972,8 @@ function renderItemsTable(type){
   document.getElementById(type+'-items-body').innerHTML = items.map((it,i)=>`
     <tr>
       <td><input class="cell-input" value="${it.detalle}" oninput="updateItem('${type}',${i},'detalle',this.value)"></td>
-      <td><input class="cell-input mono-in" type="number" value="${it.cantidad}" oninput="updateItem('${type}',${i},'cantidad',this.value)"></td>
-      <td><input class="cell-input mono-in" type="number" value="${it.unitario}" oninput="updateItem('${type}',${i},'unitario',this.value)"></td>
+      <td><input class="cell-input mono-in" type="number" step="0.01" value="${it.cantidad}" oninput="updateItem('${type}',${i},'cantidad',this.value)"></td>
+      <td><input class="cell-input mono-in" type="number" step="0.01" value="${it.unitario}" oninput="updateItem('${type}',${i},'unitario',this.value)"></td>
       <td class="num" id="${type}-total-${i}">${fmt(it.cantidad*it.unitario)}</td>
       <td><span class="link-btn danger" onclick="removeItem('${type}',${i})">✕</span></td>
     </tr>`).join('');
@@ -1977,8 +1989,8 @@ function removeItem(type,i){ buildState[type+'Items'].splice(i,1); renderItemsTa
 function renderMoRoles(){
   document.getElementById('mo-roles-body').innerHTML = buildState.moRoles.map((r,i)=>`
     <tr><td>${r.puesto}</td>
-      <td><input class="cell-input mono-in" type="number" value="${r.salario}" oninput="updateMoRole(${i},'salario',this.value)"></td>
-      <td><input class="cell-input mono-in" type="number" value="${r.cantidad}" oninput="updateMoRole(${i},'cantidad',this.value)"></td>
+      <td><input class="cell-input mono-in" type="number" step="0.01" value="${r.salario}" oninput="updateMoRole(${i},'salario',this.value)"></td>
+      <td><input class="cell-input mono-in" type="number" step="0.01" value="${r.cantidad}" oninput="updateMoRole(${i},'cantidad',this.value)"></td>
       <td class="num" id="mo-total-${i}">${fmt(r.salario*r.cantidad)}</td></tr>`).join('');
 }
 function updateMoRole(i,field,value){
@@ -2455,7 +2467,7 @@ function openModalTrabajador(id){
     <div class="form-grid">
       <div class="field span2"><label>Nombre</label><input id="f-trab-nombre" placeholder="Nombre y apellido" value="${existing?existing.nombre:''}"></div>
       <div class="field"><label>Puesto</label><select id="f-trab-puesto">${puestos.map(p=>`<option ${existing&&existing.puesto===p?'selected':''}>${p}</option>`).join('')}</select></div>
-      <div class="field"><label>Sueldo mensual</label><input id="f-trab-sueldo" class="cell-input mono-in" type="number" min="0" value="${existing?(existing.sueldoMensual||0):0}"></div>
+      <div class="field"><label>Sueldo mensual</label><input id="f-trab-sueldo" class="cell-input mono-in" type="number" step="0.01" min="0" value="${existing?(existing.sueldoMensual||0):0}"></div>
     </div>
     <div class="modal-actions">
       <button class="btn btn-ghost" onclick="closeModal()">Cancelar</button>
@@ -2601,7 +2613,7 @@ function renderObraJornalesCard(o){
     const ausentes = row.dias.filter(c=>c.estado==='ausente').length;
     const horasExtra = cfg.horasExtra[tid] || 0;
     const esViaje = !!cfg.viaje[tid];
-    return `<tr><td style="font-weight:600;">${t.nombre}</td><td>${t.puesto}</td>${dayCells}<td class="num">${trabajados}</td><td class="num">${ausentes}</td><td><input class="cell-input mono-in" type="number" min="0" style="width:80px;" value="${horasExtra}" onchange="setHorasExtraObra('${o.id}','${tid}',this.value)"></td><td style="text-align:center;"><input type="checkbox" title="Suma ${fmt(VALOR_VIAJE)} por cada día trabajado en esta obra" ${esViaje?'checked':''} onchange="setViajeObra('${o.id}','${tid}',this.checked)"></td><td><span class="link-btn danger" onclick="quitarTrabajadorObra('${o.id}','${tid}')">Quitar</span></td></tr>`;
+    return `<tr><td style="font-weight:600;">${t.nombre}</td><td>${t.puesto}</td>${dayCells}<td class="num">${trabajados}</td><td class="num">${ausentes}</td><td><input class="cell-input mono-in" type="number" step="0.01" min="0" style="width:80px;" value="${horasExtra}" onchange="setHorasExtraObra('${o.id}','${tid}',this.value)"></td><td style="text-align:center;"><input type="checkbox" title="Suma ${fmt(VALOR_VIAJE)} por cada día trabajado en esta obra" ${esViaje?'checked':''} onchange="setViajeObra('${o.id}','${tid}',this.checked)"></td><td><span class="link-btn danger" onclick="quitarTrabajadorObra('${o.id}','${tid}')">Quitar</span></td></tr>`;
   }).join('');
   return `
     <div class="section-title"><h2>Jornales de la obra</h2><span class="hint">Se ve también en Jornales, con el número de esta obra</span></div>
@@ -2699,7 +2711,7 @@ function renderFima(){
     obras:{color:'var(--bad)', note:'gastos puntuales de obra'},
     otros:{color:'var(--muted)', note:'gastos varios no clasificados'},
   };
-  document.getElementById('fund-grid').innerHTML = Object.entries(state.fondos).map(([k,v])=>`<div class="card fund-card"><button class="fund-edit-btn" onclick="openModalEditarFondo('${k}')" title="Editar fondo">✎</button><div class="fund-bar" style="background:${meta[k].color};"></div><div class="fund-name">${fondoLabel[k]}</div><div class="fund-value">${fmt(v)}</div><div class="fund-target">${meta[k].note}</div></div>`).join('');
+  document.getElementById('fund-grid').innerHTML = Object.entries(state.fondos).map(([k,v])=>`<div class="card fund-card"><button class="fund-edit-btn" onclick="openModalEditarFondo('${k}')" title="Editar fondo">✎</button><div class="fund-bar" style="background:${meta[k].color};"></div><div class="fund-name">${fondoLabel[k]}</div><div class="fund-value">${fmtRedondo(v)}</div><div class="fund-target">${meta[k].note}</div></div>`).join('');
 
   const fondoSel = document.getElementById('fima-filtro-fondo');
   if(fondoSel){
@@ -2809,7 +2821,7 @@ function openModalEditarMovimientoFima(idx){
   modalEl.innerHTML = `<h3>Editar movimiento FIMA</h3><div class="modal-sub">${fondoLabel[m.fondo]} — ${m.tipo==='in'?'Ingreso':'Egreso'}</div>
     <div class="form-grid">
       <div class="field span2"><label>Concepto</label><input id="f-fima-edit-concepto" value="${m.concepto}"></div>
-      <div class="field"><label>Monto ($)</label><input id="f-fima-edit-monto" class="mono-in" type="number" value="${m.monto}"></div>
+      <div class="field"><label>Monto ($)</label><input id="f-fima-edit-monto" class="mono-in" type="number" step="0.01" value="${m.monto}"></div>
     </div>
     <div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" onclick="submitEditarMovimientoFima(${idx})">Guardar</button></div>`;
   overlay.classList.add('open');
@@ -2838,7 +2850,7 @@ function setFimaSubcatFiltro(value){
 function openModalEditarFondo(fondo){
   modalEl.innerHTML = `<h3>Editar fondo — ${fondoLabel[fondo]}</h3><div class="modal-sub">Ajustá el monto actual del fondo — por ejemplo, para cargar un saldo inicial. La diferencia queda cargada como un movimiento "Ajuste manual de saldo" en el historial de FIMA.</div>
     <div class="form-grid">
-      <div class="field span2"><label>Monto actual ($)</label><input id="f-fondo-monto" class="mono-in" type="number" value="${state.fondos[fondo]}"></div>
+      <div class="field span2"><label>Monto actual ($)</label><input id="f-fondo-monto" class="mono-in" type="number" step="0.01" value="${r2(state.fondos[fondo])}"></div>
     </div>
     <div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" onclick="submitEditarFondo('${fondo}')">Guardar</button></div>`;
   overlay.classList.add('open');
@@ -2851,7 +2863,7 @@ function openModalEditarFondo(fondo){
 function submitEditarFondo(fondo){
   const nuevoValor = +document.getElementById('f-fondo-monto').value || 0;
   const delta = nuevoValor - state.fondos[fondo];
-  if(delta!==0){
+  if(Math.abs(delta)>=MEDIO_CENTAVO){
     state.movimientosFima.push({id:newId('fm'), fecha:today(), fondo, obraId:null, subcategoria: fondo==='obras'?null:'Ajuste manual', concepto:'Ajuste manual de saldo', tipo: delta>0?'in':'out', monto:Math.abs(delta)});
     recomputeFondos();
   }
@@ -2911,9 +2923,9 @@ function openModalStockItem(id){
       <div class="field span2"><label>Material</label><input id="f-nombre" placeholder="Ej: Lana de vidrio 50mm" value="${existing?existing.nombre:''}"></div>
       <div class="field"><label>Categoría</label><input id="f-categoria" placeholder="Ej: Lanas, Placas, Accesorios…" value="${existing?(existing.categoria||''):''}"></div>
       <div class="field"><label>Unidad</label><input id="f-unidad" placeholder="m2, rollo, caja…" value="${existing?existing.unidad:''}"></div>
-      <div class="field"><label>${existing?'Stock actual':'Cantidad inicial'}</label><input id="f-cantidad" class="mono-in" type="number" value="${existing?existing.cantidad:0}"></div>
-      <div class="field"><label>Stock mínimo</label><input id="f-stockminimo" class="mono-in" type="number" value="${existing?(existing.stockMinimo||0):0}"></div>
-      <div class="field span2"><label>Costo unitario ($)</label><input id="f-costo" class="mono-in" type="number" value="${existing?existing.costoUnitario:0}"></div>
+      <div class="field"><label>${existing?'Stock actual':'Cantidad inicial'}</label><input id="f-cantidad" class="mono-in" type="number" step="0.01" value="${existing?existing.cantidad:0}"></div>
+      <div class="field"><label>Stock mínimo</label><input id="f-stockminimo" class="mono-in" type="number" step="0.01" value="${existing?(existing.stockMinimo||0):0}"></div>
+      <div class="field span2"><label>Costo unitario ($)</label><input id="f-costo" class="mono-in" type="number" step="0.01" value="${existing?existing.costoUnitario:0}"></div>
     </div>
     <div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" onclick="submitStockItem('${id||''}')">${existing?'Guardar cambios':'Agregar'}</button></div>`;
   overlay.classList.add('open');
@@ -2937,8 +2949,8 @@ function openModalStockCompra(){
       <div class="field"><label>Proveedor</label><select id="f-proveedor" onchange="onProveedorSelectChange(this)">${proveedorOptionsHTML()}</select></div>
       <div class="field"><label>Nº remito / factura</label><input id="f-factura" placeholder="Ej: 0001-00004521"></div>
       <div class="field span2 hidden" id="wrap-proveedor-nuevo"><label>Nombre del nuevo proveedor</label><input id="f-proveedor-nuevo" placeholder="Nombre"></div>
-      <div class="field"><label>Cantidad</label><input id="f-cantidad" class="mono-in" type="number" value="1"></div>
-      <div class="field"><label>Precio unitario ($, sin IVA)</label><input id="f-costo" class="mono-in" type="number" value="0"></div>
+      <div class="field"><label>Cantidad</label><input id="f-cantidad" class="mono-in" type="number" step="0.01" value="1"></div>
+      <div class="field"><label>Precio unitario ($, sin IVA)</label><input id="f-costo" class="mono-in" type="number" step="0.01" value="0"></div>
       <div class="field checkbox span2"><input type="checkbox" id="f-iva" checked><label>Aplica IVA (21%)</label></div>
       <div class="field"><label>Fecha de factura (para IVA)</label><input id="f-fecha-factura" type="date" value="${today()}"></div>
       <div class="field"><label>Medio de pago</label><select id="f-forma" onchange="onMedioPagoChange()"><option>A definir</option><option>Transferencia</option><option>Efectivo</option><option>eCheq</option><option>FIMA</option></select></div>
@@ -3065,7 +3077,7 @@ function printCss(){
     .head .oc .badge{display:inline-block;background:#14181C;color:#fff;padding:4px 10px;border-radius:4px;font-weight:700;letter-spacing:.03em;}
     table{width:100%;border-collapse:collapse;margin:14px 0;} th,td{border:1px solid #DCE3E1;padding:7px 9px;font-size:12.5px;text-align:left;}
     th{background:#F1F4F3;text-transform:uppercase;font-size:10.5px;letter-spacing:.04em;}
-    td.num,th.num{text-align:right;}
+    td.num,th.num{text-align:right;white-space:nowrap;}
     .box{border:1px solid #DCE3E1;border-radius:6px;padding:10px 12px;margin-bottom:14px;}
     .box h4{margin:0 0 6px;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:#6B7573;}
     .totales{display:flex;justify-content:flex-end;margin:10px 0;} .totales table{width:280px;margin:0;}
@@ -3208,7 +3220,7 @@ function openModalOrdenCompra(id){
         <option value="ars" ${(!existing||existing.moneda!=='usd')?'selected':''}>Pesos ($)</option>
         <option value="usd" ${existing&&existing.moneda==='usd'?'selected':''}>Dólares (US$)</option>
       </select></div>
-      <div class="field"><label id="lbl-oc-cotizacion">Cotización USD (opcional)</label><input id="f-cotizacion-usd" class="mono-in" type="number" placeholder="Ej: 1450" value="${existing&&existing.cotizacionUsd?existing.cotizacionUsd:''}" oninput="renderOcItemsTable()"></div>
+      <div class="field"><label id="lbl-oc-cotizacion">Cotización USD (opcional)</label><input id="f-cotizacion-usd" class="mono-in" type="number" step="0.01" placeholder="Ej: 1450" value="${existing&&existing.cotizacionUsd?existing.cotizacionUsd:''}" oninput="renderOcItemsTable()"></div>
       <div class="field"><label>Solicitante</label><input id="f-solicitante" placeholder="Nombre" value="${existing?existing.solicitante:''}"></div>
       <div class="field"><label>Fecha</label><input id="f-fecha" type="date" value="${existing?existing.fecha:today()}"></div>
     </div>
@@ -3274,7 +3286,7 @@ function renderOcItemsTable(){
   document.getElementById('oc-items-body').innerHTML = ocItemsDraft.map((it,i)=>`
     <tr>
       <td><input class="cell-input" placeholder="Ej: Fijaciones y flejes" value="${it.producto}" oninput="updateOcItem(${i},'producto',this.value)"></td>
-      <td><input class="cell-input mono-in" type="number" value="${it.cantidad}" oninput="updateOcItem(${i},'cantidad',this.value)"></td>
+      <td><input class="cell-input mono-in" type="number" step="0.01" value="${it.cantidad}" oninput="updateOcItem(${i},'cantidad',this.value)"></td>
       <td><input class="cell-input mono-in" type="number" step="0.01" value="${it.unitario}" oninput="updateOcItem(${i},'unitario',this.value)"></td>
       <td class="num" id="oc-item-total-${i}">${esUsd?fmtUsdDec(it.cantidad*it.unitario):fmtDec(it.cantidad*it.unitario)}</td>
       <td>${ocItemsDraft.length>1?`<span class="link-btn danger" onclick="removeOcItem(${i})">✕</span>`:''}</td>
@@ -3408,7 +3420,7 @@ function openModalEfectivizarOrden(id){
   modalEl.innerHTML = `<h3>Marcar como comprada</h3><div class="modal-sub">${o.numero} · genera el pago real y suma al gasto</div>
     <div class="form-grid">
       <div class="field span2"><label>Nº remito / factura</label><input id="f-factura" placeholder="Ej: 0001-00004521"></div>
-      <div class="field"><label>Monto final ($, con IVA si aplica)</label><input id="f-monto" class="mono-in" type="number" value="${o.monto}"></div>
+      <div class="field"><label>Monto final ($, con IVA si aplica)</label><input id="f-monto" class="mono-in" type="number" step="0.01" value="${r2(o.monto)}"></div>
       <div class="field checkbox"><input type="checkbox" id="f-iva" ${o.ivaAplica?'checked':''}><label>El monto incluye IVA (21%)</label></div>
       <div class="field"><label>Fecha de factura (para IVA)</label><input id="f-fecha-factura" type="date" value="${today()}"></div>
       <div class="field"><label>Medio de pago</label><select id="f-forma" onchange="onMedioPagoChange()"><option>A definir</option><option>Transferencia</option><option>Efectivo</option><option>eCheq</option><option>FIMA</option></select></div>
@@ -3649,7 +3661,7 @@ function openModalPagoProveedor(){
   const deuda = proveedorDeuda(pr.id);
   modalEl.innerHTML = `<h3>Registrar pago — ${pr.nombre}</h3><div class="modal-sub">Se aplica a las facturas más antiguas primero. Deuda total: ${fmt(deuda)}</div>
     <div class="form-grid">
-      <div class="field span2"><label>Monto a pagar ($)</label><input id="f-monto" class="mono-in" type="number" value="${deuda}"></div>
+      <div class="field span2"><label>Monto a pagar ($)</label><input id="f-monto" class="mono-in" type="number" step="0.01" value="${r2(deuda)}"></div>
       <div class="field"><label>Medio de pago</label><select id="f-forma" onchange="onMedioPagoChange()"><option>Transferencia</option><option>Efectivo</option><option>eCheq</option><option>FIMA</option></select></div>
       <div class="field hidden" id="wrap-fondo"><label>Fondo que paga</label><select id="f-fondo">${fondoOptionsHTML()}</select></div>
       <div class="field span2"><label>Fecha</label><input id="f-fecha" type="date" value="${today()}"></div>
@@ -3672,10 +3684,10 @@ function submitPagoProveedor(provId){
   const facturas = state.pagos.filter(p=>p.proveedorId===provId && pagoEstado(p)!=='pagado').sort((a,b)=>(a.fechaPago||'9999').localeCompare(b.fechaPago||'9999'));
   let restante = monto;
   facturas.forEach(p=>{
-    if(restante<=0) return;
+    if(restante<MEDIO_CENTAVO) return;
     const saldo = pagoSaldo(p);
     const aplicar = Math.min(saldo, restante);
-    if(aplicar<=0) return;
+    if(aplicar<MEDIO_CENTAVO) return;
     p.pagosRealizados = p.pagosRealizados||[];
     p.pagosRealizados.push({fecha, monto:aplicar, fondo, formaPago});
     if(fondo) p.origenFondo = fondo;
@@ -3692,7 +3704,7 @@ function submitPagoProveedor(provId){
     }
   }
   closeModal(); renderAll();
-  if(restante>0) alert(`Se aplicaron ${fmt(aplicadoTotal)} contra las facturas pendientes. Los ${fmt(restante)} restantes no se aplicaron porque no hay más deuda con este proveedor.`);
+  if(restante>=MEDIO_CENTAVO) alert(`Se aplicaron ${fmt(aplicadoTotal)} contra las facturas pendientes. Los ${fmt(restante)} restantes no se aplicaron porque no hay más deuda con este proveedor.`);
 }
 
 function openModalIngreso(obraId, editId){
@@ -3701,7 +3713,7 @@ function openModalIngreso(obraId, editId){
   const medioActual = editing ? editing.medioPago : 'Transferencia';
   modalEl.innerHTML = `<h3>${editing?'Editar cobro':'Registrar cobro'}</h3><div class="modal-sub">Obra: <b>${o.code}</b></div>
     <div class="form-grid">
-      <div class="field"><label>Monto cobrado ($)</label><input id="f-monto" class="mono-in" type="number" value="${editing?editing.monto:0}"></div>
+      <div class="field"><label>Monto cobrado ($)</label><input id="f-monto" class="mono-in" type="number" step="0.01" value="${editing?editing.monto:0}"></div>
       <div class="field"><label>Medio de pago</label><select id="f-medio">
         <option ${medioActual==='Transferencia'?'selected':''}>Transferencia</option>
         <option ${medioActual==='Efectivo'?'selected':''}>Efectivo</option>
@@ -3759,8 +3771,8 @@ function openModalCompra(preselectObraId, editId){
       <div class="field" id="wrap-fecha-factura"><label>Fecha de factura (para IVA)</label><input id="f-fecha-factura" type="date" value="${editing?editing.fechaFactura:today()}"></div>
       <div class="field" id="wrap-numero-oc"><label>Nº de OC (opcional)</label><input id="f-numero-oc" placeholder="Ej: OC de otro sistema" value="${editing&&editing.numeroOC?editing.numeroOC:''}"></div>
       <div class="field span2 hidden" id="wrap-proveedor-nuevo"><label>Nombre del nuevo proveedor</label><input id="f-proveedor-nuevo" placeholder="Nombre"></div>
-      <div class="field"><label>Cantidad</label><input id="f-cantidad" class="mono-in" type="number" value="${editing?editing.cantidad:1}" oninput="previewCompraMonto()"></div>
-      <div class="field" id="wrap-unitario"><label>Precio unitario ($)</label><input id="f-unitario" class="mono-in" type="number" value="${editing?editing.unitario:0}" oninput="previewCompraMonto()"></div>
+      <div class="field"><label>Cantidad</label><input id="f-cantidad" class="mono-in" type="number" step="0.01" value="${editing?editing.cantidad:1}" oninput="previewCompraMonto()"></div>
+      <div class="field" id="wrap-unitario"><label>Precio unitario ($)</label><input id="f-unitario" class="mono-in" type="number" step="0.01" value="${editing?editing.unitario:0}" oninput="previewCompraMonto()"></div>
       <div class="field checkbox span2" id="wrap-iva"><input type="checkbox" id="f-iva" onchange="previewCompraMonto()" ${editing&&editing.ivaAplica?'checked':''}><label>Aplica IVA (21%)</label></div>
       <div class="field" id="wrap-forma"><label>Medio de pago</label><select id="f-forma" onchange="onMedioPagoChange()">
         <option ${medioActual==='A definir'?'selected':''}>A definir</option>
@@ -3914,7 +3926,7 @@ function openModalFinalizarPago(pagoId){
   const medioActual = ['Transferencia','Efectivo','eCheq','FIMA'].includes(p.formaPago) ? p.formaPago : 'Transferencia';
   modalEl.innerHTML = `<h3>Registrar pago</h3><div class="modal-sub">${p.concepto} · Total ${fmt(p.monto)} · Saldo pendiente ${fmt(saldo)}</div>
     <div class="form-grid">
-      <div class="field span2"><label>Monto a pagar ($)</label><input id="f-monto" class="mono-in" type="number" value="${saldo}"></div>
+      <div class="field span2"><label>Monto a pagar ($)</label><input id="f-monto" class="mono-in" type="number" step="0.01" value="${r2(saldo)}"></div>
       <div class="field"><label>Medio de pago</label><select id="f-forma" onchange="onMedioPagoChange()">
         <option ${medioActual==='Transferencia'?'selected':''}>Transferencia</option>
         <option ${medioActual==='Efectivo'?'selected':''}>Efectivo</option>
@@ -4048,7 +4060,7 @@ function openModalMovimientoFima(){
       <div class="field hidden" id="wrap-proveedor-nuevo-mail"><label>E-mail</label><input id="f-proveedor-nuevo-mail" type="email" placeholder="contacto@proveedor.com"></div>
       <div class="field hidden" id="wrap-fima-factura"><label>Nº de factura</label><input id="f-factura" placeholder="Ej: 0001-00004521"></div>
       <div class="field hidden" id="wrap-fima-oc"><label>Nº de OC (opcional)</label><input id="f-numero-oc" placeholder="Ej: OC-0005"></div>
-      <div class="field"><label>Monto ($)</label><input id="f-monto" class="mono-in" type="number" value="0"></div>
+      <div class="field"><label>Monto ($)</label><input id="f-monto" class="mono-in" type="number" step="0.01" value="0"></div>
       <div class="field"><label>Fecha</label><input id="f-fecha" type="date" value="${today()}"></div>
     </div>
     <div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" onclick="submitMovimientoFima()">Registrar</button></div>`;
