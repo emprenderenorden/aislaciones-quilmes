@@ -1004,3 +1004,43 @@ volver a desplegar (ver instrucciones al principio de
     suma ese monto a cada quincena, el costo real de Mano de obra de la
     obra incluye los $160.000, y el historial mensual de Jornales
     muestra el monto en la columna nueva — sin errores de consola.
+- **Nuevo: control de movimientos duplicados en FIMA.** El dueño reportó
+  valores duplicados en FIMA, sin saber si era carga doble a mano o un
+  problema de la app. Se encontraron las dos cosas posibles:
+  - **Bug (causa probable de duplicados de movimientos viejos):**
+    `repararIdsFima()` les asignaba a los movimientos viejos sin `id` un
+    id **al azar** (`newId`). Si dos dispositivos abrían la app casi a la
+    vez, cada uno le inventaba un id distinto al mismo movimiento, y al
+    combinar tras un conflicto/auto-refresco `unionPorId` los tomaba como
+    dos movimientos distintos y guardaba los dos (lo mismo pudo pasar
+    entre el 19/09 y el 20/09, antes del redeploy que agregó la columna
+    `id`, cuando el id no llegaba a persistirse). **Arreglo:** el id de un
+    movimiento viejo ahora es determinístico (`idDeterministicoFima` —
+    hash del contenido + número de ocurrencia de ese mismo contenido), así
+    todos los dispositivos calculan el mismo id para el mismo movimiento.
+  - **Aviso al registrar/editar:** antes de guardar un movimiento nuevo (o
+    al cambiarle el monto a uno existente), si ya hay otro con el mismo
+    fondo, tipo y monto con fecha dentro de ±3 días
+    (`movimientosFimaParecidos`), pide confirmación mostrando cuáles son —
+    "Cancelar" no guarda nada; "Aceptar" lo guarda igual (puede haber
+    movimientos iguales legítimos).
+  - **Marca en la tabla + limpieza:** las filas idénticas (misma fecha,
+    fondo, tipo, monto y concepto — sin distinguir mayúsculas/espacios)
+    se pintan en rojo con la etiqueta "Posible duplicado", y arriba de la
+    tabla aparece un contador con un link "Eliminar duplicados"
+    (`eliminarDuplicadosFima`) que deja uno de cada grupo y recalcula los
+    saldos. Si el grupo es un egreso con gastos propios vinculados en
+    Pagos, borra también los gastos sobrantes — pero solo si hay más de
+    uno (carga doble a mano); si hay uno solo (duplicado por el bug de
+    sincronización), se conserva porque corresponde al movimiento que
+    queda. Los borrados se marcan en `eliminadosLocalmente`, así no
+    resucitan en la próxima sincronización.
+  - No necesitó redeploy de backend.
+  - Probado en un entorno aislado: ids determinísticos iguales entre dos
+    "dispositivos" y distintos entre dos movimientos idénticos (el merge
+    ya no duplica); marca y contador con 3 grupos sembrados; "Eliminar
+    duplicados" deja uno por grupo, saldos correctos y conserva el único
+    gasto vinculado; con carga doble a mano (2 movimientos + 2 gastos)
+    queda 1 y 1; el aviso aparece con monto igual dentro de ±3 días
+    (Cancelar no guarda, Aceptar sí) y no aparece con fecha a 9 días ni
+    con otro monto.

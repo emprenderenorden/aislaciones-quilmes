@@ -440,7 +440,7 @@
       <div class="topbar-actions"><button class="btn btn-primary" onclick="openModalMovimientoFima()">+ Registrar movimiento</button></div>
     </div>
     <div class="fund-grid" id="fund-grid"></div>
-    <div class="section-title"><h2>Movimientos</h2><span class="hint">Ingresos y egresos por fondo</span></div>
+    <div class="section-title"><h2>Movimientos</h2><span class="hint">Ingresos y egresos por fondo <span id="fima-alerta-duplicados" style="margin-left:8px;"></span></span></div>
     <div class="card" style="margin-bottom:16px;">
       <div class="form-grid">
         <div class="field"><label>Fondo</label><select id="fima-filtro-fondo" class="cell-input" onchange="renderFima()"><option value="todos">Todos</option></select></div>
@@ -775,10 +775,37 @@ function repararIngresosSinId(){
 // combinar tras un conflicto o el auto-refresco, borrar o editar uno
 // terminara perdiendo también el otro. Les asigna un id acá, una sola
 // vez, igual que ya se hizo con los cobros importados de Excel.
+//
+// Ojo: el id NO puede ser al azar (newId). Si dos dispositivos abren la app
+// casi a la vez, cada uno le inventaba un id distinto al MISMO movimiento
+// viejo, y al combinar tras un conflicto/auto-refresco unionPorId los veía
+// como dos movimientos distintos y los guardaba a los dos — duplicando el
+// movimiento (y su monto en el saldo del fondo). Por eso el id sale del
+// contenido del movimiento + cuántas veces apareció ya ese mismo contenido
+// antes en la lista: todos los dispositivos calculan el mismo id para el
+// mismo movimiento, y dos movimientos idénticos legítimos siguen teniendo
+// ids distintos entre sí (#0, #1, ...).
+function hashTexto(str){
+  let h1 = 0x811c9dc5, h2 = 0x1234567;
+  for(let i=0; i<str.length; i++){
+    const c = str.charCodeAt(i);
+    h1 = Math.imul(h1 ^ c, 16777619) >>> 0;
+    h2 = Math.imul(h2 ^ c, 2654435761) >>> 0;
+  }
+  return h1.toString(36) + h2.toString(36);
+}
+function idDeterministicoFima(m, ocurrencia){
+  return 'fmx' + hashTexto([m.fecha, m.fondo, m.obraId||'', m.subcategoria||'', m.concepto, m.tipo, m.monto, ocurrencia].join('|'));
+}
 function repararIdsFima(){
   let huboCambios = false;
+  const vistos = {};
   state.movimientosFima.forEach(m=>{
-    if(!m.id){ m.id = newId('fm'); huboCambios = true; }
+    if(m.id) return;
+    const base = [m.fecha, m.fondo, m.obraId||'', m.subcategoria||'', m.concepto, m.tipo, m.monto].join('|');
+    vistos[base] = (vistos[base]||0) + 1;
+    m.id = idDeterministicoFima(m, vistos[base]-1);
+    huboCambios = true;
   });
   return huboCambios;
 }
@@ -2601,6 +2628,67 @@ function renderObraJornalesCard(o){
 }
 
 /* ======================= FIMA ======================= */
+// Detección de movimientos duplicados. "Duplicado exacto" = misma fecha,
+// fondo, tipo, monto y concepto (sin distinguir mayúsculas/espacios) — es
+// lo que se marca en la tabla y lo que limpia "Eliminar duplicados".
+function claveDuplicadoFima(m){
+  return [m.fecha, m.fondo, m.tipo, +m.monto||0, String(m.concepto||'').trim().toLowerCase()].join('|');
+}
+function gruposDuplicadosFima(){
+  const grupos = {};
+  state.movimientosFima.forEach(m=>{ const k = claveDuplicadoFima(m); (grupos[k] = grupos[k]||[]).push(m); });
+  return Object.values(grupos).filter(g=>g.length>1);
+}
+// Para el aviso al registrar/editar: un movimiento "parecido" = mismo
+// fondo, tipo y monto, con fecha dentro de ±3 días (el concepto puede
+// estar escrito distinto si lo cargó otra persona).
+const DIAS_MARGEN_DUPLICADO_FIMA = 3;
+function movimientosFimaParecidos(mov, excluir){
+  const t = new Date(mov.fecha+'T00:00:00').getTime();
+  return state.movimientosFima.filter(m=>{
+    if(m===excluir) return false;
+    if(m.fondo!==mov.fondo || m.tipo!==mov.tipo || (+m.monto||0)!==(+mov.monto||0)) return false;
+    const dt = Math.abs(new Date(m.fecha+'T00:00:00').getTime() - t) / 86400000;
+    return dt <= DIAS_MARGEN_DUPLICADO_FIMA;
+  });
+}
+// Devuelve true si se puede seguir (no hay parecidos, o el usuario confirmó).
+function confirmarSiHayDuplicadoFima(mov, excluir){
+  const parecidos = movimientosFimaParecidos(mov, excluir);
+  if(!parecidos.length) return true;
+  const lista = parecidos.slice(0,5).map(m=>`• ${fmtFecha(m.fecha)} · ${fondoLabel[m.fondo]} · "${m.concepto}" · ${m.tipo==='in'?'Ingreso':'Egreso'} de ${fmt(m.monto)}`).join('\n');
+  const extra = parecidos.length>5 ? `\n… y ${parecidos.length-5} más` : '';
+  return confirm(`⚠️ Ya hay ${parecidos.length===1?'un movimiento parecido cargado':parecidos.length+' movimientos parecidos cargados'} (mismo fondo, tipo y monto, con fecha dentro de ±${DIAS_MARGEN_DUPLICADO_FIMA} días):\n\n${lista}${extra}\n\n¿Puede ser que ya esté cargado? Aceptar = registrarlo igual · Cancelar = no registrar.`);
+}
+// Borra los duplicados exactos (deja uno de cada grupo, el primero
+// cargado). Si el grupo es un egreso con gastos propios vinculados en
+// Pagos (ver submitMovimientoFima), borra también los gastos sobrantes —
+// solo si hay más de uno: cuando el duplicado vino de la sincronización
+// (y no de una carga doble a mano) el gasto quedó uno solo, y ese se
+// conserva porque corresponde al movimiento que queda.
+function eliminarDuplicadosFima(){
+  const grupos = gruposDuplicadosFima();
+  if(!grupos.length) return;
+  const sobrantes = grupos.reduce((a,g)=>a+g.length-1, 0);
+  if(!confirm(`Se van a eliminar ${sobrantes} movimiento${sobrantes>1?'s':''} duplicado${sobrantes>1?'s':''} de FIMA (queda uno de cada grupo idéntico: misma fecha, fondo, tipo, monto y concepto). Los saldos de los fondos se recalculan solos. Esta acción no se puede deshacer.\n\n¿Continuar?`)) return;
+  grupos.forEach(g=>{
+    const [queda, ...borrar] = g;
+    if(queda.tipo==='out'){
+      const ligados = state.pagos.filter(p=>p.origenFondo===queda.fondo && p.concepto===queda.concepto && p.monto===queda.monto && p.fechaPago===queda.fecha && p.formaPago==='FIMA' && (p.pagosRealizados||[]).length===1);
+      ligados.slice(1, g.length).forEach(p=>{
+        marcarEliminado('pagos', p.id);
+        desvincularOcDePago(p.id);
+        state.pagos = state.pagos.filter(x=>x!==p);
+      });
+    }
+    borrar.forEach(m=>{
+      marcarEliminado('movimientosFima', m.id);
+      state.movimientosFima = state.movimientosFima.filter(x=>x!==m);
+    });
+  });
+  recomputeFondos();
+  renderAll();
+}
 function renderFima(){
   const meta = {
     costosFijos:{color:'var(--copper)', note:'alquiler, seguros, sueldos admin.'},
@@ -2673,9 +2761,15 @@ function renderFima(){
     if(m.subcategoria) return m.subcategoria;
     return '—';
   };
+  const gruposDup = gruposDuplicadosFima();
+  const enDuplicado = new Set(gruposDup.flat());
+  const sobrantesDup = gruposDup.reduce((a,g)=>a+g.length-1, 0);
+  const alertaDupEl = document.getElementById('fima-alerta-duplicados');
+  if(alertaDupEl) alertaDupEl.innerHTML = sobrantesDup ? `<span class="tag bad">${sobrantesDup} movimiento${sobrantesDup>1?'s':''} duplicado${sobrantesDup>1?'s':''}</span> <span class="link-btn danger" onclick="eliminarDuplicadosFima()">Eliminar duplicados</span>` : '';
   document.getElementById('movimientos-fima-body').innerHTML = rows.length ? rows.map(m=>{
     const idx = state.movimientosFima.indexOf(m);
-    return `<tr><td class="mono">${fmtFecha(m.fecha)}</td><td>${fondoLabel[m.fondo]}</td><td>${subcatOObraTag(m)}</td><td>${m.concepto}</td><td><span class="badge-inout ${m.tipo}">${m.tipo==='in'?'Ingreso':'Egreso'}</span></td><td class="num">${fmt(m.monto)}</td><td><span class="link-btn" onclick="openModalEditarMovimientoFima(${idx})">Editar</span> · <span class="link-btn danger" onclick="eliminarMovimientoFima(${idx})">Eliminar</span></td></tr>`;
+    const dup = enDuplicado.has(m);
+    return `<tr style="${dup?'background:var(--bad-soft);':''}"><td class="mono">${fmtFecha(m.fecha)}</td><td>${fondoLabel[m.fondo]}</td><td>${subcatOObraTag(m)}</td><td>${m.concepto}${dup?' <span class="tag bad">Posible duplicado</span>':''}</td><td><span class="badge-inout ${m.tipo}">${m.tipo==='in'?'Ingreso':'Egreso'}</span></td><td class="num">${fmt(m.monto)}</td><td><span class="link-btn" onclick="openModalEditarMovimientoFima(${idx})">Editar</span> · <span class="link-btn danger" onclick="eliminarMovimientoFima(${idx})">Eliminar</span></td></tr>`;
   }).join('') : `<tr class="empty-row"><td colspan="7">Sin movimientos para este filtro</td></tr>`;
 }
 // Para editar/eliminar un movimiento puntual usamos su posición en
@@ -2725,6 +2819,7 @@ function submitEditarMovimientoFima(idx){
   if(!m) return;
   const nuevoConcepto = document.getElementById('f-fima-edit-concepto').value.trim() || m.concepto;
   const nuevoMonto = +document.getElementById('f-fima-edit-monto').value || 0;
+  if(nuevoMonto!==m.monto && !confirmarSiHayDuplicadoFima({...m, monto:nuevoMonto}, m)) return;
   const pagoLigado = pagoLigadoAMovimientoFima(m);
   if(pagoLigado){
     pagoLigado.concepto = nuevoConcepto; pagoLigado.monto = nuevoMonto; pagoLigado.unitario = nuevoMonto;
@@ -3988,6 +4083,7 @@ function submitMovimientoFima(){
   const fecha = document.getElementById('f-fecha').value || today();
   const obraId = fondo==='obras' ? (document.getElementById('f-fima-obra').value || null) : null;
   const subcategoria = fondo==='obras' ? null : (document.getElementById('f-fima-subcat').value.trim() || null);
+  if(!confirmarSiHayDuplicadoFima({fecha, fondo, tipo, monto, concepto})) return;
   state.movimientosFima.push({id:newId('fm'), fecha, fondo, obraId, subcategoria, concepto, tipo, monto});
   recomputeFondos();
   if(tipo==='out'){
