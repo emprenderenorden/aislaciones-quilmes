@@ -495,14 +495,14 @@
       <div class="topbar-actions">
         <button class="btn btn-ghost hidden" id="btn-pdf-pagos" onclick="imprimirPagos()" title="Abrir para imprimir o guardar como PDF">⬇ Descargar PDF</button>
         <button class="btn btn-ghost" onclick="openModalMovimientoFima()">+ Ingreso a FIMA</button>
-        <button class="btn btn-primary" onclick="openModalCompra(null)">+ Registrar pago</button>
+        <button class="btn btn-primary" onclick="openModalCompra(null, null, state.pagosFilter==='variable'?'variable':null)">+ Registrar pago</button>
       </div>
     </div>
     <div class="section-title"><div class="filter-tabs">
       <div class="filter-tab active" data-filter="todos" onclick="setPagosFilter('todos')">Todos</div>
+      <div class="filter-tab" data-filter="compras" onclick="setPagosFilter('compras')">Compras de materiales</div>
       <div class="filter-tab" data-filter="fijo" onclick="setPagosFilter('fijo')">Costos fijos</div>
-      <div class="filter-tab" data-filter="obra" onclick="setPagosFilter('obra')">Vinculados a obra</div>
-      <div class="filter-tab" data-filter="stock" onclick="setPagosFilter('stock')">Reposición de stock</div>
+      <div class="filter-tab" data-filter="variable" onclick="setPagosFilter('variable')">Gastos variables</div>
       <div class="filter-tab" data-filter="fima" onclick="setPagosFilter('fima')">Ingresos a FIMA</div>
       <div class="filter-tab" data-filter="proveedores" onclick="setPagosFilter('proveedores')">Proveedores</div>
     </div>
@@ -651,6 +651,18 @@
 // presupuesto/real de la obra (no se dividió ese total, solo el detalle).
 const catLabel = {materiaPrima:'Materiales', manoObra:'Mano de obra', logistica:'Logística', combustible:'Combustible', telepase:'Telepase', estadia:'Estadía de obra', otros:'Otros no previstos', stock:'Reposición de stock'};
 const catFijaLabel = {sueldo:'Sueldo', alquiler:'Alquiler', seguros:'Seguros', impuestos:'Impuestos', servicios:'Servicios (luz/gas/agua/internet)', mantenimiento:'Mantenimiento', otros:'Otros'};
+// Gastos variables del negocio: no son de una obra ni se pagan todos los
+// meses (pagos con tipo:'variable').
+const catVariableLabel = {herramientas:'Herramientas y equipos', vehiculos:'Vehículos y combustible', mantenimiento:'Mantenimiento y reparaciones', viaticos:'Viáticos y comidas', honorarios:'Honorarios', publicidad:'Publicidad', comisiones:'Comisiones', otros:'Otros'};
+// Nombre de la categoría de un gasto según su tipo (las claves se repiten
+// entre tipos, ej. 'otros').
+function categoriaPagoTxt(p){
+  if(p.tipo==='obra') return catLabel[p.categoria]||p.categoria||'—';
+  if(p.tipo==='stock') return 'Reposición de stock';
+  if(p.tipo==='variable') return catVariableLabel[p.categoria]||p.categoria||'Gasto variable';
+  return catFijaLabel[p.categoria]||'Costo fijo';
+}
+const destinoPagoTxt = (p)=> p.obraId ? (getObra(p.obraId)?.code||'—') : (p.tipo==='stock' ? 'Stock' : (p.tipo==='variable' ? categoriaPagoTxt(p) : 'Negocio general'));
 const estadoColor = {borrador:'var(--muted)', aceptado:'var(--good)', rechazado:'var(--bad)', 'en curso':'var(--warn)', finalizada:'var(--good)'};
 const categoriaParaReal = (categoria)=> (categoria==='combustible'||categoria==='telepase') ? 'logistica' : categoria;
 // El costo real de una obra (real.materiaPrima, .manoObra, .logistica,
@@ -701,9 +713,9 @@ function recomputeFondos(){
 function catOptionsForTipo(tipo, selected){
   const opts = tipo==='obra'
     ? {materiaPrima:'Materiales', manoObra:'Mano de obra', combustible:'Combustible', telepase:'Telepase', estadia:'Estadía de obra', otros:'Otros no previstos'}
-    : catFijaLabel;
+    : (tipo==='variable' ? catVariableLabel : catFijaLabel);
   let html = Object.entries(opts).map(([k,l])=>`<option value="${k}" ${selected===k?'selected':''}>${l}</option>`).join('');
-  if(selected && !opts[selected]) html += `<option value="${selected}" selected>${catLabel[selected]||catFijaLabel[selected]||selected}</option>`;
+  if(selected && !opts[selected]) html += `<option value="${selected}" selected>${catLabel[selected]||catFijaLabel[selected]||catVariableLabel[selected]||selected}</option>`;
   return html;
 }
 const fondoLabel = {costosFijos:'Costos Fijos', jornales:'Jornales', impuestos:'Impuestos', emergencias:'Emergencias', inversiones:'Inversiones', obras:'Obras', otros:'Otros'};
@@ -3326,7 +3338,7 @@ function ocBadge(numeroOC){ return numeroOC ? `<span class="oc-code">${numeroOC}
 function verOrdenEnPagos(id){
   const o = getOrden(id); if(!o) return;
   showView('pagos');
-  setPagosFilter(o.tipo);
+  setPagosFilter(o.tipo==='obra'||o.tipo==='stock' ? 'compras' : o.tipo);
 }
 function openModalConfigEmpresa(){
   const e = state.datosEmpresa;
@@ -3608,7 +3620,7 @@ function ocProductosTxt(o){ return (o.items||[]).map(it=>it.producto).join(', ')
 function ordenDestinoTxt(o){
   if(o.tipo==='obra') return ocObraIds(o).map(id=>getObra(id)?.code).filter(Boolean).join(', ') || '—';
   if(o.tipo==='stock') return 'Stock — '+ocProductosTxt(o);
-  return 'Negocio general';
+  return o.tipo==='variable' ? 'Gasto variable' : 'Negocio general';
 }
 function renderOrdenes(){
   let rows = state.ordenesCompra;
@@ -3645,10 +3657,11 @@ function openModalOrdenCompra(id){
       <div class="field"><label>Tipo</label><select id="f-tipo" onchange="onOcTipoChange()">
         <option value="obra" ${tipo==='obra'?'selected':''}>Gasto de obra</option>
         <option value="fijo" ${tipo==='fijo'?'selected':''}>Gasto fijo</option>
+        <option value="variable" ${tipo==='variable'?'selected':''}>Gasto variable</option>
         <option value="stock" ${tipo==='stock'?'selected':''}>Stock</option>
       </select></div>
       <div class="field span2" id="wrap-oc-obra"><label>Obra(s)${obrasBloqueadas?' — ya comprada y repartida, no se puede cambiar':''}</label>${state.obras.length>6&&!obrasBloqueadas?`<input placeholder="Buscar obra (código o cliente)…" oninput="filtrarObrasOc(this.value)" style="margin-bottom:6px;">`:''}<div>${obraChecksHtml}</div></div>
-      <div class="field" id="wrap-oc-cat"><label>Categoría</label><select id="f-cat">${catOptionsForTipo(tipo==='fijo'?'fijo':'obra', existing?existing.categoria:null)}</select></div>
+      <div class="field" id="wrap-oc-cat"><label>Categoría</label><select id="f-cat">${catOptionsForTipo(tipo, existing?existing.categoria:null)}</select></div>
       <div class="field span2"><label>Proveedor</label><select id="f-proveedor" onchange="onProveedorSelectChange(this)">${proveedorOptionsHTML(existing?existing.proveedorId:null)}</select><div style="margin-top:4px;font-size:11.5px;color:var(--muted);">Para cargar o corregir CUIT/teléfono/mail de un proveedor ya existente, andá a Pagos → Proveedores → Editar datos.</div></div>
       <div class="field hidden span2" id="wrap-proveedor-nuevo"><label>Nombre del nuevo proveedor</label><input id="f-proveedor-nuevo" placeholder="Nombre"></div>
       <div class="field hidden" id="wrap-proveedor-nuevo-cuit"><label>CUIT</label><input id="f-proveedor-nuevo-cuit" placeholder="30-12345678-9"></div>
@@ -3684,7 +3697,7 @@ function syncOcTipoVisibility(){
 function onOcTipoChange(){
   syncOcTipoVisibility();
   const tipo = document.getElementById('f-tipo').value;
-  document.getElementById('f-cat').innerHTML = catOptionsForTipo(tipo==='fijo'?'fijo':'obra');
+  document.getElementById('f-cat').innerHTML = catOptionsForTipo(tipo);
 }
 // La orden se puede cargar en pesos (como siempre) o en dólares, para
 // cuando el proveedor cotiza en USD — pero el pago real, el costo de la
@@ -3949,17 +3962,27 @@ function setPagosFilter(f){
   renderPagos();
 }
 function setPagosCategoriaFilter(v){ state.pagosCategoriaFilter = v; renderPagos(); }
+// Las claves de categoría se repiten entre tipos (ej. 'otros'), así que el
+// filtro usa "tipo|categoría".
 function categoriaOptionsForPagosFilter(){
-  if(state.pagosFilter==='fijo') return catFijaLabel;
-  if(state.pagosFilter==='obra') return {materiaPrima:catLabel.materiaPrima, manoObra:catLabel.manoObra, combustible:catLabel.combustible, telepase:catLabel.telepase, logistica:catLabel.logistica, estadia:catLabel.estadia, otros:catLabel.otros};
-  return {materiaPrima:catLabel.materiaPrima, manoObra:catLabel.manoObra, combustible:catLabel.combustible, telepase:catLabel.telepase, logistica:catLabel.logistica, estadia:catLabel.estadia, ...catFijaLabel};
+  const conTipo = (tipo, labels)=> Object.fromEntries(Object.entries(labels).map(([k,l])=>[tipo+'|'+k, l]));
+  const obra = conTipo('obra', {materiaPrima:catLabel.materiaPrima, manoObra:catLabel.manoObra, combustible:catLabel.combustible, telepase:catLabel.telepase, logistica:catLabel.logistica, estadia:catLabel.estadia, otros:catLabel.otros});
+  if(state.pagosFilter==='compras') return {...obra, 'stock|*':'Reposición de stock'};
+  if(state.pagosFilter==='variable') return conTipo('variable', catVariableLabel);
+  const marca = (o, sufijo)=> Object.fromEntries(Object.entries(o).map(([k,l])=>[k, l+sufijo]));
+  return {...obra, 'stock|*':'Reposición de stock', ...marca(conTipo('fijo', catFijaLabel), ' (fijo)'), ...marca(conTipo('variable', catVariableLabel), ' (variable)')};
 }
 // Misma lógica de filtro/orden que usa la tabla en pantalla (renderPagos) —
 // la reutiliza imprimirPagos() para que el PDF muestre exactamente lo que
 // se ve filtrado en ese momento.
 function pagosFiltrados(){
-  let rows = state.pagos; if(state.pagosFilter!=='todos') rows = rows.filter(p=>p.tipo===state.pagosFilter);
-  if(state.pagosCategoriaFilter!=='todas') rows = rows.filter(p=>p.categoria===state.pagosCategoriaFilter);
+  let rows = state.pagos;
+  if(state.pagosFilter==='compras') rows = rows.filter(p=>p.tipo==='obra'||p.tipo==='stock');
+  else if(state.pagosFilter!=='todos') rows = rows.filter(p=>p.tipo===state.pagosFilter);
+  if(state.pagosCategoriaFilter!=='todas'){
+    const [tipo, cat] = state.pagosCategoriaFilter.split('|');
+    rows = rows.filter(p=>p.tipo===tipo && (cat==='*' || p.categoria===cat));
+  }
   return [...rows].sort((a,b)=>(b.fechaPago||'').localeCompare(a.fechaPago||''));
 }
 function renderPagos(){
@@ -3971,7 +3994,7 @@ function renderPagos(){
   document.getElementById('btn-pdf-pagos').classList.toggle('hidden', state.pagosFilter==='fima'||state.pagosFilter==='proveedores'||state.pagosFilter==='fijo');
 
   const catFilterEl = document.getElementById('pagos-cat-filter');
-  const mostrarCatFilter = !['stock','fima','proveedores','fijo'].includes(state.pagosFilter);
+  const mostrarCatFilter = !['fima','proveedores','fijo'].includes(state.pagosFilter);
   catFilterEl.classList.toggle('hidden', !mostrarCatFilter);
   if(mostrarCatFilter){
     const opts = categoriaOptionsForPagosFilter();
@@ -3994,7 +4017,7 @@ function renderPagos(){
   document.getElementById('pagos-body').innerHTML = rows.length ? rows.map(p=>{
     const {dot:estadoDot, txt:estadoTxt} = pagoEstadoInfo(pagoEstado(p));
     const action = accionesPagoHtml(p);
-    const destino = p.obraId ? `<span class="link-btn" onclick="goToObra('${p.obraId}')"><span class="obra-code">${getObra(p.obraId)?.code||''}</span></span>` : (p.tipo==='stock' ? 'Stock' : 'Negocio general');
+    const destino = p.obraId ? `<span class="link-btn" onclick="goToObra('${p.obraId}')"><span class="obra-code">${getObra(p.obraId)?.code||''}</span></span>` : destinoPagoTxt(p);
     const prov = getProveedor(p.proveedorId);
     const provTxt = prov ? `${prov.nombre}${p.numeroFactura?' · '+p.numeroFactura:''}` : '—';
     const conceptoTxt = p.concepto + (p.origenFondo ? `<div class="sub" style="font-size:11px;color:var(--muted);margin-top:2px;">Origen: Fondo FIMA — ${fondoLabel[p.origenFondo]}</div>` : '');
@@ -4408,7 +4431,7 @@ function quitarPagoQuincena(mes, q){
 // (mismo pagosFiltrados() que usa la tabla) — mismo mecanismo que imprimirOrden.
 function imprimirPagos(){
   const rows = pagosFiltrados();
-  const filtroTxt = state.pagosFilter==='todos' ? 'Todos los pagos' : {fijo:'Gastos fijos', obra:'Vinculados a obra', stock:'Reposición de stock'}[state.pagosFilter];
+  const filtroTxt = state.pagosFilter==='todos' ? 'Todos los pagos' : {compras:'Compras de materiales', variable:'Gastos variables', fijo:'Costos fijos'}[state.pagosFilter];
   const catTxt = state.pagosCategoriaFilter!=='todas' ? categoriaOptionsForPagosFilter()[state.pagosCategoriaFilter] : null;
   const header = printHeaderHtml('PLANILLA DE PAGOS', filtroTxt, [
     catTxt?`Categoría: ${catTxt}`:null, `${rows.length} pago${rows.length===1?'':'s'}`,
@@ -4421,7 +4444,7 @@ function imprimirPagos(){
       <tbody>
         ${rows.length ? rows.map(p=>{
           const {txt:estadoTxt} = pagoEstadoInfo(pagoEstado(p));
-          const destino = p.obraId ? (getObra(p.obraId)?.code||'—') : (p.tipo==='stock' ? 'Stock' : 'Negocio general');
+          const destino = destinoPagoTxt(p);
           const prov = getProveedor(p.proveedorId);
           const provTxt = prov ? `${prov.nombre}${p.numeroFactura?' · '+p.numeroFactura:''}` : '—';
           return `<tr><td>${destino}</td><td>${p.concepto}${p.origenFondo?` (Origen: FIMA — ${fondoLabel[p.origenFondo]})`:''}</td><td>${p.numeroOC||'—'}</td><td>${provTxt}</td><td class="num">${fmt(p.monto)}</td><td class="num">${fmt(pagoSaldo(p))}</td><td class="mono">${fmtFecha(p.fechaPago)}</td><td>${estadoTxt}</td></tr>`;
@@ -4449,7 +4472,7 @@ function renderProveedorDetalle(id){
   document.getElementById('proveedor-detalle-body').innerHTML = facturas.length ? facturas.map(p=>{
     const est = pagoEstado(p);
     const {dot:estadoDot, txt:estadoTxt} = pagoEstadoInfo(est);
-    const destino = p.obraId ? `<span class="obra-code">${getObra(p.obraId)?.code||''}</span>` : (p.tipo==='stock'?'Stock':'Negocio general');
+    const destino = p.obraId ? `<span class="obra-code">${getObra(p.obraId)?.code||''}</span>` : destinoPagoTxt(p);
     return `<tr><td>${p.numeroFactura||'—'}</td><td>${p.concepto}</td><td>${ocBadge(p.numeroOC)}</td><td>${destino}</td><td class="num">${fmt(p.monto)}</td><td class="num">${fmt(pagoMontoPagado(p))}</td><td class="num">${fmt(pagoSaldo(p))}</td><td class="mono">${p.fechaPago?fmtFecha(p.fechaPago):'—'}</td><td><span class="estado-dot ${estadoDot}"></span>${estadoTxt}</td></tr>`;
   }).join('') : `<tr class="empty-row"><td colspan="9">Este proveedor todavía no tiene facturas registradas</td></tr>`;
 }
@@ -4598,17 +4621,18 @@ function submitIngreso(obraId, editId){
   closeModal(); renderAll();
 }
 
-function openModalCompra(preselectObraId, editId){
+function openModalCompra(preselectObraId, editId, preselectTipo){
   const editing = editId ? state.pagos.find(x=>x.id===editId) : null;
   const obraIdActual = editing ? editing.obraId : preselectObraId;
   const isObra = editing ? editing.tipo==='obra' : !!preselectObraId;
+  const tipoActual = editing ? editing.tipo : (preselectObraId ? 'obra' : (preselectTipo || 'fijo'));
   const medioActual = editing ? editing.formaPago : 'A definir';
   modalEl.innerHTML = `
     <h3>${editing?'Editar gasto':'Registrar compra / gasto'}</h3><div class="modal-sub">Gasto fijo del negocio o vinculado a una obra</div>
     <div class="form-grid">
-      <div class="field"><label>Tipo</label><select id="f-tipo" onchange="onTipoPagoChange()"><option value="obra" ${isObra?'selected':''}>Gasto de obra</option><option value="fijo" ${!isObra?'selected':''}>Gasto fijo</option></select></div>
+      <div class="field"><label>Tipo</label><select id="f-tipo" onchange="onTipoPagoChange()"><option value="obra" ${tipoActual==='obra'?'selected':''}>Gasto de obra</option><option value="fijo" ${tipoActual==='fijo'?'selected':''}>Gasto fijo</option><option value="variable" ${tipoActual==='variable'?'selected':''}>Gasto variable</option>${tipoActual==='stock'?'<option value="stock" selected>Reposición de stock</option>':''}</select></div>
       <div class="field" id="wrap-obra"><label>Obra</label>${comboHTML('f-obra', opcionesObras(), obraIdActual, {placeholder:'Tipeá código o cliente…'})}</div>
-      <div class="field" id="wrap-cat"><label>Categoría</label><select id="f-cat" onchange="onCategoriaChange()">${catOptionsForTipo(isObra?'obra':'fijo', editing?editing.categoria:null)}</select></div>
+      <div class="field" id="wrap-cat"><label>Categoría</label><select id="f-cat" onchange="onCategoriaChange()">${catOptionsForTipo(tipoActual, editing?editing.categoria:null)}</select></div>
       <div class="field checkbox span2 hidden" id="wrap-usostock"><input type="checkbox" id="f-usostock" onchange="onUsoStockChange()" ${editing?'disabled':''}><label>Utilizado de stock (no genera un pago nuevo)</label></div>
       <div class="field span2 hidden" id="wrap-stock-material"><label>Material (de stock)</label>${comboHTML('f-stock-material', opcionesStock(true), null, {placeholder: state.stock.length?'Tipeá para buscar el material…':'No hay materiales en stock', onchange:onStockMaterialChange})}</div>
       <div class="field span2" id="wrap-detalle"><label>Detalle</label><input id="f-concepto" placeholder="Ej: Lana de vidrio 50mm" value="${editing?editing.concepto:''}"></div>
@@ -4914,6 +4938,8 @@ function openModalMovimientoFima(){
       <div class="field hidden" id="wrap-proveedor-nuevo-mail"><label>E-mail</label><input id="f-proveedor-nuevo-mail" type="email" placeholder="contacto@proveedor.com"></div>
       <div class="field hidden" id="wrap-fima-factura"><label>Nº de factura</label><input id="f-factura" placeholder="Ej: 0001-00004521"></div>
       <div class="field hidden" id="wrap-fima-oc"><label>Nº de OC (opcional)</label><input id="f-numero-oc" placeholder="Ej: OC-0005"></div>
+      <div class="field hidden" id="wrap-fima-tipogasto"><label>Se registra en Pagos como</label><select id="f-fima-tipogasto" onchange="onFimaTipoGastoChange()"><option value="fijo">Gasto fijo</option><option value="variable">Gasto variable</option></select></div>
+      <div class="field hidden" id="wrap-fima-catvar"><label>Categoría del gasto variable</label><select id="f-fima-catvar">${catOptionsForTipo('variable')}</select></div>
       <div class="field"><label>Monto ($)</label><input id="f-monto" class="mono-in" type="number" step="0.01" value="0"></div>
       <div class="field"><label>Fecha</label><input id="f-fecha" type="date" value="${today()}"></div>
     </div>
@@ -4924,9 +4950,14 @@ function openModalMovimientoFima(){
 }
 function onFimaTipoChange(){
   const isOut = document.getElementById('f-tipo2').value==='out';
-  ['wrap-fima-proveedor','wrap-fima-factura','wrap-fima-oc'].forEach(id=>document.getElementById(id).classList.toggle('hidden', !isOut));
+  ['wrap-fima-proveedor','wrap-fima-factura','wrap-fima-oc','wrap-fima-tipogasto'].forEach(id=>document.getElementById(id).classList.toggle('hidden', !isOut));
+  onFimaTipoGastoChange();
   if(isOut) onProveedorSelectChange(document.getElementById('f-proveedor'));
   else { ['wrap-proveedor-nuevo','wrap-proveedor-nuevo-cuit','wrap-proveedor-nuevo-tel','wrap-proveedor-nuevo-mail'].forEach(id=>document.getElementById(id).classList.add('hidden')); }
+}
+function onFimaTipoGastoChange(){
+  const isOut = document.getElementById('f-tipo2').value==='out';
+  document.getElementById('wrap-fima-catvar').classList.toggle('hidden', !(isOut && document.getElementById('f-fima-tipogasto').value==='variable'));
 }
 // El fondo "Obras" pide elegir la obra (usa el mismo campo obraId que ya
 // tenían los movimientos); el resto de los fondos piden una subcategoría de
@@ -4956,7 +4987,8 @@ function submitMovimientoFima(){
     const proveedorId = resolveProveedorId();
     const numeroFactura = document.getElementById('f-factura').value.trim() || null;
     const numeroOC = document.getElementById('f-numero-oc').value.trim() || null;
-    state.pagos.push({id:newId('p'), tipo:'fijo', obraId:null, categoria:'costosFijos', concepto, origenFondo:fondo, numeroOC, cantidad:1, unitario:monto, ivaAplica:false, monto, proveedorId, numeroFactura, fechaFactura:fecha, formaPago:'FIMA', fechaPago:fecha, pagosRealizados:[{fecha, monto, fondo, formaPago:'FIMA'}]});
+    const esVariable = document.getElementById('f-fima-tipogasto').value==='variable';
+    state.pagos.push({id:newId('p'), tipo: esVariable?'variable':'fijo', obraId:null, categoria: esVariable ? document.getElementById('f-fima-catvar').value : 'costosFijos', concepto, origenFondo:fondo, numeroOC, cantidad:1, unitario:monto, ivaAplica:false, monto, proveedorId, numeroFactura, fechaFactura:fecha, formaPago:'FIMA', fechaPago:fecha, pagosRealizados:[{fecha, monto, fondo, formaPago:'FIMA'}]});
   }
   closeModal(); renderAll();
 }
@@ -5042,13 +5074,14 @@ function renderResultados(){
 
   const egresoRows = [
     ...r.egresosPagos.map(ev=>{ const p=ev.pago; const prov=getProveedor(p.proveedorId);
-      return {fecha:ev.fecha, categoria: p.tipo==='obra'?catLabel[p.categoria]:(p.tipo==='stock'?'Reposición de stock':(catFijaLabel[p.categoria]||'Costo fijo')), destino: p.obraId?getObra(p.obraId)?.code:(p.tipo==='stock'?'Stock':'Negocio general'), concepto:p.concepto+(prov?' ('+prov.nombre+')':''), monto:ev.monto}; }),
+      return {fecha:ev.fecha, categoria: p.tipo==='variable' ? 'Variable: '+categoriaPagoTxt(p) : categoriaPagoTxt(p), destino: destinoPagoTxt(p), concepto:p.concepto+(prov?' ('+prov.nombre+')':''), monto:ev.monto}; }),
     ...r.egresosJornales.map(m=>({fecha:m.fecha, categoria:'Mano de obra (jornales)', destino:'—', concepto:m.concepto, monto:m.monto})),
   ].sort((a,b)=>a.fecha.localeCompare(b.fecha));
   document.getElementById('res-egresos-body').innerHTML = egresoRows.length ? egresoRows.map(e=>`<tr><td class="mono">${fmtFecha(e.fecha)}</td><td>${e.categoria}</td><td>${e.destino}</td><td>${e.concepto}</td><td class="num">${fmt(e.monto)}</td></tr>`).join('') : `<tr class="empty-row"><td colspan="5">Sin egresos pagados este mes</td></tr>`;
 
   const catColors = {'Materiales':'var(--teal)','Reposición de stock':'var(--copper)','Mano de obra (jornales)':'var(--copper)','Logística':'var(--good)','Estadía de obra':'var(--warn)','Otros no previstos':'var(--bad)','Costo fijo':'var(--ink)',
-    'Sueldo':'var(--teal)','Alquiler':'var(--copper)','Seguros':'var(--warn)','Impuestos':'var(--ink)','Servicios (luz/gas/agua/internet)':'var(--good)','Mantenimiento':'var(--bad)','Otros':'var(--muted)'};
+    'Sueldo':'var(--teal)','Alquiler':'var(--copper)','Seguros':'var(--warn)','Impuestos':'var(--ink)','Servicios (luz/gas/agua/internet)':'var(--good)','Mantenimiento':'var(--bad)','Otros':'var(--muted)',
+    'Variable: Herramientas y equipos':'var(--teal)','Variable: Vehículos y combustible':'var(--good)','Variable: Mantenimiento y reparaciones':'var(--bad)','Variable: Viáticos y comidas':'var(--warn)','Variable: Honorarios':'var(--ink)','Variable: Publicidad':'var(--copper)','Variable: Comisiones':'var(--teal-deep)','Variable: Otros':'var(--muted)'};
   const catTotales = {};
   egresoRows.forEach(e=>{ catTotales[e.categoria] = (catTotales[e.categoria]||0) + e.monto; });
   const catList = Object.entries(catTotales).sort((a,b)=>b[1]-a[1]);
@@ -5062,7 +5095,7 @@ function renderResultados(){
 
   document.getElementById('res-fima-body').innerHTML = aportes.length ? aportes.map(m=>`<tr><td class="mono">${fmtFecha(m.fecha)}</td><td>${fondoLabel[m.fondo]}</td><td>${m.concepto}</td><td class="num">${fmt(m.monto)}</td></tr>`).join('') : `<tr class="empty-row"><td colspan="4">Sin aportes a FIMA este mes</td></tr>`;
 
-  document.getElementById('res-pendientes-body').innerHTML = pendientes.length ? pendientes.map(p=>`<tr><td class="mono">${fmtFecha(p.fechaPago)}</td><td>${p.obraId?getObra(p.obraId)?.code:'Negocio general'}</td><td>${p.concepto}${pagoEstado(p)==='parcial'?' (parcial)':''}</td><td class="num">${fmt(pagoSaldo(p))}</td></tr>`).join('') : `<tr class="empty-row"><td colspan="4">Sin pendientes con vencimiento este mes</td></tr>`;
+  document.getElementById('res-pendientes-body').innerHTML = pendientes.length ? pendientes.map(p=>`<tr><td class="mono">${fmtFecha(p.fechaPago)}</td><td>${destinoPagoTxt(p)}</td><td>${p.concepto}${pagoEstado(p)==='parcial'?' (parcial)':''}</td><td class="num">${fmt(pagoSaldo(p))}</td></tr>`).join('') : `<tr class="empty-row"><td colspan="4">Sin pendientes con vencimiento este mes</td></tr>`;
 
   const obrasConSaldo = state.obras.filter(o=>!o.sinCobrosPendientes && (o.ingresos.facturado-o.ingresos.cobrado)>0.01);
   document.getElementById('res-cobros-pendientes-body').innerHTML = obrasConSaldo.length ? obrasConSaldo.map(o=>`<tr><td><span class="obra-code">${o.code}</span></td><td class="num">${fmt(o.ingresos.facturado)}</td><td class="num">${fmt(o.ingresos.cobrado)}</td><td class="num">${fmt(o.ingresos.facturado-o.ingresos.cobrado)}</td></tr>`).join('') : `<tr class="empty-row"><td colspan="4">No hay saldos pendientes de cobro</td></tr>`;

@@ -265,6 +265,51 @@ const mesActual=new Date().toISOString().slice(0,7);
     await A.close();
   });
 
+  console.log('F7 — gastos variables y pestaña Compras de materiales');
+  await withServer(async()=>{
+    const A=await tab(b,'nuevo.html');
+    const hoy=new Date().toISOString().slice(0,10);
+    await A.evaluate(()=>{ showView('pagos'); setPagosFilter('variable'); });
+    await A.click('text=+ Registrar pago');
+    ok(await A.evaluate(()=>document.getElementById('f-tipo').value)==='variable', 'desde la pestaña Gastos variables, "Registrar pago" viene como gasto variable');
+    await A.selectOption('#f-cat','herramientas'); await A.fill('#f-concepto','Amoladora'); await A.fill('#f-unitario','1000');
+    await A.uncheck('#f-sinfecha'); await A.fill('#f-fechapago', hoy);
+    const caja0=await A.evaluate(()=>state.caja);
+    await A.click('#modal-content .modal-actions button.btn-primary');
+    ok(await A.evaluate(c=>state.caja===c-1000 && state.pagos.some(p=>p.tipo==='variable'&&p.categoria==='herramientas'&&p.concepto==='Amoladora'), caja0), 'se registra como gasto variable (Herramientas) y descuenta la caja');
+    ok(await A.isVisible('#pagos-body >> text=Amoladora'), 'aparece en la pestaña Gastos variables');
+    await A.evaluate(()=>setPagosCategoriaFilter('variable|viaticos'));
+    ok(!(await A.isVisible('#pagos-body >> text=Amoladora')), 'el filtro por categoría (Viáticos) la oculta');
+    await A.evaluate(()=>{ state.pagos.push({id:'pgSt',tipo:'stock',obraId:null,categoria:'stock',concepto:'Lana stock',cantidad:1,unitario:5,ivaAplica:false,monto:5,proveedorId:null,numeroFactura:null,fechaFactura:today(),formaPago:'A definir',fechaPago:null,numeroOC:null,origenFondo:null,pagosRealizados:[]}); state.pagos.push({id:'pgOb',tipo:'obra',obraId:'ob1',categoria:'materiaPrima',concepto:'Lana obra',cantidad:1,unitario:5,ivaAplica:false,monto:5,proveedorId:null,numeroFactura:null,fechaFactura:today(),formaPago:'A definir',fechaPago:null,numeroOC:null,origenFondo:null,pagosRealizados:[]}); setPagosFilter('compras'); renderAll(); });
+    const compras=await A.textContent('#pagos-body');
+    ok(/Lana stock/.test(compras) && /Lana obra/.test(compras) && !/Amoladora/.test(compras) && !/Gasto X/.test(compras), 'Compras de materiales junta obra y stock, sin fijos ni variables');
+    await A.evaluate(()=>setPagosCategoriaFilter('stock|*'));
+    const soloStock=await A.textContent('#pagos-body');
+    ok(/Lana stock/.test(soloStock) && !/Lana obra/.test(soloStock), 'y se puede filtrar solo reposición de stock');
+    // editar un gasto de stock no lo convierte en fijo
+    await A.evaluate(()=>{ openModalCompra(null,'pgSt'); }); await A.click('#modal-content .modal-actions button.btn-primary');
+    ok(await A.evaluate(()=>state.pagos.find(p=>p.id==='pgSt').tipo)==='stock', 'editar un gasto de stock lo deja como stock');
+    // Resultados
+    await A.evaluate(()=>showView('resultados'));
+    ok(await A.isVisible('#res-egresos-body >> text=Variable: Herramientas y equipos'), 'Resultados muestra la categoría del gasto variable');
+    // FIMA egreso como gasto variable
+    await A.evaluate(()=>{ openModalMovimientoFima(); document.getElementById('f-fondo').value='otros'; onFimaFondoChange(); document.getElementById('f-tipo2').value='out'; onFimaTipoChange(); });
+    ok(await A.isVisible('#f-fima-tipogasto'), 'un egreso de FIMA pregunta si es gasto fijo o variable');
+    await A.selectOption('#f-fima-tipogasto','variable'); await A.selectOption('#f-fima-catvar','viaticos');
+    await A.fill('#f-concepto','Almuerzo equipo'); await A.fill('#f-monto','300');
+    await A.click('#modal-content .modal-actions button.btn-primary');
+    ok(await A.evaluate(()=>state.pagos.some(p=>p.tipo==='variable'&&p.categoria==='viaticos'&&p.concepto==='Almuerzo equipo')), 'y queda en Pagos como gasto variable (Viáticos)');
+    // OC de gasto variable
+    await A.evaluate(()=>openModalOrdenCompra(null));
+    await A.selectOption('#f-tipo','variable');
+    ok(await A.evaluate(()=>[...document.getElementById('f-cat').options].some(o=>o.value==='herramientas')), 'la OC acepta tipo gasto variable con sus categorías');
+    await A.evaluate(()=>closeModal());
+    await esperarGuardado(A);
+    const s=await dump();
+    ok(s.pagos.filter(p=>p.tipo==='variable').length===2, 'los gastos variables quedan guardados en la planilla');
+    await A.close();
+  });
+
   await b.close();
   console.log(fails ? `\n${fails} FALLA(S)` : '\nTODO OK');
   process.exit(fails?1:0);

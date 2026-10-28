@@ -1270,4 +1270,37 @@ principio de `backend-AppsScript.gs`).
     fondo y cuenta una sola vez en Resultados); un egreso suelto de FIMA
     Jornales también una sola vez; persistencia y "Quitar registro" (la
     plata vuelve). Las pruebas de sincronización siguen pasando.
+- **Nuevo (29/10): gastos variables y pestaña "Compras de materiales".**
+  Hasta ahora un gasto podía ser solo de obra, fijo o de stock — algo como
+  una herramienta o un viático terminaba como "gasto fijo – Otros".
+  - Tipo nuevo `tipo:'variable'` ("Gasto variable") con sus categorías
+    (`catVariableLabel`): Herramientas y equipos, Vehículos y combustible,
+    Mantenimiento y reparaciones, Viáticos y comidas, Honorarios,
+    Publicidad, Comisiones, Otros. Se elige en Registrar pago, en el tipo
+    de una OC y en un egreso de FIMA ("Se registra en Pagos como": gasto
+    fijo —como antes— o variable, con su categoría).
+  - Pestañas de Pagos: Todos · **Compras de materiales** (junta lo que
+    antes eran "Vinculados a obra" y "Reposición de stock", con filtro por
+    categoría que incluye "Reposición de stock") · Costos fijos (grilla) ·
+    **Gastos variables** (lista con filtro por categoría y PDF) ·
+    Ingresos a FIMA · Proveedores. Como las claves de categoría se repiten
+    entre tipos (ej. `otros`), el filtro de categoría usa "tipo|categoría"
+    (`categoriaOptionsForPagosFilter`/`pagosFiltrados`). "Registrar pago"
+    desde la pestaña Gastos variables ya viene con ese tipo elegido.
+  - Resultados: los egresos y el gráfico muestran los variables como
+    "Variable: <categoría>". Nombres de categoría y destino de un gasto
+    salen de `categoriaPagoTxt` / `destinoPagoTxt` (en la columna
+    destino, un gasto variable muestra su categoría).
+  - Lo ya cargado no se mueve solo: desde "Editar" se puede cambiar un
+    gasto de fijo a variable. De paso: editar un gasto de stock lo pasaba
+    sin querer a "Gasto fijo" (el selector de tipo no tenía la opción
+    stock); ahora queda como stock.
+  - No necesita redeploy (usa las columnas tipo/categoría que ya
+    existían).
+  - Probado (`funciones-tests.js`, F7): alta desde la pestaña (tipo
+    preseleccionado, descuenta caja), filtro por categoría, Compras de
+    materiales con obra+stock y sin fijos/variables, filtro solo stock,
+    editar un gasto de stock, Resultados, egreso de FIMA como variable, OC
+    de tipo variable y persistencia. Las pruebas de sincronización siguen
+    pasando.
 
