@@ -884,10 +884,8 @@ let state = {
   proveedores: [],
   stock: [],
   stockMovimientos: [],
-  // Conceptos de la grilla de Costos fijos (Pagos → Costos fijos) y el
-  // registro del pago de cada quincena de jornales (ver renderCostosFijos).
+  // Conceptos de la grilla de Costos fijos (Pagos → Costos fijos, ver renderCostosFijos).
   costosFijos: [],
-  pagosQuincena: [],
   cfDesde: null,
   selectedObraId: null,
   ordenesCompra: [],
@@ -972,7 +970,7 @@ let saveTimer = null;
 const eliminadosLocalmente = {
   obras: new Set(), pagos: new Set(), ordenesCompra: new Set(), proveedores: new Set(),
   stock: new Set(), stockMovimientos: new Set(), trabajadores: new Set(), jornales: new Set(),
-  movimientosFima: new Set(), costosFijos: new Set(), pagosQuincena: new Set(),
+  movimientosFima: new Set(), costosFijos: new Set(),
   documentos: new Set(), // id del documento (dentro de una obra)
   asignados: new Set(),  // "idDeLaObra|idDelTrabajador" (quitado de la obra)
 };
@@ -995,7 +993,7 @@ function marcarEliminado(coleccion, id){ if(id!==undefined) eliminadosLocalmente
 const editadosLocalmente = {
   pagos: new Set(), ordenesCompra: new Set(), proveedores: new Set(),
   stock: new Set(), trabajadores: new Set(), ingresos: new Set(), movimientosFima: new Set(),
-  costosFijos: new Set(), pagosQuincena: new Set(),
+  costosFijos: new Set(),
   diasJornales: new Set(), // "idDeLaFilaDeJornales|índiceDelDía" (0-6)
   camposObra: new Set(),   // "idDeLaObra|nombreDelCampo"
   asignados: new Set(),    // "idDeLaObra|idDelTrabajador" (asignado a la obra acá)
@@ -1018,10 +1016,10 @@ function marcarEditadoObra(obraId, campo){ editadosLocalmente.camposObra.add(obr
 const vistosEnServidor = {
   obras: new Set(), pagos: new Set(), ordenesCompra: new Set(), proveedores: new Set(),
   stock: new Set(), stockMovimientos: new Set(), trabajadores: new Set(), jornales: new Set(),
-  movimientosFima: new Set(), costosFijos: new Set(), pagosQuincena: new Set(),
+  movimientosFima: new Set(), costosFijos: new Set(),
   documentos: new Set(), ingresos: new Set(), asignados: new Set(), // anidados en cada obra
 };
-const COLECCIONES_PLANAS = ['pagos','ordenesCompra','proveedores','stock','stockMovimientos','trabajadores','movimientosFima','costosFijos','pagosQuincena'];
+const COLECCIONES_PLANAS = ['pagos','ordenesCompra','proveedores','stock','stockMovimientos','trabajadores','movimientosFima','costosFijos'];
 const COLECCIONES_CON_ID = ['obras','jornales',...COLECCIONES_PLANAS];
 // Borrados que el backend ya tiene registrados (hoja "Eliminados") como
 // "coleccion|id" — cubre también lo borrado por otros dispositivos aunque
@@ -4152,11 +4150,13 @@ function filtrarObrasOc(texto){
 // (costoFijoId + periodo). Los gastos fijos que no están atados a ningún
 // concepto se ubican igual: en el concepto con el mismo nombre, o en una
 // fila propia (con su detalle) si no hay ninguno.
-// Las dos filas de jornales (1ª y 2ª quincena) son automáticas: el monto
-// sale del cálculo de sueldos (desgloseQuincena, ya restando adelantos) y
-// lo que se carga ahí (monto corregido, medio, fecha) es solo el control
-// del pago — NO genera gasto ni mueve caja (state.pagosQuincena, id fijo
-// "pq-AAAA-MM-Q" por quincena, que nunca se borra: "Quitar registro" lo vacía).
+// Las dos filas de jornales (1ª y 2ª quincena) son automáticas: mientras
+// no se registran, muestran el cálculo de sueldos (desgloseQuincena, ya
+// restando adelantos). Al registrarlas como pagadas o programadas se crea
+// un gasto fijo (categoría Sueldo) con ese monto o el corregido — atado a
+// la quincena con costoFijoId 'jornales-1' / 'jornales-2' + periodo — que
+// descuenta caja o el fondo FIMA elegido y entra en Resultados como
+// cualquier otro pago.
 const MES_CORTO = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
 function mesCorto(ym){ const [y,m] = ym.split('-'); return `${MES_CORTO[Number(m)-1]} ${y}`; }
 function sumarMeses(ym, n){ const [y,m] = ym.split('-').map(Number); const d = new Date(y, m-1+n, 1); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; }
@@ -4168,10 +4168,8 @@ function cfFechaSugerida(c, mes){
   const dia = Math.min(Math.max(1, Number(c.diaPago)||1), ultimo);
   return `${mes}-${String(dia).padStart(2,'0')}`;
 }
-function pagoQuincenaId(mes, q){ return `pq-${mes}-${q}`; }
-function getPagoQuincena(mes, q){ return state.pagosQuincena.find(x=>x.id===pagoQuincenaId(mes, q)); }
-const tieneMontoFijado = (reg)=> !!reg && reg.monto!==null && reg.monto!==undefined && reg.monto!=='';
-const pagoQuincenaRegistrado = (reg)=> !!(reg && (reg.fechaPago || tieneMontoFijado(reg)));
+const idCostoFijoQuincena = (q)=> 'jornales-'+q;
+function getPagoQuincena(mes, q){ return state.pagos.find(p=>p.costoFijoId===idCostoFijoQuincena(q) && p.periodo===mes); }
 // Ubica cada gasto fijo en su fila: filas = {clave: {mes: [pagos]}}.
 // Claves: 'c|<id del concepto>', 'adelantos', o 's|<categoría>|<concepto>'
 // para los gastos fijos sin concepto.
@@ -4181,6 +4179,7 @@ function cfAgruparPagos(){
   const agregar = (clave, mes, p)=>{ ((filas[clave] = filas[clave]||{})[mes] = filas[clave][mes]||[]).push(p); };
   state.pagos.forEach(p=>{
     if(p.tipo!=='fijo') return;
+    if(p.costoFijoId===idCostoFijoQuincena(1) || p.costoFijoId===idCostoFijoQuincena(2)){ agregar('q'+p.costoFijoId.slice(-1), p.periodo, p); return; }
     if(esAdelanto(p)){ agregar('adelantos', (p.fechaPago||p.fechaFactura||'').slice(0,7), p); return; }
     const c = (p.costoFijoId && getCostoFijo(p.costoFijoId)) || porNombre.get(normTexto(p.concepto));
     if(c){ agregar('c|'+c.id, cfMesDePago(p), p); return; }
@@ -4221,15 +4220,9 @@ function renderCostosFijos(){
     return celdaSinRegistrar(m, referencia, onclick, 'a registrar');
   };
   const celdaQuincena = (m, q)=>{
-    const reg = getPagoQuincena(m, q);
-    const calc = jornalesQuincenaTotal(m, q);
     const onclick = `openModalPagoQuincena('${m}',${q})`;
-    if(!pagoQuincenaRegistrado(reg)) return celdaSinRegistrar(m, calc, onclick, 'calculado');
-    const monto = tieneMontoFijado(reg) ? +reg.monto : calc;
-    const pagado = !!reg.fechaPago && reg.fechaPago<=today();
-    sumar(m, monto, pagado?monto:0);
-    const est = !reg.fechaPago ? {cls:'warn', txt:'pendiente'} : (pagado ? {cls:'ok', txt:'✓ pagado'} : {cls:'info', txt:'programado '+fmtFecha(reg.fechaPago)});
-    return `<td class="num cf-cell" onclick="${onclick}"><div>${fmt(monto)}</div><div class="cf-estado ${est.cls}">${est.txt}</div></td>`;
+    if((filas['q'+q]||{})[m]) return celdaPagos('q'+q, m, onclick);
+    return celdaSinRegistrar(m, jornalesQuincenaTotal(m, q), onclick, 'calculado');
   };
   const filaHtml = (labelHtml, sub, celdas)=> `<tr><td><div style="font-weight:600;">${labelHtml}</div>${sub?`<div class="cf-sub">${sub}</div>`:''}</td>${celdas}</tr>`;
   const categorias = Object.keys(catFijaLabel).concat(state.costosFijos.map(c=>c.categoria||'otros'), Object.values(sueltas).map(x=>x.categoria))
@@ -4355,48 +4348,60 @@ function submitPagoCostoFijo(costoFijoId, mes){
   closeModal(); renderAll();
 }
 function openModalPagoQuincena(mes, q){
-  const reg = getPagoQuincena(mes, q) || {};
+  const p = getPagoQuincena(mes, q);
   const calc = jornalesQuincenaTotal(mes, q);
-  const medio = reg.formaPago || (q===1 ? 'Transferencia' : 'Efectivo');
+  const medio = p ? p.formaPago : (q===1 ? 'Transferencia' : 'Efectivo');
+  const fechaDefault = p && p.fechaPago ? p.fechaPago : (q===1 ? `${mes}-15` : sumarMeses(mes,1)+'-01');
   const detalle = [...state.trabajadores].sort((a,b)=>a.nombre.localeCompare(b.nombre)).map(t=>{
     const d = desgloseQuincena(t, mes, q);
     return `<tr><td>${t.nombre}</td><td class="num">${d.totalAdelantos?'− '+fmt(d.totalAdelantos):'—'}</td><td class="num">${fmt(d.total)}</td><td><span class="link-btn" onclick="openModalDetalleSueldo('${t.id}','${mes}')">Detalle</span></td></tr>`;
   }).join('');
-  modalEl.innerHTML = `<h3>Jornales — ${q===1?'1ª':'2ª'} quincena</h3><div class="modal-sub">${mesLabel(mes)} · Calculado automáticamente: <b>${fmt(calc)}</b></div>
+  const estado = p ? pagoEstadoInfo(pagoEstado(p)).txt : null;
+  modalEl.innerHTML = `<h3>Jornales — ${q===1?'1ª':'2ª'} quincena</h3><div class="modal-sub">${mesLabel(mes)} · Calculado automáticamente: <b>${fmt(calc)}</b>${p?` · Registrado: <b>${fmt(p.monto)}</b> (${estado})`:''}</div>
     <div class="card card-table" style="margin-bottom:14px;max-height:220px;overflow:auto;"><table><thead><tr><th>Personal</th><th class="num">Adelantos</th><th class="num">A cobrar</th><th></th></tr></thead>
       <tbody>${detalle || '<tr class="empty-row"><td colspan="4">No hay personal cargado</td></tr>'}</tbody></table></div>
     <div class="form-grid">
-      <div class="field"><label>Monto ($)</label><input id="f-pq-monto" class="mono-in" type="number" step="0.01" min="0" value="${r2(tieneMontoFijado(reg)?reg.monto:calc)}"></div>
-      <div class="field"><label>Medio de pago</label><select id="f-pq-forma">${['Transferencia','Efectivo','eCheq','FIMA'].map(m=>`<option ${medio===m?'selected':''}>${m}</option>`).join('')}</select></div>
-      <div class="field"><label>Fecha de pago</label><input id="f-pq-fecha" type="date" value="${reg.fechaPago||''}"></div>
-      <div class="field"><label>Nota (opcional)</label><input id="f-pq-nota" value="${String(reg.nota||'').replace(/"/g,'&quot;')}"></div>
+      <div class="field"><label>Monto ($)</label><input id="f-pq-monto" class="mono-in" type="number" step="0.01" min="0" value="${r2(p?p.monto:calc)}"></div>
+      <div class="field"><label>Fecha de pago</label><input id="f-pq-fecha" type="date" value="${fechaDefault}"></div>
+      <div class="field"><label>Medio de pago</label><select id="f-forma" onchange="onMedioPagoChange()">${['Efectivo','Transferencia','FIMA'].map(m=>`<option ${medio===m?'selected':''}>${m}</option>`).join('')}</select></div>
+      <div class="field hidden" id="wrap-fondo"><label>Fondo que paga</label><select id="f-fondo">${fondoOptionsHTML(p&&p.origenFondo?p.origenFondo:'jornales')}</select></div>
     </div>
-    <div class="modal-sub" style="margin-top:6px;">Es solo el control de que la quincena se pagó: no genera ningún gasto ni descuenta caja (los adelantos ya salieron de caja el día que se dieron). Si dejás el monto calculado, se sigue actualizando solo si cambian los jornales.</div>
+    <div class="modal-sub" style="margin-top:6px;">Se registra como gasto fijo (Sueldo): con fecha de hoy o anterior queda <b>pagado</b> y descuenta la caja (o el fondo FIMA); con fecha futura queda <b>programado</b> y se descuenta solo cuando llega la fecha. Los adelantos ya se descontaron el día que se dieron.</div>
     <div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal()">Cancelar</button>
-      ${pagoQuincenaRegistrado(reg)?`<button class="btn btn-ghost" style="color:var(--bad);border-color:var(--bad);" onclick="quitarPagoQuincena('${mes}',${q})">Quitar registro</button>`:''}
-      <button class="btn btn-primary" onclick="submitPagoQuincena('${mes}',${q})">Guardar</button></div>`;
+      ${p?`<button class="btn btn-ghost" style="color:var(--bad);border-color:var(--bad);" onclick="quitarPagoQuincena('${mes}',${q})">Quitar registro</button>`:''}
+      <button class="btn btn-primary" onclick="submitPagoQuincena('${mes}',${q})">${p?'Guardar cambios':'Registrar'}</button></div>`;
   overlay.classList.add('open');
-}
-function guardarPagoQuincena(mes, q, datos){
-  const id = pagoQuincenaId(mes, q);
-  const reg = getPagoQuincena(mes, q);
-  if(reg){ Object.assign(reg, datos); marcarEditado('pagosQuincena', id); }
-  else state.pagosQuincena.push({id, ...datos});
+  onMedioPagoChange();
 }
 function submitPagoQuincena(mes, q){
   const monto = r2(+document.getElementById('f-pq-monto').value||0);
-  const fechaPago = document.getElementById('f-pq-fecha').value || null;
-  // Si quedó igual al calculado y tiene fecha, no se fija el monto: sigue
-  // el cálculo automático. Sin fecha se fija igual, para que la celda
-  // quede registrada como "pendiente".
-  const igualAlCalculado = Math.abs(monto - r2(jornalesQuincenaTotal(mes, q))) < MEDIO_CENTAVO;
-  guardarPagoQuincena(mes, q, {monto: (igualAlCalculado && fechaPago) ? null : monto, formaPago: document.getElementById('f-pq-forma').value,
-    fechaPago, nota: document.getElementById('f-pq-nota').value.trim()});
+  if(monto<=0){ alert('Ingresá el monto.'); return; }
+  const fechaPago = document.getElementById('f-pq-fecha').value;
+  if(!fechaPago){ alert('Ingresá la fecha de pago (hoy o anterior: pagado; futura: programado).'); return; }
+  const formaPago = document.getElementById('f-forma').value;
+  const fondo = formaPago==='FIMA' ? document.getElementById('f-fondo').value : null;
+  let p = getPagoQuincena(mes, q);
+  if(p){
+    // Se deshace lo que ya se había aplicado (vuelve la plata a la caja o
+    // al fondo) y se vuelve a aplicar con los datos nuevos — así nunca
+    // queda descontado dos veces ni con el monto viejo.
+    revertirAplicacionesPago(p);
+    Object.assign(p, {monto, unitario:monto, cantidad:1, formaPago, fechaPago, fechaFactura:fechaPago, origenFondo:fondo});
+    marcarEditado('pagos', p.id);
+  } else {
+    p = {id:newId('p'), tipo:'fijo', obraId:null, categoria:'sueldo', concepto:`Jornales ${q===1?'1ª':'2ª'} quincena — ${mesLabel(mes)}`,
+      cantidad:1, unitario:monto, ivaAplica:false, monto, proveedorId:null, numeroFactura:null, numeroOC:null, fechaFactura:fechaPago,
+      formaPago, fechaPago, origenFondo:fondo, pagosRealizados:[], costoFijoId:idCostoFijoQuincena(q), periodo:mes};
+    state.pagos.push(p);
+  }
+  aplicarCompromisoDePago(p, fechaPago, formaPago, fondo);
   closeModal(); renderAll();
 }
 function quitarPagoQuincena(mes, q){
-  guardarPagoQuincena(mes, q, {monto:null, formaPago:'', fechaPago:null, nota:''});
-  closeModal(); renderAll();
+  const p = getPagoQuincena(mes, q); if(!p) return;
+  const antes = state.pagos.length;
+  eliminarGasto(p.id); // pide confirmación y devuelve la plata a la caja/fondo
+  if(state.pagos.length!==antes) closeModal();
 }
 
 // Exporta exactamente lo que está filtrado en pantalla en ese momento
@@ -4837,14 +4842,11 @@ function reconciliarPagosProgramados(){
   if(huboCambios) recomputeFondos();
   return huboCambios;
 }
-function revertirPago(pagoId){
-  const p = state.pagos.find(x=>x.id===pagoId);
-  if(!p || !(p.pagosRealizados||[]).length) return;
-  const aplicados = p.pagosRealizados.filter(pr=>pr.aplicado!==false);
-  const mensaje = aplicados.length
-    ? `¿Revertir "${p.concepto}" a pendiente? Se le devuelve la plata registrada a la caja o al fondo FIMA correspondiente, y el gasto vuelve a quedar sin fecha de pago.`
-    : `¿Cancelar el pago programado de "${p.concepto}"? Todavía no se descontó plata (tenía fecha futura), así que solo se borra la programación.`;
-  if(!confirm(mensaje)) return;
+// Devuelve a la caja / al fondo FIMA lo que un pago ya había descontado
+// (borra los egresos de FIMA que generó) y le saca todos los pagos
+// registrados, aplicados o programados.
+function revertirAplicacionesPago(p){
+  const aplicados = (p.pagosRealizados||[]).filter(pr=>pr.aplicado!==false);
   aplicados.forEach(pr=>{
     if(!pr.fondo) state.caja += pr.monto;
   });
@@ -4855,6 +4857,16 @@ function revertirPago(pagoId){
   });
   recomputeFondos();
   p.pagosRealizados = [];
+}
+function revertirPago(pagoId){
+  const p = state.pagos.find(x=>x.id===pagoId);
+  if(!p || !(p.pagosRealizados||[]).length) return;
+  const aplicados = p.pagosRealizados.filter(pr=>pr.aplicado!==false);
+  const mensaje = aplicados.length
+    ? `¿Revertir "${p.concepto}" a pendiente? Se le devuelve la plata registrada a la caja o al fondo FIMA correspondiente, y el gasto vuelve a quedar sin fecha de pago.`
+    : `¿Cancelar el pago programado de "${p.concepto}"? Todavía no se descontó plata (tenía fecha futura), así que solo se borra la programación.`;
+  if(!confirm(mensaje)) return;
+  revertirAplicacionesPago(p);
   p.fechaPago = null;
   p.origenFondo = null;
   marcarEditado('pagos', pagoId);
@@ -4961,7 +4973,25 @@ function allPagoEventos(){
   return out;
 }
 function allIngresosList(){ const out=[]; state.obras.forEach(o=>(o.ingresosList||[]).forEach(i=>out.push({...i, obraId:o.id}))); return out; }
-function jornalesFimaEgresos(){ return state.movimientosFima.filter(m=>m.tipo==='out' && m.fondo==='jornales'); }
+// Egresos del fondo Jornales de FIMA que cuentan en Resultados como "Mano
+// de obra (jornales)". Se dejan afuera los que generó un pago (un gasto
+// pagado con medio FIMA → fondo Jornales, o un egreso cargado en
+// "Registrar movimiento", que también crea su gasto en Pagos): ese pago ya
+// cuenta como egreso por su lado — antes se contaban los dos.
+function jornalesFimaEgresos(){
+  const dePagos = new Map();
+  const clave = (fecha, concepto, monto)=> fecha+'|'+concepto+'|'+r2(monto);
+  state.pagos.forEach(p=>(p.pagosRealizados||[]).forEach(pr=>{
+    if(pr.aplicado===false || pr.fondo!=='jornales') return;
+    const k = clave(pr.fecha, p.concepto, pr.monto); dePagos.set(k, (dePagos.get(k)||0)+1);
+  }));
+  return state.movimientosFima.filter(m=>{
+    if(m.tipo!=='out' || m.fondo!=='jornales') return false;
+    const k = clave(m.fecha, m.concepto, m.monto);
+    if(dePagos.get(k)>0){ dePagos.set(k, dePagos.get(k)-1); return false; }
+    return true;
+  });
+}
 function fimaAportes(){ return state.movimientosFima.filter(m=>m.tipo==='in'); }
 function computeMesResultado(mes){
   const ingresos = allIngresosList().filter(i=>i.fecha.slice(0,7)===mes);

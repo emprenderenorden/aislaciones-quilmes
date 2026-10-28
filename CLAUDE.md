@@ -62,12 +62,13 @@ implementación:
       pegar el archivo, **cambiar `SECRET` por la clave real** (el repo
       tiene el placeholder) y hacer Implementar → Administrar
       implementaciones → lápiz → Nueva versión (misma URL).
-- [ ] (28/10) Hojas nuevas `CostosFijos` y `PagosQuincena` (grilla de
-      Costos fijos en Pagos), columna `vinculoJSON` al final de `Pagos`
+- [ ] (28/10) Hoja nueva `CostosFijos` (grilla de Costos fijos en
+      Pagos), columna `vinculoJSON` al final de `Pagos`
       (pago atado a un concepto/mes de costos fijos, o adelanto de sueldo
-      con su trabajador y quincena) y columnas de firmas al final de
+      con su trabajador y quincena; también el gasto de cada quincena de
+      jornales) y columnas de firmas al final de
       `DatosEmpresa` (`firmaSolicitaNombre/Img`, `firmaApruebaNombre/Img`).
-      Las hojas se crean solas al primer guardado. Va en el **mismo**
+      La hoja se crea sola al primer guardado. Va en el **mismo**
       redeploy que `Eliminados`.
 
 Cuando se sume un cambio de backend nuevo, se anota acá como pendiente y
@@ -1177,12 +1178,12 @@ principio de `backend-AppsScript.gs`).
     gastos fijos viejos sin concepto se ubican solos en el concepto con el
     mismo nombre, o en una fila propia (con link "Agregar como costo fijo
     mensual"). Eliminar un concepto no borra sus pagos.
-  - **Jornales 1ª y 2ª quincena**: dos filas automáticas en la grilla; el
-    monto sale del cálculo de sueldos (ya restando adelantos). Se puede
-    corregir el monto y cargar medio y fecha de pago, pero — decisión del
-    dueño — **no genera gasto ni toca la caja**: es solo el control
-    (`state.pagosQuincena`, id fijo `pq-AAAA-MM-Q`; "Quitar registro" lo
-    vacía en vez de borrarlo, para que el id no quede en `Eliminados`).
+  - **Jornales 1ª y 2ª quincena**: dos filas automáticas en la grilla;
+    mientras no se registran muestran el cálculo de sueldos (ya restando
+    adelantos). Ver la corrección del 29/10 más abajo: al registrarlas
+    generan el gasto. (La primera versión, del 28/10, no generaba gasto y
+    guardaba el control aparte en `pagosQuincena` — se descartó antes de
+    desplegarse y no quedó nada de eso.)
   - **Adelantos de sueldo** (botón "+ Adelanto" en Jornales y en el
     detalle de cada persona): se cargan como un gasto fijo (categoría
     Sueldo) ya pagado — **descuenta caja** (o el fondo FIMA elegido) el
@@ -1223,15 +1224,50 @@ principio de `backend-AppsScript.gs`).
     conoce estas listas ni las firmas) no las borra.
   - **Requiere redeploy del backend** (checklist arriba). Hasta entonces
     todo funciona dentro de la sesión pero se pierde al recargar: los
-    conceptos de costos fijos, el registro de quincenas, las firmas, y el
+    conceptos de costos fijos, las firmas, y el
     vínculo de un adelanto con su trabajador (la plata sí queda
     descontada, como un gasto fijo común).
   - Probado (`tests/sincronizacion/funciones-tests.js`, contra el backend
     real simulado): concepto + pago desde la grilla y persistencia,
-    quincenas sin gasto, adelanto (caja y descuento), detalle y PDF,
+    quincenas, adelanto (caja y descuento), detalle y PDF,
     firmas (con mouse y táctil) en OC/OP, una pestaña con la versión
     vieja que no borra nada de lo nuevo, conflicto entre dos pestañas, y
     el buscador. Las 20 pruebas de sincronización existentes siguen
     pasando, y la app nueva con el backend actual (sin redeploy) no da
     errores.
+- **Cambio (29/10): registrar una quincena de jornales genera el gasto, y
+  fix del doble conteo de sueldos en Resultados.** El dueño pidió que, en
+  vez de ser solo un control, marcar la quincena la registre como gasto
+  para que impacte en Resultados (antes los sueldos se cargaban a mano
+  como gasto fijo; se pagan en efectivo, por transferencia o desde el
+  fondo FIMA Jornales).
+  - Las filas "Jornales — 1ª/2ª quincena" siguen mostrando el cálculo en
+    gris hasta que se registran. Al registrar (monto calculado o
+    corregido, fecha y medio — Efectivo, Transferencia o FIMA con su
+    fondo, Jornales por defecto) se crea un gasto fijo categoría Sueldo
+    ("Jornales 1ª quincena — Octubre 2026") atado a la quincena
+    (`costoFijoId: 'jornales-1'|'jornales-2'` + `periodo`, en
+    `vinculoJSON`): fecha de hoy o anterior → pagado (descuenta caja o el
+    fondo); futura → programado. Editarlo desde la misma celda deshace lo
+    aplicado y lo vuelve a aplicar con los datos nuevos
+    (`revertirAplicacionesPago`, sacado de `revertirPago`) — nunca queda
+    descontado dos veces. "Quitar registro" elimina el gasto y devuelve la
+    plata. Se sacó por completo la colección `pagosQuincena` (y su hoja
+    del backend, que todavía no se había desplegado).
+  - **Fix de un error que ya existía:** Resultados contaba como egreso
+    todos los egresos del fondo FIMA Jornales **y además** todos los
+    pagos — pero un pago hecho con medio FIMA desde ese fondo, o un
+    egreso cargado en "Registrar movimiento" (que también crea su gasto
+    en Pagos), generan las dos cosas, así que se contaban **dos veces**.
+    Ahora `jornalesFimaEgresos()` deja afuera los egresos que generó un
+    pago (misma fecha, concepto y monto); solo suma los egresos sueltos.
+  - Ojo: los sueldos ya no hay que cargarlos a mano como gasto fijo — se
+    registran desde la grilla, si no se cuentan dos veces.
+  - Probado (`funciones-tests.js`, F2): registrar con monto corregido y
+    fecha de hoy (caja −monto, ✓ pagado, entra en Resultados); editar el
+    monto (un solo gasto, caja ajustada a lo nuevo); fecha futura
+    (programado, sin descontar); pagar desde FIMA Jornales (descuenta el
+    fondo y cuenta una sola vez en Resultados); un egreso suelto de FIMA
+    Jornales también una sola vez; persistencia y "Quitar registro" (la
+    plata vuelve). Las pruebas de sincronización siguen pasando.
 

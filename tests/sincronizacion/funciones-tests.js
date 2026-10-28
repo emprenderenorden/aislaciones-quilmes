@@ -63,7 +63,7 @@ const mesActual=new Date().toISOString().slice(0,7);
     await A.close(); await B.close();
   });
 
-  console.log('F2 — jornales por quincena (automático, sin gasto) + adelanto + detalle de sueldo');
+  console.log('F2 — jornales por quincena (generan el gasto al registrarlas) + adelanto + detalle de sueldo');
   await withServer(async()=>{
     const A=await tab(b,'nuevo.html');
     await A.evaluate(()=>{ getTrabajador('t1').sueldoMensual=1000000; renderAll(); });
@@ -92,29 +92,59 @@ const mesActual=new Date().toISOString().slice(0,7);
     const filaQ1=await A.textContent('.cf-grid tr:has-text("1ª quincena") td:nth-child(2)');
     ok(/350\.000,00/.test(filaQ1) && /calculado/.test(filaQ1), 'la fila "Jornales — 1ª quincena" muestra el cálculo automático ('+filaQ1.trim()+')');
     ok(await A.isVisible('.cf-grid >> text=Adelantos de sueldo'), 'aparece la fila de adelantos de sueldo');
+    const hoy=new Date().toISOString().slice(0,10);
     const caja2=await A.evaluate(()=>state.caja);
+    const egresosAntes=await A.evaluate(m=>computeMesResultado(m).totalEgresos, mesActual);
     await A.evaluate(m=>openModalPagoQuincena(m,1), mesActual);
-    await A.fill('#f-pq-monto','360000'); await A.fill('#f-pq-fecha', new Date().toISOString().slice(0,10));
+    await A.fill('#f-pq-monto','360000'); await A.fill('#f-pq-fecha', hoy); await A.selectOption('#f-forma','Efectivo');
     await A.click('#modal-content .modal-actions button.btn-primary');
     const filaQ1b=await A.textContent('.cf-grid tr:has-text("1ª quincena") td:nth-child(2)');
-    ok(/360\.000,00/.test(filaQ1b) && /pagado/.test(filaQ1b), 'registrar la quincena con monto editado la marca ✓ pagado');
-    ok(await A.evaluate(c=>state.caja===c && !state.pagos.some(p=>/quincena/i.test(p.concepto)), caja2), 'registrar la quincena NO genera gasto ni toca la caja');
+    ok(/360\.000,00/.test(filaQ1b) && /pagado/.test(filaQ1b), 'registrar la quincena (monto editado, fecha de hoy) la marca ✓ pagado');
+    ok(await A.evaluate(c=>state.caja===c-360000, caja2), 'y genera el gasto: descuenta la caja');
+    ok(await A.evaluate(([m,e])=>computeMesResultado(m).totalEgresos===e+360000, [mesActual, egresosAntes]), 'y entra en los egresos de Resultados');
+    // editar: cambia el monto, se reaplica sin duplicar
+    await A.evaluate(m=>openModalPagoQuincena(m,1), mesActual);
+    await A.fill('#f-pq-monto','370000'); await A.click('#modal-content .modal-actions button.btn-primary');
+    ok(await A.evaluate(([c,m])=>state.caja===c-370000 && state.pagos.filter(p=>p.costoFijoId==='jornales-1'&&p.periodo===m).length===1, [caja2, mesActual]), 'editar el monto actualiza el mismo gasto (caja −370.000, un solo gasto)');
+    // 2ª quincena programada a futuro: no descuenta todavía
+    const caja3=await A.evaluate(()=>state.caja);
+    await A.evaluate(m=>openModalPagoQuincena(m,2), mesActual);
+    await A.fill('#f-pq-fecha', '2099-01-01'); await A.click('#modal-content .modal-actions button.btn-primary');
+    const filaQ2=await A.textContent('.cf-grid tr:has-text("2ª quincena") td:nth-child(2)');
+    ok(/programado/.test(filaQ2) && await A.evaluate(c=>state.caja===c, caja3), 'con fecha futura queda programada y no descuenta todavía');
+    // pagarla desde FIMA fondo Jornales: se cuenta UNA vez en Resultados
+    await A.evaluate(()=>{ state.movimientosFima.push({id:'fmJ',fecha:today(),fondo:'jornales',obraId:null,subcategoria:null,concepto:'Aporte jornales',tipo:'in',monto:2000000}); recomputeFondos(); renderAll(); });
+    const egr2=await A.evaluate(m=>computeMesResultado(m).totalEgresos, mesActual);
+    await A.evaluate(m=>openModalPagoQuincena(m,2), mesActual);
+    await A.fill('#f-pq-fecha', hoy); await A.selectOption('#f-forma','FIMA'); await A.selectOption('#f-fondo','jornales');
+    await A.click('#modal-content .modal-actions button.btn-primary');
+    const montoQ2=await A.evaluate(m=>getPagoQuincena(m,2).monto, mesActual);
+    ok(await A.evaluate(q=>state.fondos.jornales===2000000-q, montoQ2), 'pagada con FIMA → fondo Jornales descuenta el fondo');
+    ok(await A.evaluate(([m,e,q])=>computeMesResultado(m).totalEgresos===e+q, [mesActual, egr2, montoQ2]), 'y en Resultados cuenta una sola vez (antes se contaba dos veces)');
+    // egreso cargado a mano en FIMA (fondo Jornales): también una sola vez
+    const egr3=await A.evaluate(m=>computeMesResultado(m).totalEgresos, mesActual);
+    await A.evaluate(()=>{ openModalMovimientoFima(); document.getElementById('f-fondo').value='jornales'; onFimaFondoChange(); document.getElementById('f-tipo2').value='out'; onFimaTipoChange(); document.getElementById('f-concepto').value='Sueldo suelto'; document.getElementById('f-monto').value='1000'; submitMovimientoFima(); });
+    ok(await A.evaluate(([m,e])=>computeMesResultado(m).totalEgresos===e+1000, [mesActual, egr3]), 'un egreso del fondo Jornales cargado en FIMA también cuenta una sola vez');
     await esperarGuardado(A);
     const s=await dump();
-    const pq=s.pagosQuincena.find(x=>x.id==='pq-'+mesActual+'-1');
-    ok(pq && pq.monto===360000 && pq.fechaPago, 'el registro de la quincena quedó en la planilla');
+    const pq=s.pagos.find(p=>p.costoFijoId==='jornales-1' && p.periodo===mesActual);
+    ok(pq && pq.monto===370000 && pq.categoria==='sueldo', 'el gasto de la quincena quedó en la planilla, atado a la quincena');
     const adel=s.pagos.find(p=>p.trabajadorId==='t1');
     ok(adel && adel.descuentaPeriodo===mesActual && adel.descuentaQuincena===1, 'el adelanto quedó guardado con su trabajador y quincena');
     const B=await tab(b,'nuevo.html');
     ok(await B.evaluate(m=>desgloseQuincena(getTrabajador('t1'),m,1).total, mesActual)===350000, 'otra pestaña calcula el mismo sueldo con el adelanto');
+    await B.evaluate(()=>{ showView('pagos'); setPagosFilter('fijo'); });
+    ok(/370\.000,00/.test(await B.textContent('.cf-grid tr:has-text("1ª quincena") td:nth-child(2)')), 'otra pestaña ve la quincena registrada en la grilla');
     // Quitar el registro de la quincena y eliminar el adelanto
+    const cajaB0=await B.evaluate(()=>state.caja);
     await B.evaluate(m=>quitarPagoQuincena(m,1), mesActual);
+    ok(await B.evaluate(c=>state.caja===c+370000, cajaB0), 'quitar el registro de la quincena devuelve la plata a la caja');
     const cajaB=await B.evaluate(()=>state.caja);
     await B.evaluate(([m,id])=>{ openModalDetalleSueldo('t1',m); eliminarAdelanto(id,'t1',m); }, [mesActual, adel.id]);
     ok(await B.evaluate(c=>state.caja===c+50000, cajaB), 'eliminar el adelanto devuelve la plata a la caja');
     await esperarGuardado(B);
     const s2=await dump();
-    ok(!s2.pagos.some(p=>p.id===adel.id) && !s2.pagosQuincena.find(x=>x.id==='pq-'+mesActual+'-1').fechaPago, 'quedan guardados el adelanto eliminado y el registro de quincena vacío');
+    ok(!s2.pagos.some(p=>p.id===adel.id) && !s2.pagos.some(p=>p.costoFijoId==='jornales-1'), 'quedan guardados el adelanto y la quincena eliminados');
     await A.close(); await B.close();
   });
 
@@ -165,7 +195,6 @@ const mesActual=new Date().toISOString().slice(0,7);
     const A=await tab(b,'nuevo.html');
     await A.evaluate(m=>{
       state.costosFijos.push({id:'cfX',nombre:'Alquiler',categoria:'alquiler',montoMensual:500000,formaPago:'Transferencia',diaPago:5});
-      state.pagosQuincena.push({id:'pq-'+m+'-2',monto:null,formaPago:'Efectivo',fechaPago:today(),nota:''});
       state.datosEmpresa.firmaSolicitaNombre='Juan'; state.datosEmpresa.firmaSolicitaImg='data:image/png;base64,AAAA'; marcarEditadoDatosEmpresa();
       openModalAdelanto('t1', m);
     }, mesActual);
@@ -176,7 +205,7 @@ const mesActual=new Date().toISOString().slice(0,7);
     await esperarGuardado(V);
     const s=await dump();
     ok(s.pagos.some(p=>p.id==='pgOld'), 'lo que guardó la versión vieja se guardó');
-    ok(s.costosFijos.length===1 && s.pagosQuincena.length===1, 'los costos fijos y el registro de quincena siguen ahí');
+    ok(s.costosFijos.length===1, 'los costos fijos siguen ahí');
     ok(s.datosEmpresa.firmaSolicitaImg==='data:image/png;base64,AAAA', 'las firmas siguen ahí');
     ok(s.pagos.some(p=>p.trabajadorId==='t1' && p.descuentaPeriodo), 'el adelanto sigue atado a su trabajador');
     await A.close(); await V.close();

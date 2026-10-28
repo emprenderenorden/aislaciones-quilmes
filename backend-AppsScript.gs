@@ -49,7 +49,6 @@ const SHEET_NAMES = {
   datosEmpresa: 'DatosEmpresa',
   eliminados: 'Eliminados',
   costosFijos: 'CostosFijos',
-  pagosQuincena: 'PagosQuincena',
 };
 
 const SCHEMAS = {
@@ -77,9 +76,6 @@ const SCHEMAS = {
   eliminados: ['coleccion', 'id', 'fecha'],
   // Conceptos de la grilla de Costos fijos (Pagos → Costos fijos).
   costosFijos: ['id', 'nombre', 'categoria', 'montoMensual', 'formaPago', 'diaPago'],
-  // Control del pago de cada quincena de jornales (no genera gasto). El id
-  // es "pq-AAAA-MM-Q" — de ahí sale el mes y la quincena.
-  pagosQuincena: ['id', 'monto', 'formaPago', 'fechaPago', 'nota'],
 };
 
 // ---- Registro de borrados ("Eliminados") ----
@@ -92,11 +88,11 @@ const SCHEMAS = {
 // donde venga el guardado. Esta hoja no se reescribe nunca: solo se le
 // agregan filas.
 const COLECCIONES_BORRABLES_ = ['obras', 'pagos', 'ordenesCompra', 'proveedores', 'stock',
-  'stockMovimientos', 'trabajadores', 'jornales', 'movimientosFima', 'costosFijos', 'pagosQuincena'];
+  'stockMovimientos', 'trabajadores', 'jornales', 'movimientosFima', 'costosFijos'];
 
 // Campos de un pago que lo atan a la grilla de Costos fijos (costoFijoId +
-// periodo) o lo marcan como adelanto de sueldo (trabajadorId + quincena de
-// la que se descuenta). Se guardan juntos en la columna vinculoJSON.
+// periodo; también el pago de cada quincena de jornales) o lo marcan como
+// adelanto de sueldo (trabajadorId + quincena de la que se descuenta). Se guardan juntos en la columna vinculoJSON.
 const CAMPOS_VINCULO_PAGO_ = ['costoFijoId', 'periodo', 'trabajadorId', 'descuentaPeriodo', 'descuentaQuincena', 'nota'];
 
 function leerEliminados_(ss) {
@@ -315,13 +311,9 @@ function readState_() {
     id: String(r.id), nombre: String(r.nombre), categoria: r.categoria || 'otros',
     montoMensual: Number(r.montoMensual) || 0, formaPago: r.formaPago || 'A definir', diaPago: Number(r.diaPago) || 1,
   }));
-  const pagosQuincena = sheetToRows_(ss.getSheetByName(SHEET_NAMES.pagosQuincena), SCHEMAS.pagosQuincena).map(r => ({
-    id: String(r.id), monto: toNumOrNull_(r.monto), formaPago: r.formaPago || '',
-    fechaPago: toDateStr_(r.fechaPago), nota: r.nota || '',
-  }));
 
   return { caja, rev, fondos, obras, pagos, ordenesCompra, proveedores, stock, stockMovimientos,
-    trabajadores, jornales, movimientosFima, datosEmpresa, costosFijos, pagosQuincena };
+    trabajadores, jornales, movimientosFima, datosEmpresa, costosFijos };
 }
 
 function writeRows_(sh, headers, rows, rowToArray) {
@@ -400,15 +392,11 @@ function writeState_(state) {
     campoFirma('firmaSolicitaNombre'), campoFirma('firmaSolicitaImg'), campoFirma('firmaApruebaNombre'), campoFirma('firmaApruebaImg'),
   ]);
 
-  // Igual: si el guardado viene de una versión vieja de la app (sin estas
-  // listas), no se tocan esas hojas.
+  // Igual: si el guardado viene de una versión vieja de la app (sin esta
+  // lista), no se toca esa hoja.
   if (Array.isArray(state.costosFijos)) {
     writeRows_(ss.getSheetByName(SHEET_NAMES.costosFijos), SCHEMAS.costosFijos, state.costosFijos,
       c => [c.id, c.nombre, c.categoria || 'otros', c.montoMensual || 0, c.formaPago || '', c.diaPago || 1]);
-  }
-  if (Array.isArray(state.pagosQuincena)) {
-    writeRows_(ss.getSheetByName(SHEET_NAMES.pagosQuincena), SCHEMAS.pagosQuincena, state.pagosQuincena,
-      q => [q.id, (q.monto === null || q.monto === undefined) ? '' : q.monto, q.formaPago || '', q.fechaPago || '', q.nota || '']);
   }
 }
 
