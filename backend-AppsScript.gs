@@ -48,6 +48,8 @@ const SHEET_NAMES = {
   movimientosFima: 'MovimientosFima',
   datosEmpresa: 'DatosEmpresa',
   eliminados: 'Eliminados',
+  costosFijos: 'CostosFijos',
+  pagosQuincena: 'PagosQuincena',
 };
 
 const SCHEMAS = {
@@ -59,7 +61,7 @@ const SCHEMAS = {
     'sinCobrosPendientes', 'jornalesConfigJSON', 'comisionOverrideJSON'],
   pagos: ['id', 'tipo', 'obraId', 'categoria', 'concepto', 'cantidad', 'unitario',
     'ivaAplica', 'monto', 'proveedorId', 'numeroFactura', 'fechaFactura', 'formaPago',
-    'fechaPago', 'numeroOC', 'origenFondo', 'pagosRealizadosJSON'],
+    'fechaPago', 'numeroOC', 'origenFondo', 'pagosRealizadosJSON', 'vinculoJSON'],
   ordenesCompra: ['id', 'numero', 'fecha', 'solicitante', 'tipo', 'obraId', 'categoria',
     'itemsJSON', 'monto', 'ivaAplica', 'proveedorId', 'estado', 'comentarioDueno', 'pagoId',
     'cotizacionUsd', 'notaMaterial', 'notaGeneral', 'moneda', 'obraIdsJSON', 'pagoIdsJSON'],
@@ -70,8 +72,14 @@ const SCHEMAS = {
   jornales: ['id', 'trabajadorId', 'obraId', 'semanaInicio', 'diasJSON'],
   movimientosFima: ['fecha', 'fondo', 'obraId', 'concepto', 'tipo', 'monto', 'subcategoria', 'id'],
   datosEmpresa: ['nombre', 'cuit', 'telefono', 'email', 'direccion', 'localidad',
-    'condicionImpositiva', 'condicionesGenerales', 'logoDataUrl'],
+    'condicionImpositiva', 'condicionesGenerales', 'logoDataUrl',
+    'firmaSolicitaNombre', 'firmaSolicitaImg', 'firmaApruebaNombre', 'firmaApruebaImg'],
   eliminados: ['coleccion', 'id', 'fecha'],
+  // Conceptos de la grilla de Costos fijos (Pagos → Costos fijos).
+  costosFijos: ['id', 'nombre', 'categoria', 'montoMensual', 'formaPago', 'diaPago'],
+  // Control del pago de cada quincena de jornales (no genera gasto). El id
+  // es "pq-AAAA-MM-Q" — de ahí sale el mes y la quincena.
+  pagosQuincena: ['id', 'monto', 'formaPago', 'fechaPago', 'nota'],
 };
 
 // ---- Registro de borrados ("Eliminados") ----
@@ -84,7 +92,12 @@ const SCHEMAS = {
 // donde venga el guardado. Esta hoja no se reescribe nunca: solo se le
 // agregan filas.
 const COLECCIONES_BORRABLES_ = ['obras', 'pagos', 'ordenesCompra', 'proveedores', 'stock',
-  'stockMovimientos', 'trabajadores', 'jornales', 'movimientosFima'];
+  'stockMovimientos', 'trabajadores', 'jornales', 'movimientosFima', 'costosFijos', 'pagosQuincena'];
+
+// Campos de un pago que lo atan a la grilla de Costos fijos (costoFijoId +
+// periodo) o lo marcan como adelanto de sueldo (trabajadorId + quincena de
+// la que se descuenta). Se guardan juntos en la columna vinculoJSON.
+const CAMPOS_VINCULO_PAGO_ = ['costoFijoId', 'periodo', 'trabajadorId', 'descuentaPeriodo', 'descuentaQuincena', 'nota'];
 
 function leerEliminados_(ss) {
   const sh = getOrCreateSheet_(ss, SHEET_NAMES.eliminados, SCHEMAS.eliminados);
@@ -240,7 +253,9 @@ function readState_() {
     comisionOverride: parseJsonField_(r.comisionOverrideJSON, null),
   }));
 
-  const pagos = sheetToRows_(ss.getSheetByName(SHEET_NAMES.pagos), SCHEMAS.pagos).map(r => ({
+  const pagosRows = sheetToRows_(ss.getSheetByName(SHEET_NAMES.pagos), SCHEMAS.pagos);
+  const pagosVinculoRaw_ = pagosRows.map(r => r.vinculoJSON);
+  const pagos = pagosRows.map(r => ({
     id: r.id, tipo: r.tipo, obraId: toStrOrNull_(r.obraId), categoria: toStrOrNull_(r.categoria),
     concepto: r.concepto, cantidad: Number(r.cantidad) || 0, unitario: Number(r.unitario) || 0,
     ivaAplica: toBool_(r.ivaAplica), monto: Number(r.monto) || 0,
@@ -250,6 +265,10 @@ function readState_() {
     origenFondo: toStrOrNull_(r.origenFondo),
     pagosRealizados: parseJsonField_(r.pagosRealizadosJSON, []),
   }));
+  pagos.forEach((p, i) => {
+    const v = parseJsonField_(pagosVinculoRaw_[i], {});
+    CAMPOS_VINCULO_PAGO_.forEach(k => { if (v && v[k] !== undefined && v[k] !== null) p[k] = v[k]; });
+  });
 
   const ordenesCompra = sheetToRows_(ss.getSheetByName(SHEET_NAMES.ordenesCompra), SCHEMAS.ordenesCompra).map(r => ({
     id: r.id, numero: r.numero, fecha: toDateStr_(r.fecha), solicitante: r.solicitante, tipo: r.tipo,
@@ -292,8 +311,17 @@ function readState_() {
   const empresaRows = sheetToRows_(ss.getSheetByName(SHEET_NAMES.datosEmpresa), SCHEMAS.datosEmpresa);
   const datosEmpresa = empresaRows.length ? empresaRows[0] : {};
 
+  const costosFijos = sheetToRows_(ss.getSheetByName(SHEET_NAMES.costosFijos), SCHEMAS.costosFijos).map(r => ({
+    id: String(r.id), nombre: String(r.nombre), categoria: r.categoria || 'otros',
+    montoMensual: Number(r.montoMensual) || 0, formaPago: r.formaPago || 'A definir', diaPago: Number(r.diaPago) || 1,
+  }));
+  const pagosQuincena = sheetToRows_(ss.getSheetByName(SHEET_NAMES.pagosQuincena), SCHEMAS.pagosQuincena).map(r => ({
+    id: String(r.id), monto: toNumOrNull_(r.monto), formaPago: r.formaPago || '',
+    fechaPago: toDateStr_(r.fechaPago), nota: r.nota || '',
+  }));
+
   return { caja, rev, fondos, obras, pagos, ordenesCompra, proveedores, stock, stockMovimientos,
-    trabajadores, jornales, movimientosFima, datosEmpresa };
+    trabajadores, jornales, movimientosFima, datosEmpresa, costosFijos, pagosQuincena };
 }
 
 function writeRows_(sh, headers, rows, rowToArray) {
@@ -331,6 +359,7 @@ function writeState_(state) {
     p.id, p.tipo, p.obraId, p.categoria, p.concepto, p.cantidad, p.unitario, p.ivaAplica,
     p.monto, p.proveedorId, p.numeroFactura, p.fechaFactura, p.formaPago, p.fechaPago,
     p.numeroOC || '', p.origenFondo || '', JSON.stringify(p.pagosRealizados || []),
+    vinculoPagoJSON_(p),
   ]);
 
   writeRows_(ss.getSheetByName(SHEET_NAMES.ordenesCompra), SCHEMAS.ordenesCompra, state.ordenesCompra || [], o => [
@@ -359,10 +388,34 @@ function writeState_(state) {
     m => [m.fecha, m.fondo, m.obraId, m.concepto, m.tipo, m.monto, m.subcategoria || '', m.id || '']);
 
   const e = state.datosEmpresa || {};
-  writeRows_(ss.getSheetByName(SHEET_NAMES.datosEmpresa), SCHEMAS.datosEmpresa, [e], e => [
+  // Una pestaña con una versión vieja de la app (que todavía no conoce las
+  // firmas) manda los datos de la empresa sin esos campos: en ese caso se
+  // conservan los que ya estaban guardados en vez de borrarlos.
+  const empresaSh = ss.getSheetByName(SHEET_NAMES.datosEmpresa);
+  const empresaPrevia = sheetToRows_(empresaSh, SCHEMAS.datosEmpresa)[0] || {};
+  const campoFirma = k => (e[k] !== undefined ? e[k] : empresaPrevia[k]) || '';
+  writeRows_(empresaSh, SCHEMAS.datosEmpresa, [e], e => [
     e.nombre || '', e.cuit || '', e.telefono || '', e.email || '', e.direccion || '',
     e.localidad || '', e.condicionImpositiva || '', e.condicionesGenerales || '', e.logoDataUrl || '',
+    campoFirma('firmaSolicitaNombre'), campoFirma('firmaSolicitaImg'), campoFirma('firmaApruebaNombre'), campoFirma('firmaApruebaImg'),
   ]);
+
+  // Igual: si el guardado viene de una versión vieja de la app (sin estas
+  // listas), no se tocan esas hojas.
+  if (Array.isArray(state.costosFijos)) {
+    writeRows_(ss.getSheetByName(SHEET_NAMES.costosFijos), SCHEMAS.costosFijos, state.costosFijos,
+      c => [c.id, c.nombre, c.categoria || 'otros', c.montoMensual || 0, c.formaPago || '', c.diaPago || 1]);
+  }
+  if (Array.isArray(state.pagosQuincena)) {
+    writeRows_(ss.getSheetByName(SHEET_NAMES.pagosQuincena), SCHEMAS.pagosQuincena, state.pagosQuincena,
+      q => [q.id, (q.monto === null || q.monto === undefined) ? '' : q.monto, q.formaPago || '', q.fechaPago || '', q.nota || '']);
+  }
+}
+
+function vinculoPagoJSON_(p) {
+  const v = {};
+  CAMPOS_VINCULO_PAGO_.forEach(k => { if (p[k] !== undefined && p[k] !== null && p[k] !== '') v[k] = p[k]; });
+  return Object.keys(v).length ? JSON.stringify(v) : '';
 }
 
 function checkAuth_(secret) {

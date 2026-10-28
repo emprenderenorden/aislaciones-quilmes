@@ -14,6 +14,7 @@ sed -e "s#^const STATE_API_URL = '.*';#const STATE_API_URL = 'http://127.0.0.1:8
 git show <commit-viejo>:index.html | sed -e "s#^const STATE_API_URL = '.*';#const STATE_API_URL = 'http://127.0.0.1:8770/';#" \
     -e "s#^const API_SECRET = '.*';#const API_SECRET = 'test';#" > viejo.html
 node sync-tests.js
+node funciones-tests.js   # costos fijos, adelantos, firmas/OP, buscador
 ```
 
 (`nuevo.html` / `viejo.html` son copias generadas — no se commitean.)

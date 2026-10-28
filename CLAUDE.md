@@ -62,6 +62,13 @@ implementación:
       pegar el archivo, **cambiar `SECRET` por la clave real** (el repo
       tiene el placeholder) y hacer Implementar → Administrar
       implementaciones → lápiz → Nueva versión (misma URL).
+- [ ] (28/10) Hojas nuevas `CostosFijos` y `PagosQuincena` (grilla de
+      Costos fijos en Pagos), columna `vinculoJSON` al final de `Pagos`
+      (pago atado a un concepto/mes de costos fijos, o adelanto de sueldo
+      con su trabajador y quincena) y columnas de firmas al final de
+      `DatosEmpresa` (`firmaSolicitaNombre/Img`, `firmaApruebaNombre/Img`).
+      Las hojas se crean solas al primer guardado. Va en el **mismo**
+      redeploy que `Eliminados`.
 
 Cuando se sume un cambio de backend nuevo, se anota acá como pendiente y
 se agrupan varios antes de volver a desplegar (ver instrucciones al
@@ -1156,3 +1163,75 @@ principio de `backend-AppsScript.gs`).
     formulario abierto no recarga pero muestra el aviso; al cerrarlo se
     recarga sola) y se re-corrieron las pruebas de duplicados de FIMA y de
     centavos, sin cambios.
+- **Nuevo (28/10): costos fijos en grilla, orden de pago con firma
+  digital, detalle de sueldo, adelantos y buscador al tipear.**
+  - **Pagos → Costos fijos** (antes "Gastos fijos", en formato lista): una
+    grilla de 3 meses (Anterior/Siguiente) con una fila por concepto
+    (`state.costosFijos`: nombre, categoría, monto mensual de referencia,
+    medio y día de pago — se agregan, editan y eliminan) agrupadas por
+    categoría, y arriba el "Total mensual equivalente". Es **la misma
+    información de siempre** (los pagos `tipo:'fijo'`) vista por mes:
+    tocar una celda registra un gasto fijo normal (descuenta caja/fondo,
+    puede quedar Programado) atado a ese concepto y mes (`costoFijoId` +
+    `periodo`); la celda pasa a mostrar el monto con "✓ pagado". Los
+    gastos fijos viejos sin concepto se ubican solos en el concepto con el
+    mismo nombre, o en una fila propia (con link "Agregar como costo fijo
+    mensual"). Eliminar un concepto no borra sus pagos.
+  - **Jornales 1ª y 2ª quincena**: dos filas automáticas en la grilla; el
+    monto sale del cálculo de sueldos (ya restando adelantos). Se puede
+    corregir el monto y cargar medio y fecha de pago, pero — decisión del
+    dueño — **no genera gasto ni toca la caja**: es solo el control
+    (`state.pagosQuincena`, id fijo `pq-AAAA-MM-Q`; "Quitar registro" lo
+    vacía en vez de borrarlo, para que el id no quede en `Eliminados`).
+  - **Adelantos de sueldo** (botón "+ Adelanto" en Jornales y en el
+    detalle de cada persona): se cargan como un gasto fijo (categoría
+    Sueldo) ya pagado — **descuenta caja** (o el fondo FIMA elegido) el
+    día que se da — y se descuentan de la quincena elegida
+    (`trabajadorId`, `descuentaPeriodo`, `descuentaQuincena` en el pago).
+    Nueva columna "Adelantos" en el historial mensual y fila automática
+    "Adelantos de sueldo" en la grilla. Eliminar el adelanto devuelve la
+    plata. Si los adelantos superan la quincena, queda en $0.
+  - **Detalle de sueldo** (link "Detalle" en el historial mensual, con
+    PDF): por quincena, sueldo − ausentes (cant. y monto) + horas extra +
+    días de viaje − adelantos = total, y el total del mes. Todo sale de
+    `desgloseQuincena()`, que ahora es la única fuente del cálculo
+    (`sueldoPorQuincena` la usa).
+  - **Firmas digitales** (botón "✍ Firmas" en Órdenes de compra): las dos
+    personas que firman siempre ("Solicitado por" y "Aprobación
+    comercial") firman una sola vez con el dedo o el mouse; la imagen se
+    guarda en los datos de la empresa y sale sobre la línea de firma en
+    todas las OC y órdenes de pago. La de aprobación solo sale si la OC
+    ya está autorizada/comprada. Se sacó "Recibí conforme".
+  - **Orden de pago** ("⬇ Orden de pago" en una OC comprada con algún
+    pago real): número OP-xxxx, proveedor, materiales, pagos realizados
+    (fecha, medio, fondo, monto), total/saldo y las dos firmas.
+  - **Buscador al tipear** (`comboHTML`/`sugerenciasHTML`): la obra en
+    Registrar gasto y en movimientos de FIMA, el material en "Usar de
+    stock" y en Registrar compra de stock — se escribe y aparecen las
+    opciones que contienen ese texto en cualquier parte, sin importar
+    mayúsculas ni acentos ("828" → "X-828"; también busca por cliente).
+    El producto de un ítem de OC y el nombre/categoría al agregar
+    material a stock sugieren lo ya cargado (se puede escribir algo
+    nuevo). En la OC, la lista de obras con tilde suma un buscador.
+    Registrar un gasto de obra sin elegir la obra ahora avisa (antes
+    quedaba elegida la primera de la lista por defecto).
+  - Sincronización: `costosFijos` y `pagosQuincena` se combinan como el
+    resto de las colecciones (unión por id, borrados, editados); los
+    datos de la empresa (firmas incluidas) editados en la pestaña ganan
+    ante un conflicto/auto-refresco hasta que se guardan. En el backend,
+    un guardado de una pestaña con la versión vieja de la app (que no
+    conoce estas listas ni las firmas) no las borra.
+  - **Requiere redeploy del backend** (checklist arriba). Hasta entonces
+    todo funciona dentro de la sesión pero se pierde al recargar: los
+    conceptos de costos fijos, el registro de quincenas, las firmas, y el
+    vínculo de un adelanto con su trabajador (la plata sí queda
+    descontada, como un gasto fijo común).
+  - Probado (`tests/sincronizacion/funciones-tests.js`, contra el backend
+    real simulado): concepto + pago desde la grilla y persistencia,
+    quincenas sin gasto, adelanto (caja y descuento), detalle y PDF,
+    firmas (con mouse y táctil) en OC/OP, una pestaña con la versión
+    vieja que no borra nada de lo nuevo, conflicto entre dos pestañas, y
+    el buscador. Las 20 pruebas de sincronización existentes siguen
+    pasando, y la app nueva con el backend actual (sin redeploy) no da
+    errores.
+

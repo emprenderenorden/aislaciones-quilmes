@@ -166,6 +166,17 @@
   .overlay.open{display:flex;}
   .modal{background:var(--surface);border-radius:14px;width:100%;max-width:560px;padding:26px 28px 24px;box-shadow:0 20px 60px rgba(0,0,0,.25);}
   .modal h3{margin:0 0 4px;font-size:17px;font-weight:600;}
+  .cf-total{font-family:'IBM Plex Mono',monospace;font-size:22px;font-weight:700;margin:2px 0 14px;}
+  .cf-nav{display:flex;align-items:center;gap:14px;padding:14px 16px 4px;font-weight:600;font-size:13.5px;flex-wrap:wrap;}
+  .cf-grid td.cf-cell{cursor:pointer;} .cf-grid td.cf-cell:hover{background:var(--teal-soft);}
+  .cf-grid .cf-estado{font-size:11px;margin-top:2px;font-weight:600;} .cf-grid .cf-estado.ok{color:var(--good);} .cf-grid .cf-estado.warn{color:var(--warn);} .cf-grid .cf-estado.bad{color:var(--bad);} .cf-grid .cf-estado.info{color:var(--teal);}
+  .cf-grid .cf-ref{color:var(--muted);font-style:italic;}
+  .cf-sub{font-size:11.5px;color:var(--muted);margin-top:2px;}
+  .cf-grid tr.cf-grupo td{font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:700;background:#FAFBFB;}
+  .combo-dropdown{position:fixed;z-index:10000;display:none;background:var(--surface);border:1px solid var(--line);border-radius:8px;box-shadow:0 10px 28px rgba(0,0,0,.18);overflow-y:auto;font-size:13px;}
+  .combo-item{padding:7px 10px;cursor:pointer;border-bottom:1px solid var(--line);} .combo-item:last-child{border-bottom:none;}
+  .combo-item.activo,.combo-item:hover{background:var(--teal-soft);} .combo-sub{font-size:11px;color:var(--muted);margin-top:1px;}
+  .firma-pad{display:block;width:100%;height:auto;aspect-ratio:500/170;background:#fff;border:1px dashed var(--line);border-radius:8px;touch-action:none;cursor:crosshair;}
   .modal .modal-sub{font-size:12px;color:var(--muted);margin-bottom:18px;}
   .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
   .field{display:flex;flex-direction:column;gap:5px;}
@@ -408,7 +419,7 @@
   <div class="view" id="view-jornales">
     <div class="topbar">
       <div><h1>Jornales</h1><div class="sub">Asistencia, sueldos y horas extra del personal</div></div>
-      <div class="topbar-actions"><button class="btn btn-primary" onclick="openModalTrabajador(null)">+ Agregar trabajador</button></div>
+      <div class="topbar-actions"><button class="btn btn-ghost" onclick="openModalAdelanto(null, document.getElementById('jh-mes')?.value)">+ Adelanto</button><button class="btn btn-primary" onclick="openModalTrabajador(null)">+ Agregar trabajador</button></div>
     </div>
     <div class="week-nav">
       <button class="nav-arrow" onclick="changeWeek(-1)">‹</button>
@@ -431,7 +442,7 @@
       </div>
     </div>
     <div class="card card-table"><table>
-      <thead><tr><th>Personal</th><th>Puesto</th><th class="num">Sueldo mensual</th><th class="num">Sueldo diario</th><th class="num">Días trabajados</th><th class="num">Días ausentes</th><th class="num">Horas extra</th><th class="num">Viaje</th><th class="num">1ª quincena (transf.)</th><th class="num">2ª quincena (efvo.)</th><th class="num">Sueldo a cobrar</th><th></th></tr></thead>
+      <thead><tr><th>Personal</th><th>Puesto</th><th class="num">Sueldo mensual</th><th class="num">Sueldo diario</th><th class="num">Días trabajados</th><th class="num">Días ausentes</th><th class="num">Horas extra</th><th class="num">Viaje</th><th class="num">Adelantos</th><th class="num">1ª quincena (transf.)</th><th class="num">2ª quincena (efvo.)</th><th class="num">Sueldo a cobrar</th><th></th></tr></thead>
       <tbody id="jornales-historial-body"></tbody>
     </table></div>
   </div>
@@ -460,6 +471,7 @@
       <div><h1>Órdenes de compra</h1><div class="sub">Se cargan para pedir autorización antes de comprar</div></div>
       <div class="topbar-actions">
         <button class="btn btn-ghost" onclick="openModalConfigEmpresa()">⚙ Datos de la empresa</button>
+        <button class="btn btn-ghost" onclick="openModalFirmas()">✍ Firmas</button>
         <button class="btn btn-primary" onclick="openModalOrdenCompra(null)">+ Nueva orden de compra</button>
       </div>
     </div>
@@ -488,7 +500,7 @@
     </div>
     <div class="section-title"><div class="filter-tabs">
       <div class="filter-tab active" data-filter="todos" onclick="setPagosFilter('todos')">Todos</div>
-      <div class="filter-tab" data-filter="fijo" onclick="setPagosFilter('fijo')">Gastos fijos</div>
+      <div class="filter-tab" data-filter="fijo" onclick="setPagosFilter('fijo')">Costos fijos</div>
       <div class="filter-tab" data-filter="obra" onclick="setPagosFilter('obra')">Vinculados a obra</div>
       <div class="filter-tab" data-filter="stock" onclick="setPagosFilter('stock')">Reposición de stock</div>
       <div class="filter-tab" data-filter="fima" onclick="setPagosFilter('fima')">Ingresos a FIMA</div>
@@ -500,6 +512,7 @@
       <thead><tr><th>Obra / destino</th><th>Concepto</th><th>Nº OC</th><th>Proveedor / factura</th><th class="num">Monto</th><th class="num">Saldo</th><th>Fecha de pago</th><th>Estado</th><th></th></tr></thead>
       <tbody id="pagos-body"></tbody>
     </table></div>
+    <div class="hidden" id="pagos-costos-fijos"></div>
     <div class="card card-table hidden" id="pagos-table-fima"><table>
       <thead><tr><th>Fecha</th><th>Fondo destino (objetivo)</th><th>Concepto</th><th class="num">Monto</th></tr></thead>
       <tbody id="pagos-fima-body"></tbody>
@@ -871,6 +884,11 @@ let state = {
   proveedores: [],
   stock: [],
   stockMovimientos: [],
+  // Conceptos de la grilla de Costos fijos (Pagos → Costos fijos) y el
+  // registro del pago de cada quincena de jornales (ver renderCostosFijos).
+  costosFijos: [],
+  pagosQuincena: [],
+  cfDesde: null,
   selectedObraId: null,
   ordenesCompra: [],
   ordenesFilter: 'pendiente',
@@ -954,7 +972,7 @@ let saveTimer = null;
 const eliminadosLocalmente = {
   obras: new Set(), pagos: new Set(), ordenesCompra: new Set(), proveedores: new Set(),
   stock: new Set(), stockMovimientos: new Set(), trabajadores: new Set(), jornales: new Set(),
-  movimientosFima: new Set(),
+  movimientosFima: new Set(), costosFijos: new Set(), pagosQuincena: new Set(),
   documentos: new Set(), // id del documento (dentro de una obra)
   asignados: new Set(),  // "idDeLaObra|idDelTrabajador" (quitado de la obra)
 };
@@ -977,6 +995,7 @@ function marcarEliminado(coleccion, id){ if(id!==undefined) eliminadosLocalmente
 const editadosLocalmente = {
   pagos: new Set(), ordenesCompra: new Set(), proveedores: new Set(),
   stock: new Set(), trabajadores: new Set(), ingresos: new Set(), movimientosFima: new Set(),
+  costosFijos: new Set(), pagosQuincena: new Set(),
   diasJornales: new Set(), // "idDeLaFilaDeJornales|índiceDelDía" (0-6)
   camposObra: new Set(),   // "idDeLaObra|nombreDelCampo"
   asignados: new Set(),    // "idDeLaObra|idDelTrabajador" (asignado a la obra acá)
@@ -999,10 +1018,10 @@ function marcarEditadoObra(obraId, campo){ editadosLocalmente.camposObra.add(obr
 const vistosEnServidor = {
   obras: new Set(), pagos: new Set(), ordenesCompra: new Set(), proveedores: new Set(),
   stock: new Set(), stockMovimientos: new Set(), trabajadores: new Set(), jornales: new Set(),
-  movimientosFima: new Set(),
+  movimientosFima: new Set(), costosFijos: new Set(), pagosQuincena: new Set(),
   documentos: new Set(), ingresos: new Set(), asignados: new Set(), // anidados en cada obra
 };
-const COLECCIONES_PLANAS = ['pagos','ordenesCompra','proveedores','stock','stockMovimientos','trabajadores','movimientosFima'];
+const COLECCIONES_PLANAS = ['pagos','ordenesCompra','proveedores','stock','stockMovimientos','trabajadores','movimientosFima','costosFijos','pagosQuincena'];
 const COLECCIONES_CON_ID = ['obras','jornales',...COLECCIONES_PLANAS];
 // Borrados que el backend ya tiene registrados (hoja "Eliminados") como
 // "coleccion|id" — cubre también lo borrado por otros dispositivos aunque
@@ -1185,6 +1204,29 @@ function mergeObrasTrasConflicto(local, servidor){
   });
   return [...porId.values()];
 }
+// Foto de las colecciones locales antes de traer lo del servidor (ante un
+// conflicto de guardado o en el auto-refresco), y la combinación posterior
+// — compartidas por saveStateCore y refrescarDesdeServidorCore.
+function snapshotLocalParaMerge(){
+  const local = {obras: state.obras, jornales: state.jornales, datosEmpresa: state.datosEmpresa};
+  COLECCIONES_PLANAS.forEach(k=>{ local[k] = state[k]; });
+  return local;
+}
+function combinarConLocal(local){
+  state.obras = mergeObrasTrasConflicto(local.obras, state.obras);
+  COLECCIONES_PLANAS.forEach(key=>{
+    state[key] = unionPorId(local[key], state[key], eliminadosLocalmente[key], editadosLocalmente[key], vistosEnServidor[key], key);
+  });
+  state.jornales = mergeJornalesTrasConflicto(local.jornales, state.jornales, eliminadosLocalmente.jornales, editadosLocalmente.diasJornales);
+  // Datos de la empresa (incluidas las firmas): es un único registro, sin
+  // id — si se editó acá desde el último guardado, gana lo local.
+  if(datosEmpresaEditadoLocal) state.datosEmpresa = local.datosEmpresa;
+}
+// true desde que se editan los datos de la empresa / firmas en esta
+// pestaña hasta que ese cambio se guarda bien.
+let datosEmpresaEditadoLocal = false;
+let datosEmpresaEdicion = 0;
+function marcarEditadoDatosEmpresa(){ datosEmpresaEditadoLocal = true; datosEmpresaEdicion++; }
 // Encola: un guardado (con sus reintentos) y un auto-refresco leen el
 // servidor, combinan con lo local y reescriben `state` de punta a punta
 // — si dos de estas operaciones llegan a correr superpuestas (un
@@ -1212,11 +1254,13 @@ async function saveStateCore(reintentos){
     // servidor" si el guardado se confirma (si falla, algo recién cargado
     // acá no debe quedar marcado como ya guardado).
     const idsEnviados = idsDeEstado(state);
+    const edicionEmpresaEnviada = datosEmpresaEdicion;
     const res = await fetch(STATE_API_URL, {method:'POST', body:JSON.stringify({secret:API_SECRET, state, eliminados: eliminadosParaEnviar()})});
     const data = await res.json();
     if(data && data.ok){
       state.rev = data.rev;
       registrarVistos(idsEnviados);
+      if(edicionEmpresaEnviada===datosEmpresaEdicion) datosEmpresaEditadoLocal = false;
       hayGuardadoPendiente = false;
       ocultarAvisoGuardadoFallido();
       return;
@@ -1237,17 +1281,9 @@ async function saveStateCore(reintentos){
       programarReintentoGuardado();
       return;
     }
-    const local = {
-      obras: state.obras, pagos: state.pagos, ordenesCompra: state.ordenesCompra,
-      proveedores: state.proveedores, stock: state.stock, stockMovimientos: state.stockMovimientos,
-      trabajadores: state.trabajadores, jornales: state.jornales, movimientosFima: state.movimientosFima,
-    };
+    const local = snapshotLocalParaMerge();
     await loadState({silencioso:true});
-    state.obras = mergeObrasTrasConflicto(local.obras, state.obras);
-    ['pagos','ordenesCompra','proveedores','stock','stockMovimientos','trabajadores','movimientosFima'].forEach(key=>{
-      state[key] = unionPorId(local[key], state[key], eliminadosLocalmente[key], editadosLocalmente[key], vistosEnServidor[key], key);
-    });
-    state.jornales = mergeJornalesTrasConflicto(local.jornales, state.jornales, eliminadosLocalmente.jornales, editadosLocalmente.diasJornales);
+    combinarConLocal(local);
     // real se recalcula recién acá, con pagos/stockMovimientos ya combinados
     // (antes de esto, mergeObraTrasConflicto dejó un valor transitorio sin usar).
     state.obras.forEach(o=>recomputeObraReal(o));
@@ -1336,11 +1372,7 @@ async function refrescarDesdeServidorCore(){
   // termine nuestro guardado, el próximo refresco (máximo 60s después)
   // trae tranquilo lo de los demás.
   if(hayGuardadoPendiente) return;
-  const local = {
-    obras: state.obras, pagos: state.pagos, ordenesCompra: state.ordenesCompra,
-    proveedores: state.proveedores, stock: state.stock, stockMovimientos: state.stockMovimientos,
-    trabajadores: state.trabajadores, jornales: state.jornales, movimientosFima: state.movimientosFima,
-  };
+  const local = snapshotLocalParaMerge();
   // Ojo: no nos podemos guiar por si `rev` cambió para decidir si hace
   // falta combinar — loadState() ya sobreescribió `state` con la copia
   // cruda del servidor de todas formas, así que aunque el rev no haya
@@ -1348,11 +1380,7 @@ async function refrescarDesdeServidorCore(){
   // local recién hecho que todavía no se guardó) igual hay que volver a
   // sumarle lo local, o se pierde/resucita algo sin querer.
   await loadState({silencioso:true});
-  state.obras = mergeObrasTrasConflicto(local.obras, state.obras);
-  ['pagos','ordenesCompra','proveedores','stock','stockMovimientos','trabajadores','movimientosFima'].forEach(key=>{
-    state[key] = unionPorId(local[key], state[key], eliminadosLocalmente[key], editadosLocalmente[key], vistosEnServidor[key], key);
-  });
-  state.jornales = mergeJornalesTrasConflicto(local.jornales, state.jornales, eliminadosLocalmente.jornales, editadosLocalmente.diasJornales);
+  combinarConLocal(local);
   state.obras.forEach(o=>recomputeObraReal(o));
   recomputeFondos();
   renderAllSinGuardar();
@@ -1919,12 +1947,8 @@ function renderObraDetail(){
 function obraPagosRows(obraId){
   const catFiltro = state.obraGastosCategoriaFilter;
   const pagoRows = state.pagos.filter(p=>p.obraId===obraId && (catFiltro==='todas' || p.categoria===catFiltro)).map(p=>{
-    const est = pagoEstado(p);
-    const {dot:estadoDot, txt:estadoTxt} = pagoEstadoInfo(est);
-    let action = (!ocLigadaAPago(p.id) && !p.origenFondo) ? `<span class="link-btn" onclick="openModalCompra(null,'${p.id}')">Editar</span>` : '';
-    if(est!=='pagado') action += `${action?' · ':''}<span class="link-btn" onclick="openModalFinalizarPago('${p.id}')">Registrar pago →</span>`;
-    if(est==='pagado'||est==='parcial'||est==='programado') action += `${action?' · ':''}<span class="link-btn danger" onclick="revertirPago('${p.id}')">${est==='programado'?'Cancelar programado':'Revertir a pendiente'}</span>`;
-    action += `${action?' · ':''}<span class="link-btn danger" onclick="eliminarGasto('${p.id}')">Eliminar</span>`;
+    const {dot:estadoDot, txt:estadoTxt} = pagoEstadoInfo(pagoEstado(p));
+    const action = accionesPagoHtml(p);
     const prov = getProveedor(p.proveedorId);
     const provTxt = prov ? `${prov.nombre}${p.numeroFactura?' · '+p.numeroFactura:''}` : '—';
     return `<tr><td>${catLabel[p.categoria]||p.categoria}</td><td>${p.concepto}</td><td>${ocBadge(p.numeroOC)}</td><td>${provTxt}</td><td class="num">${fmt(p.monto)}</td><td class="num">${fmt(pagoSaldo(p))}</td><td class="mono">${fmtFecha(p.fechaPago)}</td><td><span class="estado-dot ${estadoDot}"></span>${estadoTxt}</td><td>${action}</td></tr>`;
@@ -2554,19 +2578,132 @@ function viajeExtraPorQuincena(trabajadorId, mes){
   });
   return res;
 }
-// Sueldo por quincena: mitad del sueldo mensual, menos $100.000 fijos por
-// cada ausencia que cayó en esa quincena puntual (nunca por debajo de $0,
-// no se arrastra el excedente a la otra quincena), más las horas extra y
-// el extra de viaje de esa quincena. El pago del sueldo en sí sigue sin
-// generar gasto ni movimiento de FIMA — esto es solo el desglose de
-// cuánto corresponde en cada una (ver CLAUDE.md).
-function sueldoPorQuincena(trabajador, mes){
+// Adelantos de sueldo: se cargan como un gasto fijo (categoría Sueldo) que
+// sale de caja el día que se da, y además se descuentan de la quincena que
+// se eligió al cargarlo (descuentaPeriodo "AAAA-MM" + descuentaQuincena 1|2).
+const esAdelanto = (p)=> !!(p && p.trabajadorId && p.descuentaPeriodo);
+function adelantosDeQuincena(trabajadorId, mes, q){
+  return state.pagos.filter(p=>esAdelanto(p) && p.trabajadorId===trabajadorId && p.descuentaPeriodo===mes && Number(p.descuentaQuincena)===q);
+}
+// Desglose de una quincena: mitad del sueldo mensual, menos $100.000 fijos
+// por cada ausencia que cayó en esa quincena puntual (nunca por debajo de
+// $0, no se arrastra el excedente a la otra quincena), más las horas extra
+// y el extra de viaje de esa quincena, menos los adelantos que se
+// descuentan de esa quincena (tampoco por debajo de $0). El pago del
+// sueldo en sí sigue sin generar gasto ni movimiento de FIMA — esto es
+// solo el desglose de cuánto corresponde en cada una (ver CLAUDE.md).
+function desgloseQuincena(trabajador, mes, q){
   const base = (trabajador.sueldoMensual||0)/2;
-  const porQ = diasDelMesPorQuincena(trabajador.id, mes);
-  const horasExtra = horasExtraPorQuincena(trabajador.id, mes);
-  const viaje = viajeExtraPorQuincena(trabajador.id, mes);
-  const calc = (q) => Math.max(0, base - porQ[q].ausente*DESCUENTO_AUSENCIA) + horasExtra[q]*VALOR_HORA_EXTRA + viaje[q];
-  return { q1: calc(1), q2: calc(2) };
+  const dias = diasDelMesPorQuincena(trabajador.id, mes)[q];
+  const horas = horasExtraPorQuincena(trabajador.id, mes)[q];
+  const viaje = viajeExtraPorQuincena(trabajador.id, mes)[q];
+  const adelantos = adelantosDeQuincena(trabajador.id, mes, q);
+  const descuentoAusencias = Math.min(base, dias.ausente*DESCUENTO_AUSENCIA);
+  const subtotal = base - descuentoAusencias + horas*VALOR_HORA_EXTRA + viaje;
+  const totalAdelantos = adelantos.reduce((a,p)=>a+p.monto,0);
+  const descuentoAdelantos = Math.min(subtotal, totalAdelantos);
+  return {
+    base, diasTrabajados: dias.trabajado, ausentes: dias.ausente, descuentoAusencias,
+    topeAusencias: dias.ausente*DESCUENTO_AUSENCIA > base,
+    horasExtra: horas, montoHorasExtra: horas*VALOR_HORA_EXTRA,
+    diasViaje: Math.round(viaje/VALOR_VIAJE), montoViaje: viaje,
+    adelantos, totalAdelantos, topeAdelantos: totalAdelantos > subtotal,
+    total: subtotal - descuentoAdelantos,
+  };
+}
+function sueldoPorQuincena(trabajador, mes){
+  return { q1: desgloseQuincena(trabajador, mes, 1).total, q2: desgloseQuincena(trabajador, mes, 2).total };
+}
+// Total de cada quincena de todo el personal — lo que muestran las filas
+// automáticas de jornales en Pagos → Costos fijos.
+function jornalesQuincenaTotal(mes, q){
+  return state.trabajadores.reduce((a,t)=>a+desgloseQuincena(t, mes, q).total, 0);
+}
+function desgloseSueldoHtml(t, mes){
+  const fila = (txt, monto, signo, cls)=> `<tr${cls?` class="${cls}"`:''}><td>${txt}</td><td class="num">${signo||''}${fmt(monto)}</td></tr>`;
+  const bloque = (q)=>{
+    const d = desgloseQuincena(t, mes, q);
+    const nombreQ = q===1 ? '1ª quincena (1 al 15)' : '2ª quincena (16 a fin de mes)';
+    return `<tr class="subtotal-row"><td colspan="2">${nombreQ}</td></tr>
+      ${fila('Sueldo de la quincena (mitad del mensual)', d.base)}
+      ${fila(`Días ausentes (${d.ausentes})${d.topeAusencias?' — tope: la quincena no baja de $0':''}`, d.descuentoAusencias, '− ')}
+      ${fila(`Horas extra (${d.horasExtra} h × ${fmt(VALOR_HORA_EXTRA)})`, d.montoHorasExtra, '+ ')}
+      ${fila(`Días de viaje (${d.diasViaje} × ${fmt(VALOR_VIAJE)})`, d.montoViaje, '+ ')}
+      ${d.adelantos.length ? d.adelantos.map(a=>fila(`Adelanto del ${fmtFecha(a.fechaPago||a.fechaFactura)}${a.nota?' — '+a.nota:''}`, a.monto, '− ')).join('') : fila('Adelantos', 0, '− ')}
+      ${d.topeAdelantos?`<tr><td colspan="2" style="color:#6B7573;font-size:11.5px;">Los adelantos superan lo que cobra en la quincena: queda en $0.</td></tr>`:''}
+      <tr style="font-weight:700;"><td>Total ${q===1?'1ª':'2ª'} quincena</td><td class="num">${fmt(d.total)}</td></tr>`;
+  };
+  const {q1, q2} = sueldoPorQuincena(t, mes);
+  return `<table class="desglose-sueldo"><tbody>${bloque(1)}${bloque(2)}
+    <tr class="subtotal-row" style="font-size:14px;"><td>Total del mes</td><td class="num">${fmt(q1+q2)}</td></tr></tbody></table>`;
+}
+function openModalDetalleSueldo(trabajadorId, mes){
+  const t = getTrabajador(trabajadorId); if(!t) return;
+  const adelantosMes = state.pagos.filter(p=>esAdelanto(p) && p.trabajadorId===trabajadorId && p.descuentaPeriodo===mes);
+  modalEl.innerHTML = `<h3>Sueldo — ${t.nombre}</h3>
+    <div class="modal-sub">${mesLabel(mes)} · ${t.puesto} · Sueldo mensual ${fmt(t.sueldoMensual||0)}</div>
+    <div class="card card-table">${desgloseSueldoHtml(t, mes)}</div>
+    <div class="section-title" style="margin:16px 0 8px;"><h2 style="font-size:13.5px;">Adelantos que se descuentan este mes</h2><span class="link-btn" onclick="openModalAdelanto('${t.id}','${mes}')">+ Adelanto</span></div>
+    <div class="card card-table"><table><thead><tr><th>Fecha</th><th>Quincena</th><th>Medio</th><th class="num">Monto</th><th></th></tr></thead><tbody>
+      ${adelantosMes.length ? adelantosMes.map(a=>`<tr><td class="mono">${fmtFecha(a.fechaPago||a.fechaFactura)}</td><td>${Number(a.descuentaQuincena)===1?'1ª':'2ª'}</td><td>${a.formaPago||'—'}</td><td class="num">${fmt(a.monto)}</td><td><span class="link-btn danger" onclick="eliminarAdelanto('${a.id}','${t.id}','${mes}')">Eliminar</span></td></tr>`).join('') : '<tr class="empty-row"><td colspan="5">Sin adelantos este mes</td></tr>'}
+    </tbody></table></div>
+    <div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal()">Cerrar</button><button class="btn btn-primary" onclick="imprimirDetalleSueldo('${t.id}','${mes}')">⬇ Descargar PDF</button></div>`;
+  overlay.classList.add('open');
+}
+function imprimirDetalleSueldo(trabajadorId, mes){
+  const t = getTrabajador(trabajadorId); if(!t) return;
+  const header = printHeaderHtml('DETALLE DE SUELDO', t.nombre, [mesLabel(mes), `${t.puesto} · Sueldo mensual ${fmt(t.sueldoMensual||0)}`]);
+  abrirVentanaImpresion(`Sueldo ${t.nombre} — ${mesLabel(mes)}`, `${header}
+    <style>.desglose-sueldo .subtotal-row td{background:#F1F4F3;font-weight:700;}</style>
+    ${desgloseSueldoHtml(t, mes)}
+    <div class="firmas"><div class="firma"><div class="linea">Firma del trabajador<br>${t.nombre}</div></div></div>`);
+}
+// Adelanto: genera un gasto fijo (Sueldo) ya pagado en la fecha elegida —
+// sale de caja (o del fondo FIMA elegido) como cualquier pago — y queda
+// marcado para descontarse de la quincena elegida.
+function openModalAdelanto(trabajadorId, mes){
+  const hoy = today();
+  const mesDefault = mes || hoy.slice(0,7);
+  const qDefault = mesDefault===hoy.slice(0,7) ? quincenaDeFecha(hoy) : 1;
+  const trabajadoresOrd = [...state.trabajadores].sort((a,b)=>a.nombre.localeCompare(b.nombre));
+  modalEl.innerHTML = `<h3>Registrar adelanto</h3><div class="modal-sub">Sale de caja el día que se da, y se descuenta del sueldo de la quincena que elijas</div>
+    <div class="form-grid">
+      <div class="field span2"><label>Trabajador</label><select id="f-adel-trab">${trabajadoresOrd.map(t=>`<option value="${t.id}" ${t.id===trabajadorId?'selected':''}>${t.nombre}</option>`).join('')||'<option disabled>No hay personal cargado</option>'}</select></div>
+      <div class="field"><label>Monto ($)</label><input id="f-adel-monto" class="mono-in" type="number" step="0.01" min="0" value="0"></div>
+      <div class="field"><label>Fecha en que se da</label><input id="f-adel-fecha" type="date" value="${hoy}"></div>
+      <div class="field"><label>Se descuenta del mes</label><input id="f-adel-mes" type="month" value="${mesDefault}"></div>
+      <div class="field"><label>Quincena</label><select id="f-adel-q"><option value="1" ${qDefault===1?'selected':''}>1ª quincena</option><option value="2" ${qDefault===2?'selected':''}>2ª quincena</option></select></div>
+      <div class="field"><label>Medio de pago</label><select id="f-forma" onchange="onMedioPagoChange()"><option>Efectivo</option><option>Transferencia</option><option>FIMA</option></select></div>
+      <div class="field hidden" id="wrap-fondo"><label>Fondo que paga</label><select id="f-fondo">${fondoOptionsHTML('jornales')}</select></div>
+      <div class="field span2"><label>Nota (opcional)</label><input id="f-adel-nota" placeholder="Ej: pedido por gastos médicos"></div>
+    </div>
+    <div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" onclick="submitAdelanto()">Registrar adelanto</button></div>`;
+  overlay.classList.add('open');
+  onMedioPagoChange();
+}
+function submitAdelanto(){
+  const t = getTrabajador(document.getElementById('f-adel-trab').value);
+  if(!t){ alert('Elegí un trabajador.'); return; }
+  const monto = r2(+document.getElementById('f-adel-monto').value||0);
+  if(monto<=0){ alert('Ingresá el monto del adelanto.'); return; }
+  const fecha = document.getElementById('f-adel-fecha').value || today();
+  const mes = document.getElementById('f-adel-mes').value || fecha.slice(0,7);
+  const q = +document.getElementById('f-adel-q').value===2 ? 2 : 1;
+  const formaPago = document.getElementById('f-forma').value;
+  const fondo = formaPago==='FIMA' ? document.getElementById('f-fondo').value : null;
+  const nota = document.getElementById('f-adel-nota').value.trim();
+  const p = {id:newId('p'), tipo:'fijo', obraId:null, categoria:'sueldo', concepto:`Adelanto de sueldo — ${t.nombre}${nota?' ('+nota+')':''}`,
+    cantidad:1, unitario:monto, ivaAplica:false, monto, proveedorId:null, numeroFactura:null, numeroOC:null, fechaFactura:fecha,
+    formaPago, fechaPago:fecha, origenFondo:fondo, pagosRealizados:[],
+    trabajadorId:t.id, descuentaPeriodo:mes, descuentaQuincena:q, nota};
+  state.pagos.push(p);
+  aplicarCompromisoDePago(p, fecha, formaPago, fondo);
+  closeModal(); renderAll();
+}
+function eliminarAdelanto(pagoId, trabajadorId, mes){
+  const antes = state.pagos.length;
+  eliminarGasto(pagoId); // pide confirmación y le devuelve la plata a la caja/fondo
+  if(state.pagos.length!==antes) openModalDetalleSueldo(trabajadorId, mes);
 }
 function sueldoACobrar(trabajador, mes){
   const {q1, q2} = sueldoPorQuincena(trabajador, mes);
@@ -2580,8 +2717,8 @@ function renderJornalesHistorial(){
   ids.sort((a,b)=> getTrabajador(a).nombre.localeCompare(getTrabajador(b).nombre));
 
   const body = document.getElementById('jornales-historial-body');
-  if(!ids.length){ body.innerHTML = `<tr class="empty-row"><td colspan="10">No hay personal cargado</td></tr>`; return; }
-  let granT=0, granA=0, granV=0, granQ1=0, granQ2=0;
+  if(!ids.length){ body.innerHTML = `<tr class="empty-row"><td colspan="13">No hay personal cargado</td></tr>`; return; }
+  let granT=0, granA=0, granV=0, granAd=0, granQ1=0, granQ2=0;
   body.innerHTML = ids.map(id=>{
     const t = getTrabajador(id);
     const {trabajado, ausente} = diasDelMes(id, mes);
@@ -2589,9 +2726,10 @@ function renderJornalesHistorial(){
     const horasExtra = horasExtraDelMes(id, mes);
     const viaje = viajeExtraDelMes(id, mes);
     const {q1, q2} = sueldoPorQuincena(t, mes);
-    granT+=trabajado; granA+=ausente; granV+=viaje; granQ1+=q1; granQ2+=q2;
-    return `<tr><td style="font-weight:600;">${t.nombre}</td><td>${t.puesto}</td><td class="num">${fmt(t.sueldoMensual||0)}</td><td class="num">${fmt(diario)}</td><td class="num">${trabajado}</td><td class="num">${ausente}</td><td class="num">${horasExtra}</td><td class="num">${fmt(viaje)}</td><td class="num">${fmt(q1)}</td><td class="num">${fmt(q2)}</td><td class="num">${fmt(q1+q2)}</td><td><span class="link-btn" onclick="openModalObrasTrabajador('${id}','${mes}')">Ver obras</span> · <span class="link-btn" onclick="openModalTrabajador('${id}')">Editar</span></td></tr>`;
-  }).join('') + `<tr class="subtotal-row"><td colspan="4">Total general</td><td class="num">${granT}</td><td class="num">${granA}</td><td></td><td class="num">${fmt(granV)}</td><td class="num">${fmt(granQ1)}</td><td class="num">${fmt(granQ2)}</td><td class="num">${fmt(granQ1+granQ2)}</td><td></td></tr>`;
+    const adelantos = adelantosDeQuincena(id, mes, 1).concat(adelantosDeQuincena(id, mes, 2)).reduce((a,p)=>a+p.monto,0);
+    granT+=trabajado; granA+=ausente; granV+=viaje; granAd+=adelantos; granQ1+=q1; granQ2+=q2;
+    return `<tr><td style="font-weight:600;">${t.nombre}</td><td>${t.puesto}</td><td class="num">${fmt(t.sueldoMensual||0)}</td><td class="num">${fmt(diario)}</td><td class="num">${trabajado}</td><td class="num">${ausente}</td><td class="num">${horasExtra}</td><td class="num">${fmt(viaje)}</td><td class="num">${adelantos?'− '+fmt(adelantos):fmt(0)}</td><td class="num">${fmt(q1)}</td><td class="num">${fmt(q2)}</td><td class="num">${fmt(q1+q2)}</td><td><span class="link-btn" onclick="openModalDetalleSueldo('${id}','${mes}')">Detalle</span> · <span class="link-btn" onclick="openModalObrasTrabajador('${id}','${mes}')">Ver obras</span> · <span class="link-btn" onclick="openModalTrabajador('${id}')">Editar</span></td></tr>`;
+  }).join('') + `<tr class="subtotal-row"><td colspan="4">Total general</td><td class="num">${granT}</td><td class="num">${granA}</td><td></td><td class="num">${fmt(granV)}</td><td class="num">${granAd?'− '+fmt(granAd):fmt(0)}</td><td class="num">${fmt(granQ1)}</td><td class="num">${fmt(granQ2)}</td><td class="num">${fmt(granQ1+granQ2)}</td><td></td></tr>`;
 }
 function diasPorObra(trabajadorId, mes){
   const porObra = {};
@@ -3096,8 +3234,8 @@ function openModalStockItem(id){
   const existing = id ? getStockItem(id) : null;
   modalEl.innerHTML = `<h3>${existing?'Editar material':'Agregar material a stock'}</h3><div class="modal-sub">${existing?'Corregí nombre, cantidad, categoría o cualquier otro dato':'Carga inicial del catálogo'}</div>
     <div class="form-grid">
-      <div class="field span2"><label>Material</label><input id="f-nombre" placeholder="Ej: Lana de vidrio 50mm" value="${existing?existing.nombre:''}"></div>
-      <div class="field"><label>Categoría</label><input id="f-categoria" placeholder="Ej: Lanas, Placas, Accesorios…" value="${existing?(existing.categoria||''):''}"></div>
+      <div class="field span2"><label>Material</label><input id="f-nombre" placeholder="Ej: Lana de vidrio 50mm" value="${existing?escAttr(existing.nombre):''}" ${sugerenciasHTML('stock-nombres', productosConocidos())} oninput="comboAbrir(this)"></div>
+      <div class="field"><label>Categoría</label><input id="f-categoria" placeholder="Ej: Lanas, Placas, Accesorios…" value="${existing?escAttr(existing.categoria||''):''}" ${sugerenciasHTML('stock-categorias', [...new Set(state.stock.map(x=>(x.categoria||'').trim()).filter(Boolean))].sort())} oninput="comboAbrir(this)"></div>
       <div class="field"><label>Unidad</label><input id="f-unidad" placeholder="m2, rollo, caja…" value="${existing?existing.unidad:''}"></div>
       <div class="field"><label>${existing?'Stock actual':'Cantidad inicial'}</label><input id="f-cantidad" class="mono-in" type="number" step="0.01" value="${existing?existing.cantidad:0}"></div>
       <div class="field"><label>Stock mínimo</label><input id="f-stockminimo" class="mono-in" type="number" step="0.01" value="${existing?(existing.stockMinimo||0):0}"></div>
@@ -3118,10 +3256,9 @@ function submitStockItem(id){
   closeModal(); renderAll();
 }
 function openModalStockCompra(){
-  const opciones = state.stock.map(s=>`<option value="${s.id}">${s.nombre} (${s.unidad})</option>`).join('');
   modalEl.innerHTML = `<h3>Registrar compra de stock</h3><div class="modal-sub">Repone cantidad y genera un pago</div>
     <div class="form-grid">
-      <div class="field span2"><label>Material</label><select id="f-material">${opciones||'<option disabled>Agregá un material primero</option>'}</select></div>
+      <div class="field span2"><label>Material</label>${comboHTML('f-material', opcionesStock(false), null, {placeholder: state.stock.length?'Tipeá para buscar el material…':'Agregá un material primero'})}</div>
       <div class="field"><label>Proveedor</label><select id="f-proveedor" onchange="onProveedorSelectChange(this)">${proveedorOptionsHTML()}</select></div>
       <div class="field"><label>Nº remito / factura</label><input id="f-factura" placeholder="Ej: 0001-00004521"></div>
       <div class="field span2 hidden" id="wrap-proveedor-nuevo"><label>Nombre del nuevo proveedor</label><input id="f-proveedor-nuevo" placeholder="Nombre"></div>
@@ -3140,7 +3277,7 @@ function openModalStockCompra(){
 }
 function submitStockCompra(){
   const stockId = document.getElementById('f-material').value;
-  const item = getStockItem(stockId); if(!item) return;
+  const item = getStockItem(stockId); if(!item){ alert('Elegí el material.'); return; }
   const cantidad = +document.getElementById('f-cantidad').value||0;
   const costoUnitario = +document.getElementById('f-costo').value||0;
   const ivaAplica = document.getElementById('f-iva').checked;
@@ -3232,9 +3369,10 @@ function submitConfigEmpresa(){
   e.localidad = document.getElementById('f-emp-localidad').value.trim();
   e.condicionesGenerales = document.getElementById('f-emp-condiciones').value;
   const logoFile = document.getElementById('f-emp-logo').files[0];
+  marcarEditadoDatosEmpresa();
   if(logoFile){
     const reader = new FileReader();
-    reader.onload = (ev)=>{ e.logoDataUrl = ev.target.result; closeModal(); renderAll(); };
+    reader.onload = (ev)=>{ e.logoDataUrl = ev.target.result; marcarEditadoDatosEmpresa(); closeModal(); renderAll(); };
     reader.readAsDataURL(logoFile);
   } else {
     closeModal(); renderAll();
@@ -3259,7 +3397,9 @@ function printCss(){
     .totales{display:flex;justify-content:flex-end;margin:10px 0;} .totales table{width:280px;margin:0;}
     .totales td:first-child{color:#6B7573;} .totales tr:last-child td{font-weight:700;font-size:14px;}
     .cond ul{margin:4px 0 0;padding-left:18px;} .cond li{margin-bottom:3px;}
-    .firmas{display:flex;gap:24px;margin-top:36px;} .firmas div{flex:1;border-top:1px solid #333;padding-top:6px;font-size:11.5px;color:#6B7573;text-align:center;}
+    .firmas{display:flex;gap:40px;margin-top:36px;} .firmas .firma{flex:1;display:flex;flex-direction:column;justify-content:flex-end;}
+    .firmas .firma img{display:block;max-height:72px;max-width:100%;margin:0 auto -6px;}
+    .firmas .linea{border-top:1px solid #333;padding-top:6px;font-size:11.5px;color:#6B7573;text-align:center;}
     .foot{margin-top:24px;font-size:10.5px;color:#9AA3A1;text-align:center;}
     @media print{ body{padding:0;} }
   `;
@@ -3309,20 +3449,8 @@ function imprimirOrden(id){
   ].filter(Boolean));
   abrirVentanaImpresion(`${o.numero} — Orden de compra`, `
     ${header}
-    <div class="box">
-      <h4>Proveedor</h4>
-      <div><b>${prov?prov.nombre:'—'}</b></div>
-      ${prov?.cuit?`<div>CUIT: ${prov.cuit}</div>`:''}
-      ${prov?.telefono?`<div>Tel: ${prov.telefono}</div>`:''}
-      ${prov?.email?`<div>${prov.email}</div>`:''}
-    </div>
-
-    <table>
-      <thead><tr><th>Producto</th><th class="num">Cantidad</th><th class="num">Precio unitario${o.moneda==='usd'?' (US$)':''}</th><th class="num">Subtotal${o.moneda==='usd'?' (US$)':''}</th>${obrasCodes.length>1?'<th>Obra</th>':''}</tr></thead>
-      <tbody>
-        ${o.items.map(it=>`<tr><td>${it.producto}</td><td class="num">${it.cantidad}</td><td class="num">${o.moneda==='usd'?fmtUsdDec(it.unitario):fmtDec(it.unitario)}</td><td class="num">${o.moneda==='usd'?fmtUsdDec(it.cantidad*it.unitario):fmtDec(it.cantidad*it.unitario)}</td>${obrasCodes.length>1?`<td>${getObra(it.obraId)?.code||'—'}</td>`:''}</tr>`).join('')}
-      </tbody>
-    </table>
+    ${ocProveedorBoxHtml(prov)}
+    ${ocItemsTablaHtml(o, obrasCodes)}
     ${o.notaMaterial?`<div class="box"><h4>Nota sobre los materiales</h4><div>${o.notaMaterial}</div></div>`:''}
 
     <div class="totales"><table>
@@ -3337,11 +3465,146 @@ function imprimirOrden(id){
     ${o.notaGeneral?`<div class="box"><h4>Nota general</h4><div>${o.notaGeneral}</div></div>`:''}
     ${condicionesLis?`<div class="box cond"><h4>Condiciones generales</h4><ul>${condicionesLis}</ul></div>`:''}
 
-    <div class="firmas">
-      <div>Solicitado por<br>${o.solicitante}</div>
-      <div>Aprobación comercial</div>
-      <div>Recibí conforme</div>
-    </div>`);
+    ${firmasHtml(o, o.estado==='autorizada'||o.estado==='comprada')}`);
+}
+function ocProveedorBoxHtml(prov){
+  return `<div class="box">
+      <h4>Proveedor</h4>
+      <div><b>${prov?prov.nombre:'—'}</b></div>
+      ${prov?.cuit?`<div>CUIT: ${prov.cuit}</div>`:''}
+      ${prov?.telefono?`<div>Tel: ${prov.telefono}</div>`:''}
+      ${prov?.email?`<div>${prov.email}</div>`:''}
+    </div>`;
+}
+function ocItemsTablaHtml(o, obrasCodes){
+  return `<table>
+      <thead><tr><th>Producto</th><th class="num">Cantidad</th><th class="num">Precio unitario${o.moneda==='usd'?' (US$)':''}</th><th class="num">Subtotal${o.moneda==='usd'?' (US$)':''}</th>${obrasCodes.length>1?'<th>Obra</th>':''}</tr></thead>
+      <tbody>
+        ${o.items.map(it=>`<tr><td>${it.producto}</td><td class="num">${it.cantidad}</td><td class="num">${o.moneda==='usd'?fmtUsdDec(it.unitario):fmtDec(it.unitario)}</td><td class="num">${o.moneda==='usd'?fmtUsdDec(it.cantidad*it.unitario):fmtDec(it.cantidad*it.unitario)}</td>${obrasCodes.length>1?`<td>${getObra(it.obraId)?.code||'—'}</td>`:''}</tr>`).join('')}
+      </tbody>
+    </table>`;
+}
+// Firmas al pie de la OC y de la orden de pago: "Solicitado por" y
+// "Aprobación comercial" (se sacó "Recibí conforme"). Si se cargaron las
+// firmas digitales (ver openModalFirmas), salen como imagen sobre la
+// línea, como si el papel estuviera firmado y escaneado. La de aprobación
+// solo se estampa si la orden ya está autorizada — una OC pendiente
+// impresa no debe parecer aprobada.
+function firmasHtml(o, conAprobacion){
+  const e = state.datosEmpresa;
+  const bloque = (img, titulo, nombre)=> `<div class="firma">${img?`<img src="${img}" alt="Firma">`:''}<div class="linea">${titulo}${nombre?`<br>${nombre}`:''}</div></div>`;
+  return `<div class="firmas">
+      ${bloque(e.firmaSolicitaImg, 'Solicitado por', o.solicitante || e.firmaSolicitaNombre)}
+      ${bloque(conAprobacion ? e.firmaApruebaImg : '', 'Aprobación comercial', conAprobacion ? e.firmaApruebaNombre : '')}
+    </div>`;
+}
+// Pagos generados al marcar la OC como comprada (uno solo, o uno por obra
+// si se repartió entre varias).
+function ocPagosVinculados(o){
+  return [o.pagoId, ...(o.pagoIds||[])].filter(Boolean).map(pid=>state.pagos.find(p=>p.id===pid)).filter(Boolean);
+}
+function ocTienePagoReal(o){ return o.estado==='comprada' && ocPagosVinculados(o).some(p=>pagoMontoPagado(p)>0); }
+// Orden de pago: mismo formato que la OC, con el detalle de lo que ya se
+// pagó (fecha, medio, fondo, monto) — se puede imprimir una vez que la OC
+// comprada tiene algún pago real registrado.
+function imprimirOrdenPago(id){
+  const o = getOrden(id); if(!o) return;
+  const pagos = ocPagosVinculados(o);
+  const realizados = [];
+  pagos.forEach(p=>(p.pagosRealizados||[]).filter(pr=>pr.aplicado!==false).forEach(pr=>realizados.push({...pr, obraId:p.obraId})));
+  realizados.sort((a,b)=>(a.fecha||'').localeCompare(b.fecha||''));
+  if(!realizados.length){ alert('Esta orden todavía no tiene ningún pago registrado.'); return; }
+  const prov = getProveedor(o.proveedorId);
+  const obrasCodes = o.tipo==='obra' ? ocObraIds(o).map(oid=>getObra(oid)?.code).filter(Boolean) : [];
+  const total = pagos.reduce((a,p)=>a+p.monto,0);
+  const pagado = pagos.reduce((a,p)=>a+pagoMontoPagado(p),0);
+  const saldo = Math.max(0, total-pagado);
+  const header = printHeaderHtml('ORDEN DE PAGO', 'OP-'+String(o.numero).replace(/^OC-/,''), [
+    `Fecha: ${fmtFecha(realizados[realizados.length-1].fecha)}`, `Orden de compra: <b>${o.numero}</b>`,
+    obrasCodes.length?`Obra${obrasCodes.length>1?'s':''} Nº: <b>${obrasCodes.join(', ')}</b>`:null,
+  ].filter(Boolean));
+  abrirVentanaImpresion(`OP-${String(o.numero).replace(/^OC-/,'')} — Orden de pago`, `
+    ${header}
+    ${ocProveedorBoxHtml(prov)}
+    ${ocItemsTablaHtml(o, obrasCodes)}
+    <h4 style="margin:18px 0 0;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:#6B7573;">Pagos realizados</h4>
+    <table>
+      <thead><tr><th>Fecha</th>${obrasCodes.length>1?'<th>Obra</th>':''}<th>Medio de pago</th><th class="num">Monto</th></tr></thead>
+      <tbody>${realizados.map(pr=>`<tr><td>${fmtFecha(pr.fecha)}</td>${obrasCodes.length>1?`<td>${getObra(pr.obraId)?.code||'—'}</td>`:''}<td>${pr.formaPago||'—'}${pr.fondo?` (FIMA — ${fondoLabel[pr.fondo]})`:''}</td><td class="num">${fmtDec(pr.monto)}</td></tr>`).join('')}</tbody>
+    </table>
+    <div class="totales"><table>
+      <tr><td>Total de la orden</td><td class="num">${fmtDec(total)}</td></tr>
+      ${saldo>MEDIO_CENTAVO?`<tr><td>Saldo pendiente</td><td class="num">${fmtDec(saldo)}</td></tr>`:''}
+      <tr><td>Total pagado</td><td class="num">${fmtDec(pagado)}</td></tr>
+    </table></div>
+    ${firmasHtml(o, true)}`);
+}
+
+/* ======================= FIRMAS DIGITALES ======================= */
+// Son siempre las mismas dos personas: se firma una sola vez (con el dedo
+// en el celular, o con el mouse) y la imagen queda guardada en los datos
+// de la empresa — sale en todas las OC y órdenes de pago.
+const FIRMANTES = [{clave:'Solicita', titulo:'Solicitado por'}, {clave:'Aprueba', titulo:'Aprobación comercial'}];
+const firmaPads = {};
+function openModalFirmas(){
+  const e = state.datosEmpresa;
+  modalEl.innerHTML = `<h3>Firmas</h3><div class="modal-sub">Se firma una sola vez (con el dedo en el celular o con el mouse) y la firma sale impresa al pie de todas las órdenes de compra y órdenes de pago.</div>
+    ${FIRMANTES.map(f=>`<div class="field" style="margin-bottom:16px;"><label>${f.titulo}</label>
+      <input id="f-firma-nombre-${f.clave}" placeholder="Nombre y apellido" value="${e['firma'+f.clave+'Nombre']||''}" style="margin-bottom:8px;">
+      <canvas id="firma-pad-${f.clave}" class="firma-pad" width="500" height="170"></canvas>
+      <div style="display:flex;justify-content:space-between;font-size:11.5px;color:var(--muted);margin-top:4px;"><span>Firmá dentro del recuadro</span><span class="link-btn danger" onclick="borrarFirmaPad('${f.clave}')">Borrar firma</span></div>
+    </div>`).join('')}
+    <div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" onclick="submitFirmas()">Guardar firmas</button></div>`;
+  overlay.classList.add('open');
+  FIRMANTES.forEach(f=>iniciarFirmaPad(f.clave, e['firma'+f.clave+'Img']));
+}
+function iniciarFirmaPad(clave, imgExistente){
+  const canvas = document.getElementById('firma-pad-'+clave);
+  const ctx = canvas.getContext('2d');
+  const pad = firmaPads[clave] = {canvas, ctx, vacio:true, modificada:false, dibujando:false};
+  ctx.lineWidth = 3; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = '#14181C';
+  if(imgExistente){
+    const img = new Image();
+    img.onload = ()=>{ ctx.drawImage(img, 0, 0, canvas.width, canvas.height); pad.vacio = false; };
+    img.src = imgExistente;
+  }
+  // El canvas se muestra al ancho del modal, pero dibuja siempre en su
+  // resolución fija (500x170) — se escalan las coordenadas del dedo/mouse.
+  const punto = (ev)=>{ const r = canvas.getBoundingClientRect(); return [(ev.clientX-r.left)*canvas.width/r.width, (ev.clientY-r.top)*canvas.height/r.height]; };
+  canvas.addEventListener('pointerdown', ev=>{
+    ev.preventDefault(); canvas.setPointerCapture(ev.pointerId);
+    pad.dibujando = true; pad.vacio = false; pad.modificada = true;
+    const [x,y] = punto(ev); ctx.beginPath(); ctx.moveTo(x,y); ctx.lineTo(x+0.1,y+0.1); ctx.stroke();
+  });
+  canvas.addEventListener('pointermove', ev=>{ if(!pad.dibujando) return; const [x,y] = punto(ev); ctx.lineTo(x,y); ctx.stroke(); });
+  const fin = ()=>{ pad.dibujando = false; };
+  canvas.addEventListener('pointerup', fin); canvas.addEventListener('pointercancel', fin);
+}
+function borrarFirmaPad(clave){
+  const pad = firmaPads[clave]; if(!pad) return;
+  pad.ctx.clearRect(0, 0, pad.canvas.width, pad.canvas.height);
+  pad.vacio = true; pad.modificada = true;
+}
+// PNG con fondo transparente (pesa pocos KB). Una celda de Google Sheets
+// admite hasta 50.000 caracteres: si una firma muy cargada se pasara, se
+// guarda como JPEG sobre fondo blanco, que pesa menos.
+function exportarFirmaPad(pad){
+  if(pad.vacio) return '';
+  const png = pad.canvas.toDataURL('image/png');
+  if(png.length < 45000) return png;
+  const c = document.createElement('canvas'); c.width = pad.canvas.width; c.height = pad.canvas.height;
+  const cx = c.getContext('2d'); cx.fillStyle = '#fff'; cx.fillRect(0,0,c.width,c.height); cx.drawImage(pad.canvas,0,0);
+  return c.toDataURL('image/jpeg', 0.6);
+}
+function submitFirmas(){
+  const e = state.datosEmpresa;
+  FIRMANTES.forEach(f=>{
+    e['firma'+f.clave+'Nombre'] = document.getElementById('f-firma-nombre-'+f.clave).value.trim();
+    const pad = firmaPads[f.clave];
+    if(pad && pad.modificada) e['firma'+f.clave+'Img'] = exportarFirmaPad(pad);
+  });
+  marcarEditadoDatosEmpresa();
+  closeModal(); renderAll();
 }
 function ocProductosTxt(o){ return (o.items||[]).map(it=>it.producto).join(', ') || 'Sin ítems'; }
 function ordenDestinoTxt(o){
@@ -3364,6 +3627,7 @@ function renderOrdenes(){
     if(o.estado==='rechazada') acciones = o.comentarioDueno ? `<span class="hint">Motivo: ${o.comentarioDueno}</span>` : '';
     if(acciones) acciones += ' · ';
     acciones += `<span class="link-btn" onclick="imprimirOrden('${o.id}')" title="Abrir para imprimir o guardar como PDF">⬇ Descargar OC</span>`;
+    if(ocTienePagoReal(o)) acciones += ` · <span class="link-btn" onclick="imprimirOrdenPago('${o.id}')" title="Abrir para imprimir o guardar como PDF">⬇ Orden de pago</span>`;
     return `<tr><td class="mono">${o.numero}</td><td class="mono">${fmtFecha(o.fecha)}</td><td>${o.solicitante}</td><td>${ordenDestinoTxt(o)}</td><td>${prov?prov.nombre:'—'}</td><td class="num">${fmtDec(o.monto)}</td><td><span class="estado-dot ${estadoDot}"></span>${estadoTxt}</td><td>${acciones}</td></tr>`;
   }).join('') : `<tr class="empty-row"><td colspan="8">No hay órdenes de compra en este filtro</td></tr>`;
 }
@@ -3376,7 +3640,7 @@ function openModalOrdenCompra(id){
   // pagos ya generados. Si es de una sola obra, se puede seguir moviendo a
   // otra (como siempre).
   const obrasBloqueadas = existing && existing.estado==='comprada' && obraIdsSel.length>1;
-  const obraChecksHtml = state.obras.map(o=>`<label style="display:inline-flex;align-items:center;gap:5px;font-size:12.5px;margin:3px 12px 3px 0;"><input type="checkbox" class="oc-obra-check" value="${o.id}" ${obraIdsSel.includes(o.id)?'checked':''} ${obrasBloqueadas?'disabled':''}> ${o.code}</label>`).join('');
+  const obraChecksHtml = state.obras.map(o=>`<label data-buscar="${escAttr(o.code+' '+(o.cliente||'')+' '+(o.encargado||''))}" style="display:inline-flex;align-items:center;gap:5px;font-size:12.5px;margin:3px 12px 3px 0;"><input type="checkbox" class="oc-obra-check" value="${o.id}" ${obraIdsSel.includes(o.id)?'checked':''} ${obrasBloqueadas?'disabled':''}> ${o.code}</label>`).join('');
   const tipo = existing?existing.tipo:'obra';
   modalEl.innerHTML = `<h3>${existing?'Editar orden de compra':'Nueva orden de compra'}</h3><div class="modal-sub">${existing?existing.numero:'Se genera un número al guardar'}</div>
     <div class="form-grid">
@@ -3385,7 +3649,7 @@ function openModalOrdenCompra(id){
         <option value="fijo" ${tipo==='fijo'?'selected':''}>Gasto fijo</option>
         <option value="stock" ${tipo==='stock'?'selected':''}>Stock</option>
       </select></div>
-      <div class="field span2" id="wrap-oc-obra"><label>Obra(s)${obrasBloqueadas?' — ya comprada y repartida, no se puede cambiar':''}</label><div>${obraChecksHtml}</div></div>
+      <div class="field span2" id="wrap-oc-obra"><label>Obra(s)${obrasBloqueadas?' — ya comprada y repartida, no se puede cambiar':''}</label>${state.obras.length>6&&!obrasBloqueadas?`<input placeholder="Buscar obra (código o cliente)…" oninput="filtrarObrasOc(this.value)" style="margin-bottom:6px;">`:''}<div>${obraChecksHtml}</div></div>
       <div class="field" id="wrap-oc-cat"><label>Categoría</label><select id="f-cat">${catOptionsForTipo(tipo==='fijo'?'fijo':'obra', existing?existing.categoria:null)}</select></div>
       <div class="field span2"><label>Proveedor</label><select id="f-proveedor" onchange="onProveedorSelectChange(this)">${proveedorOptionsHTML(existing?existing.proveedorId:null)}</select><div style="margin-top:4px;font-size:11.5px;color:var(--muted);">Para cargar o corregir CUIT/teléfono/mail de un proveedor ya existente, andá a Pagos → Proveedores → Editar datos.</div></div>
       <div class="field hidden span2" id="wrap-proveedor-nuevo"><label>Nombre del nuevo proveedor</label><input id="f-proveedor-nuevo" placeholder="Nombre"></div>
@@ -3459,9 +3723,10 @@ function renderOcItemsTable(){
   const esUsd = ocEsUsd();
   document.getElementById('oc-th-unitario').textContent = esUsd ? 'Precio unitario (US$)' : 'Precio unitario';
   document.getElementById('oc-th-subtotal').textContent = esUsd ? 'Subtotal (US$)' : 'Subtotal';
+  const attrsProducto = sugerenciasHTML('oc-productos', productosConocidos());
   document.getElementById('oc-items-body').innerHTML = ocItemsDraft.map((it,i)=>`
     <tr>
-      <td><input class="cell-input" placeholder="Ej: Fijaciones y flejes" value="${it.producto}" oninput="updateOcItem(${i},'producto',this.value)"></td>
+      <td><input class="cell-input" placeholder="Tipeá para buscar o escribí uno nuevo" value="${escAttr(it.producto)}" ${attrsProducto} oninput="updateOcItem(${i},'producto',this.value);comboAbrir(this)"></td>
       <td><input class="cell-input mono-in" type="number" step="0.01" value="${it.cantidad}" oninput="updateOcItem(${i},'cantidad',this.value)"></td>
       <td><input class="cell-input mono-in" type="number" step="0.01" value="${it.unitario}" oninput="updateOcItem(${i},'unitario',this.value)"></td>
       <td class="num" id="oc-item-total-${i}">${esUsd?fmtUsdDec(it.cantidad*it.unitario):fmtDec(it.cantidad*it.unitario)}</td>
@@ -3474,6 +3739,14 @@ function updateOcItem(i,field,value){
   const cell = document.getElementById('oc-item-total-'+i);
   if(cell) cell.textContent = ocEsUsd() ? fmtUsdDec(ocItemsDraft[i].cantidad*ocItemsDraft[i].unitario) : fmtDec(ocItemsDraft[i].cantidad*ocItemsDraft[i].unitario);
   renderOcPreview();
+}
+// Sugerencias para el producto de un ítem de OC: los materiales de stock
+// más los productos ya usados en otras órdenes.
+function productosConocidos(){
+  const vistos = new Map();
+  state.stock.forEach(s=>{ if(s.nombre) vistos.set(normTexto(s.nombre), s.nombre); });
+  state.ordenesCompra.forEach(o=>(o.items||[]).forEach(it=>{ const t = String(it.producto||'').trim(); if(t && !vistos.has(normTexto(t))) vistos.set(normTexto(t), t); }));
+  return [...vistos.values()].sort((a,b)=>a.localeCompare(b));
 }
 function addOcItem(){ ocItemsDraft.push({producto:'',cantidad:1,unitario:0}); renderOcItemsTable(); }
 function removeOcItem(i){ ocItemsDraft.splice(i,1); renderOcItemsTable(); }
@@ -3692,14 +3965,15 @@ function pagosFiltrados(){
   return [...rows].sort((a,b)=>(b.fechaPago||'').localeCompare(a.fechaPago||''));
 }
 function renderPagos(){
-  document.getElementById('pagos-table-egresos').classList.toggle('hidden', state.pagosFilter==='fima'||state.pagosFilter==='proveedores');
+  document.getElementById('pagos-table-egresos').classList.toggle('hidden', state.pagosFilter==='fima'||state.pagosFilter==='proveedores'||state.pagosFilter==='fijo');
+  document.getElementById('pagos-costos-fijos').classList.toggle('hidden', state.pagosFilter!=='fijo');
   document.getElementById('pagos-table-fima').classList.toggle('hidden', state.pagosFilter!=='fima');
   document.getElementById('pagos-table-proveedores').classList.toggle('hidden', !(state.pagosFilter==='proveedores' && !state.selectedProveedorId));
   document.getElementById('pagos-table-proveedor-detalle').classList.toggle('hidden', !(state.pagosFilter==='proveedores' && state.selectedProveedorId));
-  document.getElementById('btn-pdf-pagos').classList.toggle('hidden', state.pagosFilter==='fima'||state.pagosFilter==='proveedores');
+  document.getElementById('btn-pdf-pagos').classList.toggle('hidden', state.pagosFilter==='fima'||state.pagosFilter==='proveedores'||state.pagosFilter==='fijo');
 
   const catFilterEl = document.getElementById('pagos-cat-filter');
-  const mostrarCatFilter = !['stock','fima','proveedores'].includes(state.pagosFilter);
+  const mostrarCatFilter = !['stock','fima','proveedores','fijo'].includes(state.pagosFilter);
   catFilterEl.classList.toggle('hidden', !mostrarCatFilter);
   if(mostrarCatFilter){
     const opts = categoriaOptionsForPagosFilter();
@@ -3712,6 +3986,7 @@ function renderPagos(){
     document.getElementById('pagos-fima-body').innerHTML = ingresos.length ? ingresos.map(m=>`<tr><td class="mono">${fmtFecha(m.fecha)}</td><td>${fondoLabel[m.fondo]}</td><td>${m.concepto}</td><td class="num">${fmt(m.monto)}</td></tr>`).join('') : `<tr class="empty-row"><td colspan="4">Todavía no se registraron ingresos a FIMA</td></tr>`;
     return;
   }
+  if(state.pagosFilter==='fijo'){ renderCostosFijos(); return; }
   if(state.pagosFilter==='proveedores'){
     if(state.selectedProveedorId) renderProveedorDetalle(state.selectedProveedorId);
     else renderProveedoresLista();
@@ -3719,12 +3994,8 @@ function renderPagos(){
   }
   const rows = pagosFiltrados();
   document.getElementById('pagos-body').innerHTML = rows.length ? rows.map(p=>{
-    const est = pagoEstado(p);
-    const {dot:estadoDot, txt:estadoTxt} = pagoEstadoInfo(est);
-    let action = (!ocLigadaAPago(p.id) && !p.origenFondo) ? `<span class="link-btn" onclick="openModalCompra(null,'${p.id}')">Editar</span>` : '';
-    if(est!=='pagado') action += `${action?' · ':''}<span class="link-btn" onclick="openModalFinalizarPago('${p.id}')">Registrar pago →</span>`;
-    if(est==='pagado'||est==='parcial'||est==='programado') action += `${action?' · ':''}<span class="link-btn danger" onclick="revertirPago('${p.id}')">${est==='programado'?'Cancelar programado':'Revertir a pendiente'}</span>`;
-    action += `${action?' · ':''}<span class="link-btn danger" onclick="eliminarGasto('${p.id}')">Eliminar</span>`;
+    const {dot:estadoDot, txt:estadoTxt} = pagoEstadoInfo(pagoEstado(p));
+    const action = accionesPagoHtml(p);
     const destino = p.obraId ? `<span class="link-btn" onclick="goToObra('${p.obraId}')"><span class="obra-code">${getObra(p.obraId)?.code||''}</span></span>` : (p.tipo==='stock' ? 'Stock' : 'Negocio general');
     const prov = getProveedor(p.proveedorId);
     const provTxt = prov ? `${prov.nombre}${p.numeroFactura?' · '+p.numeroFactura:''}` : '—';
@@ -3732,6 +4003,402 @@ function renderPagos(){
     return `<tr><td>${destino}</td><td>${conceptoTxt}</td><td>${ocBadge(p.numeroOC)}</td><td>${provTxt}</td><td class="num">${fmt(p.monto)}</td><td class="num">${fmt(pagoSaldo(p))}</td><td class="mono">${fmtFecha(p.fechaPago)}</td><td><span class="estado-dot ${estadoDot}"></span>${estadoTxt}</td><td>${action}</td></tr>`;
   }).join('') : `<tr class="empty-row"><td colspan="9">No hay pagos registrados</td></tr>`;
 }
+// Links de acción de un gasto (Editar / Registrar pago / Revertir /
+// Eliminar) — los usan la tabla de Pagos, los gastos de una obra y el
+// detalle de una celda de Costos fijos.
+function accionesPagoHtml(p){
+  const est = pagoEstado(p);
+  let action = (!ocLigadaAPago(p.id) && !p.origenFondo) ? `<span class="link-btn" onclick="openModalCompra(null,'${p.id}')">Editar</span>` : '';
+  if(est!=='pagado') action += `${action?' · ':''}<span class="link-btn" onclick="openModalFinalizarPago('${p.id}')">Registrar pago →</span>`;
+  if(est==='pagado'||est==='parcial'||est==='programado') action += `${action?' · ':''}<span class="link-btn danger" onclick="revertirPago('${p.id}')">${est==='programado'?'Cancelar programado':'Revertir a pendiente'}</span>`;
+  action += `${action?' · ':''}<span class="link-btn danger" onclick="eliminarGasto('${p.id}')">Eliminar</span>`;
+  return action;
+}
+
+/* ======================= BUSCADOR AL TIPEAR ======================= */
+// Reemplaza a los desplegables largos (obras, materiales de stock): se
+// escribe y abajo aparecen las opciones que contienen ese texto en
+// cualquier parte, sin importar mayúsculas ni acentos — "828" encuentra
+// "X-828". Dos modos:
+//  - comboHTML(id, ...): elegir una opción de la lista. El valor elegido
+//    queda en un <input type="hidden" id="id">, así el código que ya leía
+//    document.getElementById(id).value (como con el <select>) sigue igual.
+//  - sugerenciasHTML(...): texto libre con sugerencias (ej. el producto de
+//    un ítem de OC): se puede elegir una sugerencia o escribir algo nuevo.
+// La lista se dibuja en un único elemento flotante (position:fixed) para
+// que no la recorte el modal ni una tabla con scroll.
+const combos = {};
+let comboActivo = null; // {input, key, items, idx}
+function opcionesObras(){
+  return [...state.obras].sort((a,b)=>String(a.code).localeCompare(String(b.code), 'es', {numeric:true}))
+    .map(o=>({value:o.id, label:o.code, sub:[o.cliente, o.encargado].filter(Boolean).join(' · ')}));
+}
+function opcionesStock(conCantidad){
+  return [...state.stock].sort((a,b)=>a.nombre.localeCompare(b.nombre))
+    .map(s=>({value:s.id, label:s.nombre, sub:[s.unidad, s.categoria, conCantidad?`stock: ${s.cantidad}`:null].filter(Boolean).join(' · ')}));
+}
+const escAttr = (t)=> String(t??'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+function comboHTML(id, opciones, selected, cfg){
+  cfg = cfg || {};
+  combos[id] = {opciones, onchange: cfg.onchange || null, vacio: cfg.vacio || null};
+  const sel = opciones.find(o=>o.value===selected);
+  return `<input type="hidden" id="${id}" value="${escAttr(sel?sel.value:'')}"><input id="${id}-q" class="combo-input" autocomplete="off" placeholder="${escAttr(cfg.placeholder||'Tipeá para buscar…')}" value="${escAttr(sel?sel.label:'')}" data-combo="${id}" onfocus="this.select();comboAbrir(this,true)" oninput="comboAbrir(this)" onkeydown="comboTecla(event)" onblur="comboSalir(this)">`;
+}
+function sugerenciasHTML(key, opcionesTexto){
+  combos[key] = {opciones: opcionesTexto.map(t=>({value:t, label:t})), libre:true};
+  return `data-combo="${key}" autocomplete="off" onfocus="comboAbrir(this)" onkeydown="comboTecla(event)" onblur="comboSalir(this)"`;
+}
+function comboFiltrar(key, texto){
+  const c = combos[key]; if(!c) return [];
+  const q = normTexto(texto);
+  const lista = c.opciones.filter(o=>!q || normTexto(o.label+' '+(o.sub||'')).includes(q));
+  // primero las que empiezan con lo tipeado
+  if(q) lista.sort((a,b)=>(normTexto(a.label).startsWith(q)?0:1)-(normTexto(b.label).startsWith(q)?0:1));
+  return lista.slice(0, 60);
+}
+function comboDropdownEl(){
+  let el = document.getElementById('combo-dropdown');
+  if(!el){ el = document.createElement('div'); el.id = 'combo-dropdown'; el.className = 'combo-dropdown'; document.body.appendChild(el); }
+  return el;
+}
+function comboAbrir(input, alEnfocar){
+  const key = input.dataset.combo;
+  const c = combos[key]; if(!c) return;
+  // En modo selección, al enfocar se muestra la lista entera (el texto
+  // queda seleccionado para reemplazarlo); al tipear, se filtra.
+  const items = comboFiltrar(key, (alEnfocar && !c.libre) ? '' : input.value);
+  const dd = comboDropdownEl();
+  comboActivo = {input, key, items, idx: items.length ? 0 : -1};
+  if(c.libre && (!input.value.trim() || !items.length || (items.length===1 && normTexto(items[0].label)===normTexto(input.value)))){ dd.style.display='none'; return; }
+  dd.innerHTML = (c.vacio ? `<div class="combo-item" data-i="-2" onmousedown="event.preventDefault();comboElegir(-2)"><span style="color:var(--muted);">${c.vacio}</span></div>` : '') +
+    (items.length ? items.map((o,i)=>`<div class="combo-item${i===0?' activo':''}" data-i="${i}" onmousedown="event.preventDefault();comboElegir(${i})"><div>${escAttr(o.label)}</div>${o.sub?`<div class="combo-sub">${escAttr(o.sub)}</div>`:''}</div>`).join('')
+      : `<div class="combo-item" style="color:var(--muted);cursor:default;">Sin resultados</div>`);
+  const r = input.getBoundingClientRect();
+  const abajo = window.innerHeight - r.bottom;
+  dd.style.display = 'block';
+  dd.style.left = r.left+'px'; dd.style.width = Math.max(r.width, 220)+'px';
+  if(abajo < 200 && r.top > abajo){ dd.style.top = ''; dd.style.bottom = (window.innerHeight - r.top + 2)+'px'; dd.style.maxHeight = Math.min(280, r.top-10)+'px'; }
+  else { dd.style.bottom = ''; dd.style.top = (r.bottom+2)+'px'; dd.style.maxHeight = Math.min(280, abajo-10)+'px'; }
+}
+function comboCerrar(){ const dd = document.getElementById('combo-dropdown'); if(dd) dd.style.display='none'; comboActivo = null; }
+function comboElegir(i){
+  if(!comboActivo) return;
+  const {input, key, items} = comboActivo;
+  const c = combos[key];
+  if(c.libre){
+    if(i>=0 && items[i]){ input.value = items[i].label; input.dispatchEvent(new Event('input', {bubbles:true})); }
+    comboCerrar(); return;
+  }
+  const opt = i===-2 ? {value:'', label:''} : items[i];
+  if(!opt){ comboCerrar(); return; }
+  const hidden = document.getElementById(key);
+  const cambio = hidden.value!==opt.value;
+  hidden.value = opt.value; input.value = opt.label;
+  comboCerrar();
+  if(cambio && c.onchange) c.onchange(opt.value);
+}
+function comboTecla(ev){
+  const dd = document.getElementById('combo-dropdown');
+  if(!comboActivo || !dd || dd.style.display==='none'){ if(ev.key==='ArrowDown') comboAbrir(ev.target); return; }
+  const n = comboActivo.items.length;
+  if(ev.key==='ArrowDown' || ev.key==='ArrowUp'){
+    ev.preventDefault(); if(!n) return;
+    comboActivo.idx = (comboActivo.idx + (ev.key==='ArrowDown'?1:-1) + n) % n;
+    dd.querySelectorAll('.combo-item').forEach(el=>el.classList.toggle('activo', +el.dataset.i===comboActivo.idx));
+    const act = dd.querySelector('.combo-item.activo'); if(act) act.scrollIntoView({block:'nearest'});
+  } else if(ev.key==='Enter'){
+    if(comboActivo.idx>=0){ ev.preventDefault(); comboElegir(comboActivo.idx); }
+  } else if(ev.key==='Escape'){ ev.preventDefault(); ev.stopPropagation(); comboCerrar(); }
+}
+// Al salir del campo sin elegir: si lo tipeado coincide con una sola
+// opción se elige esa; si no, vuelve a mostrar la opción que estaba
+// elegida (para no dejar un texto que no corresponde a nada).
+function comboSalir(input){
+  setTimeout(()=>{
+    if(comboActivo && comboActivo.input===input) comboCerrar();
+    const key = input.dataset.combo; const c = combos[key];
+    if(!c || c.libre) return;
+    const hidden = document.getElementById(key); if(!hidden) return;
+    const actual = c.opciones.find(o=>o.value===hidden.value);
+    if(actual && input.value===actual.label) return;
+    if(!input.value.trim() && c.vacio){ if(hidden.value){ hidden.value=''; if(c.onchange) c.onchange(''); } return; }
+    const m = comboFiltrar(key, input.value);
+    const exacto = m.find(o=>normTexto(o.label)===normTexto(input.value));
+    const elegido = exacto || (m.length===1 ? m[0] : null);
+    if(elegido){ const cambio = hidden.value!==elegido.value; hidden.value = elegido.value; input.value = elegido.label; if(cambio && c.onchange) c.onchange(elegido.value); }
+    else input.value = actual ? actual.label : '';
+  }, 120);
+}
+window.addEventListener('scroll', (ev)=>{ const dd = document.getElementById('combo-dropdown'); if(comboActivo && dd && !dd.contains(ev.target)) comboCerrar(); }, true);
+window.addEventListener('resize', ()=>comboCerrar());
+// Filtro de la lista de obras con tilde en la OC (son checkboxes, no un
+// desplegable): oculta las que no coinciden, salvo las ya tildadas.
+function filtrarObrasOc(texto){
+  const q = normTexto(texto);
+  document.querySelectorAll('.oc-obra-check').forEach(chk=>{
+    const lbl = chk.closest('label');
+    lbl.style.display = (!q || chk.checked || normTexto(lbl.dataset.buscar||lbl.textContent).includes(q)) ? 'inline-flex' : 'none';
+  });
+}
+
+/* ======================= COSTOS FIJOS (grilla mensual) ======================= */
+// Es la misma información de siempre — los gastos fijos (pagos con
+// tipo:'fijo') — vista como grilla por mes en vez de lista, para controlar
+// que cada costo fijo se pague todos los meses. Cada fila es un concepto
+// (state.costosFijos: nombre, categoría, monto mensual de referencia,
+// medio y día de pago habituales); cada celda muestra lo pagado/registrado
+// ese mes. Registrar el pago de una celda crea un gasto fijo normal (el
+// mismo de "Registrar pago"), solo que queda atado a ese concepto y mes
+// (costoFijoId + periodo). Los gastos fijos que no están atados a ningún
+// concepto se ubican igual: en el concepto con el mismo nombre, o en una
+// fila propia (con su detalle) si no hay ninguno.
+// Las dos filas de jornales (1ª y 2ª quincena) son automáticas: el monto
+// sale del cálculo de sueldos (desgloseQuincena, ya restando adelantos) y
+// lo que se carga ahí (monto corregido, medio, fecha) es solo el control
+// del pago — NO genera gasto ni mueve caja (state.pagosQuincena, id fijo
+// "pq-AAAA-MM-Q" por quincena, que nunca se borra: "Quitar registro" lo vacía).
+const MES_CORTO = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+function mesCorto(ym){ const [y,m] = ym.split('-'); return `${MES_CORTO[Number(m)-1]} ${y}`; }
+function sumarMeses(ym, n){ const [y,m] = ym.split('-').map(Number); const d = new Date(y, m-1+n, 1); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; }
+const normTexto = (t)=> String(t||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ').trim();
+function getCostoFijo(id){ return state.costosFijos.find(c=>c.id===id); }
+function cfMesDePago(p){ return p.periodo || (p.fechaPago||p.fechaFactura||'').slice(0,7); }
+function cfFechaSugerida(c, mes){
+  const ultimo = new Date(+mes.slice(0,4), +mes.slice(5,7), 0).getDate();
+  const dia = Math.min(Math.max(1, Number(c.diaPago)||1), ultimo);
+  return `${mes}-${String(dia).padStart(2,'0')}`;
+}
+function pagoQuincenaId(mes, q){ return `pq-${mes}-${q}`; }
+function getPagoQuincena(mes, q){ return state.pagosQuincena.find(x=>x.id===pagoQuincenaId(mes, q)); }
+const tieneMontoFijado = (reg)=> !!reg && reg.monto!==null && reg.monto!==undefined && reg.monto!=='';
+const pagoQuincenaRegistrado = (reg)=> !!(reg && (reg.fechaPago || tieneMontoFijado(reg)));
+// Ubica cada gasto fijo en su fila: filas = {clave: {mes: [pagos]}}.
+// Claves: 'c|<id del concepto>', 'adelantos', o 's|<categoría>|<concepto>'
+// para los gastos fijos sin concepto.
+function cfAgruparPagos(){
+  const porNombre = new Map(state.costosFijos.map(c=>[normTexto(c.nombre), c]));
+  const filas = {}; const sueltas = {};
+  const agregar = (clave, mes, p)=>{ ((filas[clave] = filas[clave]||{})[mes] = filas[clave][mes]||[]).push(p); };
+  state.pagos.forEach(p=>{
+    if(p.tipo!=='fijo') return;
+    if(esAdelanto(p)){ agregar('adelantos', (p.fechaPago||p.fechaFactura||'').slice(0,7), p); return; }
+    const c = (p.costoFijoId && getCostoFijo(p.costoFijoId)) || porNombre.get(normTexto(p.concepto));
+    if(c){ agregar('c|'+c.id, cfMesDePago(p), p); return; }
+    const clave = 's|'+(p.categoria||'otros')+'|'+normTexto(p.concepto);
+    if(!sueltas[clave]) sueltas[clave] = {categoria: p.categoria||'otros', nombre: p.concepto};
+    agregar(clave, cfMesDePago(p), p);
+  });
+  return {filas, sueltas};
+}
+function cfEstadoCelda(pagos){
+  const estados = pagos.map(pagoEstado);
+  if(estados.every(e=>e==='pagado')) return {cls:'ok', txt:'✓ pagado'};
+  if(estados.some(e=>e==='programado')) return {cls:'info', txt:'programado'};
+  if(estados.some(e=>e==='parcial')) return {cls:'warn', txt:'parcial'};
+  return {cls:'warn', txt:'pendiente'};
+}
+function renderCostosFijos(){
+  const cont = document.getElementById('pagos-costos-fijos');
+  const mesActual = today().slice(0,7);
+  if(!state.cfDesde) state.cfDesde = mesActual;
+  const meses = [0,1,2].map(i=>sumarMeses(state.cfDesde, i));
+  const {filas, sueltas} = cfAgruparPagos();
+  const totales = Object.fromEntries(meses.map(m=>[m, {registrado:0, pagado:0}]));
+  const sumar = (m, monto, pagado)=>{ totales[m].registrado += monto; totales[m].pagado += pagado; };
+  const celdaSinRegistrar = (m, monto, onclick, txtFuturo)=>{
+    const atrasado = m < mesActual;
+    return `<td class="num cf-cell" onclick="${onclick}"><div class="cf-ref">${fmt(monto)}</div><div class="cf-estado ${atrasado?'bad':''}" style="${atrasado?'':'color:var(--muted);font-weight:500;'}">${atrasado?'sin registrar':txtFuturo}</div></td>`;
+  };
+  const celdaPagos = (clave, m, onclick, referencia)=>{
+    const ps = (filas[clave]||{})[m] || [];
+    if(ps.length){
+      const monto = ps.reduce((a,p)=>a+p.monto,0);
+      sumar(m, monto, ps.reduce((a,p)=>a+pagoMontoPagado(p),0));
+      const est = cfEstadoCelda(ps);
+      return `<td class="num cf-cell" onclick="${onclick}"><div>${fmt(monto)}</div><div class="cf-estado ${est.cls}">${est.txt}${ps.length>1?` (${ps.length})`:''}</div></td>`;
+    }
+    if(referencia===undefined) return `<td class="num cf-cell" onclick="${onclick}"><span class="cf-ref">—</span></td>`;
+    return celdaSinRegistrar(m, referencia, onclick, 'a registrar');
+  };
+  const celdaQuincena = (m, q)=>{
+    const reg = getPagoQuincena(m, q);
+    const calc = jornalesQuincenaTotal(m, q);
+    const onclick = `openModalPagoQuincena('${m}',${q})`;
+    if(!pagoQuincenaRegistrado(reg)) return celdaSinRegistrar(m, calc, onclick, 'calculado');
+    const monto = tieneMontoFijado(reg) ? +reg.monto : calc;
+    const pagado = !!reg.fechaPago && reg.fechaPago<=today();
+    sumar(m, monto, pagado?monto:0);
+    const est = !reg.fechaPago ? {cls:'warn', txt:'pendiente'} : (pagado ? {cls:'ok', txt:'✓ pagado'} : {cls:'info', txt:'programado '+fmtFecha(reg.fechaPago)});
+    return `<td class="num cf-cell" onclick="${onclick}"><div>${fmt(monto)}</div><div class="cf-estado ${est.cls}">${est.txt}</div></td>`;
+  };
+  const filaHtml = (labelHtml, sub, celdas)=> `<tr><td><div style="font-weight:600;">${labelHtml}</div>${sub?`<div class="cf-sub">${sub}</div>`:''}</td>${celdas}</tr>`;
+  const categorias = Object.keys(catFijaLabel).concat(state.costosFijos.map(c=>c.categoria||'otros'), Object.values(sueltas).map(x=>x.categoria))
+    .filter((c,i,a)=>a.indexOf(c)===i);
+  let cuerpo = '';
+  categorias.forEach(cat=>{
+    let rows = '';
+    if(cat==='sueldo'){
+      [1,2].forEach(q=>{ rows += filaHtml(`Jornales — ${q===1?'1ª':'2ª'} quincena`, `Automático · ${q===1?'del 1 al 15':'del 16 a fin de mes'}`, meses.map(m=>celdaQuincena(m, q)).join('')); });
+      if(meses.some(m=>(filas.adelantos||{})[m])) rows += filaHtml('Adelantos de sueldo', 'Automático · se cargan desde Jornales', meses.map(m=>celdaPagos('adelantos', m, `openModalCeldaCostoFijo('adelantos','${m}')`)).join(''));
+    }
+    state.costosFijos.filter(c=>(c.categoria||'otros')===cat).sort((a,b)=>a.nombre.localeCompare(b.nombre)).forEach(c=>{
+      const sub = ['Mensual', c.formaPago && c.formaPago!=='A definir' ? c.formaPago : null, c.diaPago ? `día ${c.diaPago}` : null].filter(Boolean).join(' · ');
+      rows += filaHtml(`<span class="link-btn" style="color:inherit;" onclick="openModalConceptoCostoFijo('${c.id}')" title="Editar o eliminar el concepto">${c.nombre}</span>`, sub,
+        meses.map(m=>celdaPagos('c|'+c.id, m, `openModalCeldaCostoFijo('c|${c.id}','${m}')`, c.montoMensual||0)).join(''));
+    });
+    Object.keys(sueltas).filter(k=>sueltas[k].categoria===cat && meses.some(m=>(filas[k]||{})[m])).forEach(k=>{
+      const kAttr = k.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+      rows += filaHtml(sueltas[k].nombre, `Sin concepto fijo · <span class="link-btn" onclick="openModalConceptoCostoFijo(null, '${kAttr}')">Agregar como costo fijo mensual</span>`,
+        meses.map(m=>celdaPagos(k, m, `openModalCeldaCostoFijo('${kAttr}','${m}')`)).join(''));
+    });
+    if(rows) cuerpo += `<tr class="cf-grupo"><td colspan="4">${catFijaLabel[cat]||catLabel[cat]||cat}</td></tr>` + rows;
+  });
+  const totalMensual = state.costosFijos.reduce((a,c)=>a+(+c.montoMensual||0),0) + jornalesQuincenaTotal(mesActual,1) + jornalesQuincenaTotal(mesActual,2);
+  cont.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:10px;">
+      <div><div class="cf-sub">Total mensual equivalente</div><div class="cf-total">${fmtRedondo(totalMensual)}</div></div>
+      <button class="btn btn-ghost" style="margin-bottom:14px;" onclick="openModalConceptoCostoFijo(null)">+ Agregar costo fijo</button>
+    </div>
+    <div class="card card-table">
+      <div class="cf-nav"><button class="btn btn-ghost" onclick="moverMesesCostosFijos(-1)">‹ Anterior</button><span>${mesCorto(meses[0])} – ${mesCorto(meses[2])}</span><button class="btn btn-ghost" onclick="moverMesesCostosFijos(1)">Siguiente ›</button>${state.cfDesde!==mesActual?`<span class="link-btn" onclick="state.cfDesde=null;renderCostosFijos()">Ir a hoy</span>`:''}</div>
+      <table class="cf-grid">
+        <thead><tr><th>Concepto</th>${meses.map(m=>`<th class="num">${mesCorto(m)}</th>`).join('')}</tr></thead>
+        <tbody>${cuerpo}</tbody>
+        <tfoot><tr class="subtotal-row"><td>Total del mes</td>${meses.map(m=>`<td class="num">${fmt(totales[m].registrado)}<div class="cf-estado ok" style="font-size:11px;">pagado ${fmt(totales[m].pagado)}</div></td>`).join('')}</tr></tfoot>
+      </table>
+    </div>
+    <div class="cf-sub" style="margin-top:8px;">Tocá una celda para registrar o ver el pago de ese mes. Los montos en gris son la referencia mensual (o el cálculo de jornales) todavía sin registrar. El total mensual equivalente suma la referencia de cada concepto más los jornales calculados de este mes.</div>`;
+}
+function moverMesesCostosFijos(n){ state.cfDesde = sumarMeses(state.cfDesde || today().slice(0,7), n); renderCostosFijos(); }
+const MEDIOS_PAGO = ['A definir','Transferencia','Efectivo','eCheq','FIMA'];
+function openModalConceptoCostoFijo(id, claveSuelta){
+  const c = id ? getCostoFijo(id) : null;
+  let base = c || {nombre:'', categoria:'servicios', montoMensual:0, formaPago:'A definir', diaPago:1};
+  if(!c && claveSuelta){
+    // "Agregar como costo fijo mensual" desde una fila de gastos fijos sin
+    // concepto: se prellena con el último pago. Al quedar con el mismo
+    // nombre, esos pagos pasan solos a esta fila (ver cfAgruparPagos).
+    const {filas, sueltas} = cfAgruparPagos();
+    const ultimo = Object.values(filas[claveSuelta]||{}).flat().sort((a,b)=>cfMesDePago(b).localeCompare(cfMesDePago(a)))[0];
+    base = {nombre: sueltas[claveSuelta].nombre, categoria: sueltas[claveSuelta].categoria, montoMensual: ultimo?ultimo.monto:0,
+      formaPago: ultimo&&MEDIOS_PAGO.includes(ultimo.formaPago)?ultimo.formaPago:'A definir', diaPago: ultimo&&ultimo.fechaPago?+ultimo.fechaPago.slice(8,10):1};
+  }
+  modalEl.innerHTML = `<h3>${c?'Editar costo fijo':'Agregar costo fijo'}</h3><div class="modal-sub">Concepto que se paga todos los meses — aparece como una fila en la grilla de Costos fijos</div>
+    <div class="form-grid">
+      <div class="field span2"><label>Concepto</label><input id="f-cf-nombre" placeholder="Ej: Internet, Alquiler galpón, AYSA…" value="${String(base.nombre).replace(/"/g,'&quot;')}"></div>
+      <div class="field"><label>Categoría</label><select id="f-cf-cat">${catOptionsForTipo('fijo', base.categoria)}</select></div>
+      <div class="field"><label>Monto mensual de referencia ($)</label><input id="f-cf-monto" class="mono-in" type="number" step="0.01" min="0" value="${base.montoMensual||0}"></div>
+      <div class="field"><label>Medio de pago habitual</label><select id="f-cf-forma">${MEDIOS_PAGO.map(m=>`<option ${base.formaPago===m?'selected':''}>${m}</option>`).join('')}</select></div>
+      <div class="field"><label>Día de pago</label><input id="f-cf-dia" class="mono-in" type="number" step="1" min="1" max="31" value="${base.diaPago||1}"></div>
+    </div>
+    <div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal()">Cancelar</button>
+      ${c?`<button class="btn btn-ghost" style="color:var(--bad);border-color:var(--bad);" onclick="eliminarConceptoCostoFijo('${c.id}')">Eliminar</button>`:''}
+      <button class="btn btn-primary" onclick="submitConceptoCostoFijo('${id||''}')">${c?'Guardar cambios':'Agregar'}</button></div>`;
+  overlay.classList.add('open');
+}
+function submitConceptoCostoFijo(id){
+  const nombre = document.getElementById('f-cf-nombre').value.trim();
+  if(!nombre){ alert('Ingresá el nombre del concepto.'); return; }
+  const datos = {nombre, categoria: document.getElementById('f-cf-cat').value, montoMensual: r2(+document.getElementById('f-cf-monto').value||0),
+    formaPago: document.getElementById('f-cf-forma').value, diaPago: Math.min(31, Math.max(1, Math.round(+document.getElementById('f-cf-dia').value||1)))};
+  if(id){ Object.assign(getCostoFijo(id), datos); marcarEditado('costosFijos', id); }
+  else state.costosFijos.push({id:newId('cf'), ...datos});
+  closeModal(); renderAll();
+}
+function eliminarConceptoCostoFijo(id){
+  const c = getCostoFijo(id); if(!c) return;
+  if(!confirm(`¿Eliminar el costo fijo "${c.nombre}" de la grilla? Los pagos ya registrados no se borran: siguen en Pagos.`)) return;
+  marcarEliminado('costosFijos', id);
+  state.costosFijos = state.costosFijos.filter(x=>x.id!==id);
+  closeModal(); renderAll();
+}
+// Detalle de una celda: los gastos de ese mes (con sus acciones de
+// siempre) y, si la fila es un concepto, el formulario para registrar el
+// pago de ese mes.
+function openModalCeldaCostoFijo(clave, mes){
+  const {filas, sueltas} = cfAgruparPagos();
+  const ps = (filas[clave]||{})[mes] || [];
+  const c = clave.startsWith('c|') ? getCostoFijo(clave.slice(2)) : null;
+  const titulo = c ? c.nombre : (clave==='adelantos' ? 'Adelantos de sueldo' : (sueltas[clave]?.nombre||'Gasto fijo'));
+  const lista = ps.length ? `<div class="card card-table" style="margin-bottom:14px;"><table><thead><tr><th>Concepto</th><th class="num">Monto</th><th>Fecha de pago</th><th>Estado</th><th></th></tr></thead><tbody>
+    ${ps.map(p=>{ const {dot, txt} = pagoEstadoInfo(pagoEstado(p)); return `<tr><td>${p.concepto}<div class="cf-sub">${p.formaPago||''}${p.origenFondo?' — FIMA '+fondoLabel[p.origenFondo]:''}</div></td><td class="num">${fmt(p.monto)}</td><td class="mono">${fmtFecha(p.fechaPago)}</td><td><span class="estado-dot ${dot}"></span>${txt}</td><td>${accionesPagoHtml(p)}</td></tr>`; }).join('')}
+    </tbody></table></div>` : '';
+  const form = !c ? '' : `
+    <div class="section-title" style="margin:0 0 8px;"><h2 style="font-size:13.5px;">${ps.length?'Registrar otro pago':'Registrar pago'} de ${mesLabel(mes)}</h2></div>
+    <div class="form-grid">
+      <div class="field"><label>Monto ($)</label><input id="f-cf-pago-monto" class="mono-in" type="number" step="0.01" min="0" value="${r2(c.montoMensual||0)}"></div>
+      <div class="field"><label>Medio de pago</label><select id="f-forma" onchange="onMedioPagoChange()">${MEDIOS_PAGO.map(m=>`<option ${c.formaPago===m?'selected':''}>${m}</option>`).join('')}</select></div>
+      <div class="field checkbox"><input type="checkbox" id="f-sinfecha" onchange="toggleFechaPago()"><label>Sin fecha de pago todavía</label></div>
+      <div class="field" id="wrap-fecha"><label>Fecha de pago</label><input id="f-fechapago" type="date" value="${cfFechaSugerida(c, mes)}"></div>
+      <div class="field hidden" id="wrap-fondo"><label>Fondo que paga</label><select id="f-fondo">${fondoOptionsHTML('costosFijos')}</select></div>
+    </div>
+    <div class="modal-sub" style="margin-top:6px;">Con fecha de hoy o anterior queda pagado (descuenta caja o el fondo); con fecha futura queda "Programado" — igual que cualquier pago.</div>`;
+  modalEl.innerHTML = `<h3>${titulo}</h3><div class="modal-sub">${mesLabel(mes)}</div>
+    ${lista}${!ps.length && !c ? '<div class="modal-sub">No hay pagos registrados este mes.</div>' : ''}${form}
+    <div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal()">${c?'Cancelar':'Cerrar'}</button>${c?`<button class="btn btn-primary" onclick="submitPagoCostoFijo('${c.id}','${mes}')">Registrar</button>`:''}</div>`;
+  overlay.classList.add('open');
+  if(c) onMedioPagoChange();
+}
+function submitPagoCostoFijo(costoFijoId, mes){
+  const c = getCostoFijo(costoFijoId); if(!c) return;
+  const monto = r2(+document.getElementById('f-cf-pago-monto').value||0);
+  if(monto<=0){ alert('Ingresá el monto.'); return; }
+  const formaPago = document.getElementById('f-forma').value;
+  const sinFecha = document.getElementById('f-sinfecha').checked;
+  const fechaPago = sinFecha ? null : (document.getElementById('f-fechapago').value || today());
+  const fondo = (!sinFecha && formaPago==='FIMA') ? document.getElementById('f-fondo').value : null;
+  const p = {id:newId('p'), tipo:'fijo', obraId:null, categoria:c.categoria, concepto:c.nombre, cantidad:1, unitario:monto, ivaAplica:false, monto,
+    proveedorId:null, numeroFactura:null, numeroOC:null, fechaFactura: fechaPago || cfFechaSugerida(c, mes), formaPago, fechaPago, origenFondo:fondo, pagosRealizados:[],
+    costoFijoId: c.id, periodo: mes};
+  state.pagos.push(p);
+  aplicarCompromisoDePago(p, fechaPago, formaPago, fondo);
+  closeModal(); renderAll();
+}
+function openModalPagoQuincena(mes, q){
+  const reg = getPagoQuincena(mes, q) || {};
+  const calc = jornalesQuincenaTotal(mes, q);
+  const medio = reg.formaPago || (q===1 ? 'Transferencia' : 'Efectivo');
+  const detalle = [...state.trabajadores].sort((a,b)=>a.nombre.localeCompare(b.nombre)).map(t=>{
+    const d = desgloseQuincena(t, mes, q);
+    return `<tr><td>${t.nombre}</td><td class="num">${d.totalAdelantos?'− '+fmt(d.totalAdelantos):'—'}</td><td class="num">${fmt(d.total)}</td><td><span class="link-btn" onclick="openModalDetalleSueldo('${t.id}','${mes}')">Detalle</span></td></tr>`;
+  }).join('');
+  modalEl.innerHTML = `<h3>Jornales — ${q===1?'1ª':'2ª'} quincena</h3><div class="modal-sub">${mesLabel(mes)} · Calculado automáticamente: <b>${fmt(calc)}</b></div>
+    <div class="card card-table" style="margin-bottom:14px;max-height:220px;overflow:auto;"><table><thead><tr><th>Personal</th><th class="num">Adelantos</th><th class="num">A cobrar</th><th></th></tr></thead>
+      <tbody>${detalle || '<tr class="empty-row"><td colspan="4">No hay personal cargado</td></tr>'}</tbody></table></div>
+    <div class="form-grid">
+      <div class="field"><label>Monto ($)</label><input id="f-pq-monto" class="mono-in" type="number" step="0.01" min="0" value="${r2(tieneMontoFijado(reg)?reg.monto:calc)}"></div>
+      <div class="field"><label>Medio de pago</label><select id="f-pq-forma">${['Transferencia','Efectivo','eCheq','FIMA'].map(m=>`<option ${medio===m?'selected':''}>${m}</option>`).join('')}</select></div>
+      <div class="field"><label>Fecha de pago</label><input id="f-pq-fecha" type="date" value="${reg.fechaPago||''}"></div>
+      <div class="field"><label>Nota (opcional)</label><input id="f-pq-nota" value="${String(reg.nota||'').replace(/"/g,'&quot;')}"></div>
+    </div>
+    <div class="modal-sub" style="margin-top:6px;">Es solo el control de que la quincena se pagó: no genera ningún gasto ni descuenta caja (los adelantos ya salieron de caja el día que se dieron). Si dejás el monto calculado, se sigue actualizando solo si cambian los jornales.</div>
+    <div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal()">Cancelar</button>
+      ${pagoQuincenaRegistrado(reg)?`<button class="btn btn-ghost" style="color:var(--bad);border-color:var(--bad);" onclick="quitarPagoQuincena('${mes}',${q})">Quitar registro</button>`:''}
+      <button class="btn btn-primary" onclick="submitPagoQuincena('${mes}',${q})">Guardar</button></div>`;
+  overlay.classList.add('open');
+}
+function guardarPagoQuincena(mes, q, datos){
+  const id = pagoQuincenaId(mes, q);
+  const reg = getPagoQuincena(mes, q);
+  if(reg){ Object.assign(reg, datos); marcarEditado('pagosQuincena', id); }
+  else state.pagosQuincena.push({id, ...datos});
+}
+function submitPagoQuincena(mes, q){
+  const monto = r2(+document.getElementById('f-pq-monto').value||0);
+  const fechaPago = document.getElementById('f-pq-fecha').value || null;
+  // Si quedó igual al calculado y tiene fecha, no se fija el monto: sigue
+  // el cálculo automático. Sin fecha se fija igual, para que la celda
+  // quede registrada como "pendiente".
+  const igualAlCalculado = Math.abs(monto - r2(jornalesQuincenaTotal(mes, q))) < MEDIO_CENTAVO;
+  guardarPagoQuincena(mes, q, {monto: (igualAlCalculado && fechaPago) ? null : monto, formaPago: document.getElementById('f-pq-forma').value,
+    fechaPago, nota: document.getElementById('f-pq-nota').value.trim()});
+  closeModal(); renderAll();
+}
+function quitarPagoQuincena(mes, q){
+  guardarPagoQuincena(mes, q, {monto:null, formaPago:'', fechaPago:null, nota:''});
+  closeModal(); renderAll();
+}
+
 // Exporta exactamente lo que está filtrado en pantalla en ese momento
 // (mismo pagosFiltrados() que usa la tabla) — mismo mecanismo que imprimirOrden.
 function imprimirPagos(){
@@ -3929,18 +4596,16 @@ function submitIngreso(obraId, editId){
 function openModalCompra(preselectObraId, editId){
   const editing = editId ? state.pagos.find(x=>x.id===editId) : null;
   const obraIdActual = editing ? editing.obraId : preselectObraId;
-  const obraOptions = state.obras.map(o=>`<option value="${o.id}" ${o.id===obraIdActual?'selected':''}>${o.code}</option>`).join('');
-  const stockOptions = state.stock.map(s=>`<option value="${s.id}">${s.nombre} (${s.unidad}) — stock: ${s.cantidad}</option>`).join('');
   const isObra = editing ? editing.tipo==='obra' : !!preselectObraId;
   const medioActual = editing ? editing.formaPago : 'A definir';
   modalEl.innerHTML = `
     <h3>${editing?'Editar gasto':'Registrar compra / gasto'}</h3><div class="modal-sub">Gasto fijo del negocio o vinculado a una obra</div>
     <div class="form-grid">
       <div class="field"><label>Tipo</label><select id="f-tipo" onchange="onTipoPagoChange()"><option value="obra" ${isObra?'selected':''}>Gasto de obra</option><option value="fijo" ${!isObra?'selected':''}>Gasto fijo</option></select></div>
-      <div class="field" id="wrap-obra"><label>Obra</label><select id="f-obra">${obraOptions}</select></div>
+      <div class="field" id="wrap-obra"><label>Obra</label>${comboHTML('f-obra', opcionesObras(), obraIdActual, {placeholder:'Tipeá código o cliente…'})}</div>
       <div class="field" id="wrap-cat"><label>Categoría</label><select id="f-cat" onchange="onCategoriaChange()">${catOptionsForTipo(isObra?'obra':'fijo', editing?editing.categoria:null)}</select></div>
       <div class="field checkbox span2 hidden" id="wrap-usostock"><input type="checkbox" id="f-usostock" onchange="onUsoStockChange()" ${editing?'disabled':''}><label>Utilizado de stock (no genera un pago nuevo)</label></div>
-      <div class="field span2 hidden" id="wrap-stock-material"><label>Material (de stock)</label><select id="f-stock-material" onchange="onStockMaterialChange()">${stockOptions||'<option disabled>No hay materiales en stock</option>'}</select></div>
+      <div class="field span2 hidden" id="wrap-stock-material"><label>Material (de stock)</label>${comboHTML('f-stock-material', opcionesStock(true), null, {placeholder: state.stock.length?'Tipeá para buscar el material…':'No hay materiales en stock', onchange:onStockMaterialChange})}</div>
       <div class="field span2" id="wrap-detalle"><label>Detalle</label><input id="f-concepto" placeholder="Ej: Lana de vidrio 50mm" value="${editing?editing.concepto:''}"></div>
       <div class="field" id="wrap-proveedor"><label>Proveedor</label><select id="f-proveedor" onchange="onProveedorSelectChange(this)">${proveedorOptionsHTML(editing?editing.proveedorId:null)}</select></div>
       <div class="field" id="wrap-factura"><label>Nº remito / factura</label><input id="f-factura" placeholder="Ej: 0001-00004521" value="${editing&&editing.numeroFactura?editing.numeroFactura:''}"></div>
@@ -4037,6 +4702,7 @@ function submitCompra(editId){
   const categoria = document.getElementById('f-cat').value;
   const usoStock = !editId && tipo==='obra' && categoria==='materiaPrima' && document.getElementById('f-usostock').checked;
   const cantidad = +document.getElementById('f-cantidad').value||0;
+  if(tipo==='obra' && !getObra(obraId)){ alert('Elegí la obra.'); return; }
 
   if(usoStock){
     const stockId = document.getElementById('f-stock-material').value;
@@ -4227,7 +4893,7 @@ function openModalMovimientoFima(){
       <div class="field"><label>Fondo</label><select id="f-fondo" onchange="onFimaFondoChange()">${fondoOptionsHTML()}</select></div>
       <div class="field"><label>Tipo</label><select id="f-tipo2" onchange="onFimaTipoChange()"><option value="in">Ingreso</option><option value="out">Egreso</option></select></div>
       <div class="field" id="wrap-fima-subcat"><label>Subcategoría (opcional)</label><input id="f-fima-subcat" list="fima-subcat-datalist" placeholder="Ej: IIBB, IVA…"><datalist id="fima-subcat-datalist"></datalist></div>
-      <div class="field hidden" id="wrap-fima-obra"><label>Obra</label><select id="f-fima-obra"><option value="">— Elegir —</option>${state.obras.map(o=>`<option value="${o.id}">${o.code}</option>`).join('')}</select></div>
+      <div class="field hidden" id="wrap-fima-obra"><label>Obra</label>${comboHTML('f-fima-obra', opcionesObras(), null, {placeholder:'Tipeá código o cliente…', vacio:'— Sin obra —'})}</div>
       <div class="field span2"><label>Concepto</label><input id="f-concepto" placeholder="Ej: Transferencia desde caja"></div>
       <div class="field hidden" id="wrap-fima-proveedor"><label>Proveedor</label><select id="f-proveedor" onchange="onProveedorSelectChange(this)">${proveedorOptionsHTML()}</select></div>
       <div class="field hidden span2" id="wrap-proveedor-nuevo"><label>Nombre del nuevo proveedor</label><input id="f-proveedor-nuevo" placeholder="Nombre"></div>
