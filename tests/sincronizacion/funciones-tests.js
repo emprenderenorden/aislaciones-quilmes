@@ -295,7 +295,7 @@ const mesActual=new Date().toISOString().slice(0,7);
     // FIMA egreso como gasto variable
     await A.evaluate(()=>{ openModalMovimientoFima(); document.getElementById('f-fondo').value='otros'; onFimaFondoChange(); document.getElementById('f-tipo2').value='out'; onFimaTipoChange(); });
     ok(await A.isVisible('#f-fima-tipogasto'), 'un egreso de FIMA pregunta si es gasto fijo o variable');
-    await A.selectOption('#f-fima-tipogasto','variable'); await A.selectOption('#f-fima-catvar','viaticos');
+    await A.selectOption('#f-fima-tipogasto','variable'); await A.selectOption('#f-fima-cat','viaticos');
     await A.fill('#f-concepto','Almuerzo equipo'); await A.fill('#f-monto','300');
     await A.click('#modal-content .modal-actions button.btn-primary');
     ok(await A.evaluate(()=>state.pagos.some(p=>p.tipo==='variable'&&p.categoria==='viaticos'&&p.concepto==='Almuerzo equipo')), 'y queda en Pagos como gasto variable (Viáticos)');
@@ -307,6 +307,41 @@ const mesActual=new Date().toISOString().slice(0,7);
     await esperarGuardado(A);
     const s=await dump();
     ok(s.pagos.filter(p=>p.tipo==='variable').length===2, 'los gastos variables quedan guardados en la planilla');
+    await A.close();
+  });
+
+  console.log('F8 — gastos pagados desde FIMA: cambiar tipo a gasto de obra');
+  await withServer(async()=>{
+    const A=await tab(b,'nuevo.html');
+    // Como quedaron los egresos viejos del fondo Obras: el movimiento con obra, el gasto como fijo y sin obra
+    await A.evaluate(()=>{
+      state.movimientosFima.push({id:'fmO1',fecha:'2026-10-10',fondo:'obras',obraId:null,subcategoria:null,concepto:'Aporte obras',tipo:'in',monto:100000});
+      state.movimientosFima.push({id:'fmO2',fecha:'2026-10-12',fondo:'obras',obraId:'ob1',subcategoria:null,concepto:'Nafta camioneta',tipo:'out',monto:20000});
+      state.pagos.push({id:'pgN',tipo:'fijo',obraId:null,categoria:'costosFijos',concepto:'Nafta camioneta',origenFondo:'obras',numeroOC:null,cantidad:1,unitario:20000,ivaAplica:false,monto:20000,proveedorId:null,numeroFactura:null,fechaFactura:'2026-10-12',formaPago:'FIMA',fechaPago:'2026-10-12',pagosRealizados:[{fecha:'2026-10-12',monto:20000,fondo:'obras',formaPago:'FIMA'}]});
+      recomputeFondos(); showView('pagos'); setPagosFilter('todos'); renderAll();
+    });
+    const fondo0=await A.evaluate(()=>state.fondos.obras), egr0=await A.evaluate(()=>computeMesResultado('2026-10').totalEgresos);
+    ok(await A.isVisible('#pagos-body tr:has-text("Nafta camioneta") >> text=Cambiar tipo'), 'un gasto pagado desde FIMA ofrece "Cambiar tipo" (no "Editar")');
+    await A.click('#pagos-body tr:has-text("Nafta camioneta") >> text=Cambiar tipo');
+    await A.selectOption('#f-ct-tipo','obra'); await A.fill('#f-ct-obra-q','748'); await A.keyboard.press('Enter');
+    await A.selectOption('#f-ct-cat','combustible');
+    await A.click('#modal-content .modal-actions button.btn-primary');
+    ok(await A.evaluate(()=>{ const p=state.pagos.find(x=>x.id==='pgN'); return p.tipo==='obra'&&p.obraId==='ob1'&&p.categoria==='combustible'; }), 'queda como gasto de obra (748, Combustible)');
+    ok(await A.evaluate(()=>getObra('ob1').real.logistica)===20000, 'y suma al costo real de la obra');
+    ok(await A.evaluate(f=>state.fondos.obras===f, fondo0) && await A.evaluate(e=>computeMesResultado('2026-10').totalEgresos===e, egr0), 'sin tocar el fondo ni el total de egresos');
+    ok(!(await A.evaluate(()=>{ setPagosFilter('fijo'); return /Nafta camioneta/.test(document.getElementById('pagos-costos-fijos').textContent); })), 'y ya no aparece en Costos fijos');
+    await esperarGuardado(A);
+    ok((await dump()).pagos.find(p=>p.id==='pgN').tipo==='obra', 'el cambio queda guardado');
+    // eliminar el gasto sigue devolviendo la plata al fondo (siguen vinculados)
+    await A.evaluate(()=>eliminarGasto('pgN'));
+    ok(await A.evaluate(f=>state.fondos.obras===f+20000 && !state.movimientosFima.some(m=>m.id==='fmO2'), fondo0), 'al eliminarlo se borra también el egreso de FIMA y vuelve la plata al fondo');
+    // egreso nuevo desde el fondo Obras: ya entra como gasto de obra
+    await A.evaluate(()=>{ openModalMovimientoFima(); document.getElementById('f-tipo2').value='out'; onFimaTipoChange(); document.getElementById('f-fondo').value='obras'; onFimaFondoChange(); });
+    ok(await A.evaluate(()=>document.getElementById('f-fima-tipogasto').value)==='obra', 'un egreso nuevo del fondo Obras viene como "Gasto de obra"');
+    await A.fill('#f-fima-obra-q','748'); await A.keyboard.press('Enter');
+    await A.selectOption('#f-fima-cat','estadia'); await A.fill('#f-concepto','Almuerzo cuadrilla'); await A.fill('#f-monto','15000');
+    await A.click('#modal-content .modal-actions button.btn-primary');
+    ok(await A.evaluate(()=>{ const p=state.pagos.find(x=>x.concepto==='Almuerzo cuadrilla'); return p && p.tipo==='obra' && p.obraId==='ob1' && p.categoria==='estadia' && getObra('ob1').real.estadia===15000; }), 'y queda imputado a la obra (Estadía) sumando a su costo real');
     await A.close();
   });
 

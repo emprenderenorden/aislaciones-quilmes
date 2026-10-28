@@ -53,23 +53,22 @@ implementación:
 - [x] `ordenesCompra`: campos `obraIds` y `pagoIds` (para las OC
       repartidas entre varias obras).
 
-**Pendiente (25/09) — redeploy necesario:**
+El dueño confirmó (29/10) que hizo el redeploy que agrupaba:
 
-- [ ] Hoja `Eliminados` (registro de borrados): el backend guarda la lista
+- [x] Hoja `Eliminados` (registro de borrados): el backend guarda la lista
       de todo lo borrado y nunca vuelve a escribir ni a devolver un registro
       que figure ahí, aunque lo mande una pestaña vieja. Ver "Fix
-      definitivo: lo borrado volvía a aparecer" en el registro de abajo. Al
-      pegar el archivo, **cambiar `SECRET` por la clave real** (el repo
-      tiene el placeholder) y hacer Implementar → Administrar
-      implementaciones → lápiz → Nueva versión (misma URL).
-- [ ] (28/10) Hoja nueva `CostosFijos` (grilla de Costos fijos en
-      Pagos), columna `vinculoJSON` al final de `Pagos`
-      (pago atado a un concepto/mes de costos fijos, o adelanto de sueldo
-      con su trabajador y quincena; también el gasto de cada quincena de
-      jornales) y columnas de firmas al final de
+      definitivo: lo borrado volvía a aparecer" en el registro de abajo.
+- [x] Hoja `CostosFijos` (grilla de Costos fijos en Pagos), columna
+      `vinculoJSON` al final de `Pagos` (pago atado a un concepto/mes de
+      costos fijos o a una quincena de jornales, o adelanto de sueldo con
+      su trabajador y quincena) y columnas de firmas al final de
       `DatosEmpresa` (`firmaSolicitaNombre/Img`, `firmaApruebaNombre/Img`).
-      La hoja se crea sola al primer guardado. Va en el **mismo**
-      redeploy que `Eliminados`.
+
+**No hay cambios de backend pendientes.** Al volver a desplegar, recordar
+cambiar `SECRET` por la clave real (el repo tiene el placeholder) y hacer
+Implementar → Administrar implementaciones → lápiz → Nueva versión (misma
+URL).
 
 Cuando se sume un cambio de backend nuevo, se anota acá como pendiente y
 se agrupan varios antes de volver a desplegar (ver instrucciones al
@@ -1303,4 +1302,28 @@ principio de `backend-AppsScript.gs`).
     editar un gasto de stock, Resultados, egreso de FIMA como variable, OC
     de tipo variable y persistencia. Las pruebas de sincronización siguen
     pasando.
+- **Nuevo (29/10): gastos pagados desde FIMA imputables a una obra.** El
+  dueño tenía egresos del fondo Obras (almuerzos, combustible, viáticos)
+  que figuraban como costos fijos: un egreso de FIMA siempre creaba su
+  gasto en Pagos como gasto fijo y **sin obra** (aunque el movimiento sí
+  tuviera la obra), y esos gastos no tienen "Editar" (a propósito: cambiar
+  monto/fecha/medio los desfasaría del movimiento de FIMA).
+  - **Lo ya cargado:** link "Cambiar tipo" en los gastos que salieron de
+    FIMA (`openModalCambiarTipoPago`) — cambia solo tipo (obra / fijo /
+    variable), obra y categoría, nunca la plata. Pasado a obra, suma al
+    costo real de esa obra (`recomputeObraReal`) y sale de Costos fijos.
+    El egreso de FIMA ligado se actualiza con la misma obra para que sigan
+    vinculados (revertir/eliminar el gasto lo busca por fondo + concepto +
+    monto + obra).
+  - **Lo nuevo:** en "Registrar movimiento" de FIMA, un egreso ahora pide
+    "Se registra en Pagos como": **Gasto de obra** (obra + categoría de
+    obra; es la opción por defecto en el fondo Obras), gasto fijo o gasto
+    variable.
+  - No necesita redeploy.
+  - Probado (`funciones-tests.js`, F8): un gasto viejo como quedaban
+    (fijo, sin obra, desde el fondo Obras) pasa a gasto de obra 748 /
+    Combustible, suma al real de la obra, no cambia el fondo ni el total
+    de egresos, sale de Costos fijos y queda guardado; eliminarlo después
+    borra también el egreso de FIMA y devuelve la plata al fondo; un
+    egreso nuevo del fondo Obras queda imputado a la obra (Estadía).
 

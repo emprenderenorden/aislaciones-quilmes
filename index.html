@@ -4030,6 +4030,7 @@ function renderPagos(){
 function accionesPagoHtml(p){
   const est = pagoEstado(p);
   let action = (!ocLigadaAPago(p.id) && !p.origenFondo) ? `<span class="link-btn" onclick="openModalCompra(null,'${p.id}')">Editar</span>` : '';
+  if(!action && p.origenFondo && !ocLigadaAPago(p.id) && !p.costoFijoId && !esAdelanto(p)) action = `<span class="link-btn" onclick="openModalCambiarTipoPago('${p.id}')">Cambiar tipo</span>`;
   if(est!=='pagado') action += `${action?' · ':''}<span class="link-btn" onclick="openModalFinalizarPago('${p.id}')">Registrar pago →</span>`;
   if(est==='pagado'||est==='parcial'||est==='programado') action += `${action?' · ':''}<span class="link-btn danger" onclick="revertirPago('${p.id}')">${est==='programado'?'Cancelar programado':'Revertir a pendiente'}</span>`;
   action += `${action?' · ':''}<span class="link-btn danger" onclick="eliminarGasto('${p.id}')">Eliminar</span>`;
@@ -4882,6 +4883,47 @@ function revertirAplicacionesPago(p){
   recomputeFondos();
   p.pagosRealizados = [];
 }
+// Un gasto que salió de un fondo FIMA no tiene "Editar" (cambiar monto,
+// fecha o medio lo desfasaría del movimiento de FIMA que lo originó). Esto
+// permite cambiar solo a qué se imputa: tipo (obra / fijo / variable),
+// obra y categoría — sin tocar la plata. El egreso de FIMA ligado se
+// actualiza con la misma obra, para que sigan vinculados (al revertir o
+// eliminar el gasto se lo busca por fondo + concepto + monto + obra).
+function openModalCambiarTipoPago(pagoId){
+  const p = state.pagos.find(x=>x.id===pagoId); if(!p) return;
+  const tipo = ['obra','fijo','variable'].includes(p.tipo) ? p.tipo : 'fijo';
+  modalEl.innerHTML = `<h3>Cambiar tipo de gasto</h3><div class="modal-sub">${p.concepto} · ${fmt(p.monto)} · pagado desde FIMA ${fondoLabel[p.origenFondo]||''}. El monto, la fecha y el fondo no cambian.</div>
+    <div class="form-grid">
+      <div class="field"><label>Tipo</label><select id="f-ct-tipo" onchange="onCambiarTipoPagoChange()"><option value="obra" ${tipo==='obra'?'selected':''}>Gasto de obra</option><option value="fijo" ${tipo==='fijo'?'selected':''}>Gasto fijo</option><option value="variable" ${tipo==='variable'?'selected':''}>Gasto variable</option></select></div>
+      <div class="field" id="wrap-ct-obra"><label>Obra</label>${comboHTML('f-ct-obra', opcionesObras(), p.obraId, {placeholder:'Tipeá código o cliente…'})}</div>
+      <div class="field"><label>Categoría</label><select id="f-ct-cat">${catOptionsForTipo(tipo, p.categoria)}</select></div>
+    </div>
+    <div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" onclick="submitCambiarTipoPago('${p.id}')">Guardar</button></div>`;
+  overlay.classList.add('open');
+  document.getElementById('f-ct-tipo').dataset.previo = tipo;
+  onCambiarTipoPagoChange();
+}
+function onCambiarTipoPagoChange(){
+  const sel = document.getElementById('f-ct-tipo');
+  document.getElementById('wrap-ct-obra').classList.toggle('hidden', sel.value!=='obra');
+  if(sel.dataset.previo!==sel.value){ document.getElementById('f-ct-cat').innerHTML = catOptionsForTipo(sel.value); sel.dataset.previo = sel.value; }
+}
+function submitCambiarTipoPago(pagoId){
+  const p = state.pagos.find(x=>x.id===pagoId); if(!p) return;
+  const tipo = document.getElementById('f-ct-tipo').value;
+  const obraId = tipo==='obra' ? document.getElementById('f-ct-obra').value : null;
+  if(tipo==='obra' && !getObra(obraId)){ alert('Elegí la obra.'); return; }
+  const obraAnterior = p.obraId;
+  (p.pagosRealizados||[]).filter(pr=>pr.aplicado!==false && pr.fondo).forEach(pr=>{
+    const candidatos = state.movimientosFima.filter(m=>m.tipo==='out' && m.fondo===pr.fondo && m.concepto===p.concepto && m.monto===pr.monto);
+    const m = candidatos.find(m=>(m.obraId||null)===(obraAnterior||null)) || candidatos.find(m=>m.fecha===pr.fecha);
+    if(m && (m.obraId||null)!==(obraId||null)){ m.obraId = obraId; marcarEditado('movimientosFima', m.id); }
+  });
+  p.tipo = tipo; p.obraId = obraId; p.categoria = document.getElementById('f-ct-cat').value;
+  marcarEditado('pagos', p.id);
+  [obraAnterior, obraId].forEach(id=>{ const o = id && getObra(id); if(o) recomputeObraReal(o); });
+  closeModal(); renderAll();
+}
 function revertirPago(pagoId){
   const p = state.pagos.find(x=>x.id===pagoId);
   if(!p || !(p.pagosRealizados||[]).length) return;
@@ -4938,8 +4980,8 @@ function openModalMovimientoFima(){
       <div class="field hidden" id="wrap-proveedor-nuevo-mail"><label>E-mail</label><input id="f-proveedor-nuevo-mail" type="email" placeholder="contacto@proveedor.com"></div>
       <div class="field hidden" id="wrap-fima-factura"><label>Nº de factura</label><input id="f-factura" placeholder="Ej: 0001-00004521"></div>
       <div class="field hidden" id="wrap-fima-oc"><label>Nº de OC (opcional)</label><input id="f-numero-oc" placeholder="Ej: OC-0005"></div>
-      <div class="field hidden" id="wrap-fima-tipogasto"><label>Se registra en Pagos como</label><select id="f-fima-tipogasto" onchange="onFimaTipoGastoChange()"><option value="fijo">Gasto fijo</option><option value="variable">Gasto variable</option></select></div>
-      <div class="field hidden" id="wrap-fima-catvar"><label>Categoría del gasto variable</label><select id="f-fima-catvar">${catOptionsForTipo('variable')}</select></div>
+      <div class="field hidden" id="wrap-fima-tipogasto"><label>Se registra en Pagos como</label><select id="f-fima-tipogasto" onchange="onFimaTipoGastoChange()"><option value="obra">Gasto de obra</option><option value="fijo">Gasto fijo</option><option value="variable">Gasto variable</option></select></div>
+      <div class="field hidden" id="wrap-fima-cat"><label>Categoría del gasto</label><select id="f-fima-cat"></select></div>
       <div class="field"><label>Monto ($)</label><input id="f-monto" class="mono-in" type="number" step="0.01" value="0"></div>
       <div class="field"><label>Fecha</label><input id="f-fecha" type="date" value="${today()}"></div>
     </div>
@@ -4955,9 +4997,16 @@ function onFimaTipoChange(){
   if(isOut) onProveedorSelectChange(document.getElementById('f-proveedor'));
   else { ['wrap-proveedor-nuevo','wrap-proveedor-nuevo-cuit','wrap-proveedor-nuevo-tel','wrap-proveedor-nuevo-mail'].forEach(id=>document.getElementById(id).classList.add('hidden')); }
 }
+// Un egreso de FIMA genera también su gasto en Pagos: de obra (con la obra
+// y su categoría — suma al costo real de esa obra), fijo o variable.
 function onFimaTipoGastoChange(){
   const isOut = document.getElementById('f-tipo2').value==='out';
-  document.getElementById('wrap-fima-catvar').classList.toggle('hidden', !(isOut && document.getElementById('f-fima-tipogasto').value==='variable'));
+  const tipoGasto = document.getElementById('f-fima-tipogasto').value;
+  const catSel = document.getElementById('f-fima-cat');
+  if(catSel.dataset.tipo!==tipoGasto){ catSel.innerHTML = catOptionsForTipo(tipoGasto); catSel.dataset.tipo = tipoGasto; }
+  document.getElementById('wrap-fima-cat').classList.toggle('hidden', !(isOut && tipoGasto!=='fijo'));
+  const esObras = document.getElementById('f-fondo').value==='obras';
+  document.getElementById('wrap-fima-obra').classList.toggle('hidden', !(esObras || (isOut && tipoGasto==='obra')));
 }
 // El fondo "Obras" pide elegir la obra (usa el mismo campo obraId que ya
 // tenían los movimientos); el resto de los fondos piden una subcategoría de
@@ -4967,7 +5016,8 @@ function onFimaFondoChange(){
   const fondo = document.getElementById('f-fondo').value;
   const esObras = fondo==='obras';
   document.getElementById('wrap-fima-subcat').classList.toggle('hidden', esObras);
-  document.getElementById('wrap-fima-obra').classList.toggle('hidden', !esObras);
+  document.getElementById('f-fima-tipogasto').value = esObras ? 'obra' : 'fijo';
+  onFimaTipoGastoChange();
   if(!esObras){
     const usadas = state.movimientosFima.filter(m=>m.fondo===fondo).map(m=>m.subcategoria).filter(Boolean);
     const opciones = [...new Set([...(FIMA_SUBCAT_SUGERIDAS[fondo]||[]), ...usadas])];
@@ -4978,7 +5028,9 @@ function submitMovimientoFima(){
   const fondo = document.getElementById('f-fondo').value; const tipo = document.getElementById('f-tipo2').value;
   const concepto = document.getElementById('f-concepto').value.trim()||'Sin detalle'; const monto = +document.getElementById('f-monto').value||0;
   const fecha = document.getElementById('f-fecha').value || today();
-  const obraId = fondo==='obras' ? (document.getElementById('f-fima-obra').value || null) : null;
+  const tipoGasto = tipo==='out' ? document.getElementById('f-fima-tipogasto').value : null;
+  const obraId = (fondo==='obras' || tipoGasto==='obra') ? (document.getElementById('f-fima-obra').value || null) : null;
+  if(tipoGasto==='obra' && !getObra(obraId)){ alert('Elegí la obra del gasto (o registralo como gasto fijo o variable).'); return; }
   const subcategoria = fondo==='obras' ? null : (document.getElementById('f-fima-subcat').value.trim() || null);
   if(!confirmarSiHayDuplicadoFima({fecha, fondo, tipo, monto, concepto})) return;
   state.movimientosFima.push({id:newId('fm'), fecha, fondo, obraId, subcategoria, concepto, tipo, monto});
@@ -4987,8 +5039,9 @@ function submitMovimientoFima(){
     const proveedorId = resolveProveedorId();
     const numeroFactura = document.getElementById('f-factura').value.trim() || null;
     const numeroOC = document.getElementById('f-numero-oc').value.trim() || null;
-    const esVariable = document.getElementById('f-fima-tipogasto').value==='variable';
-    state.pagos.push({id:newId('p'), tipo: esVariable?'variable':'fijo', obraId:null, categoria: esVariable ? document.getElementById('f-fima-catvar').value : 'costosFijos', concepto, origenFondo:fondo, numeroOC, cantidad:1, unitario:monto, ivaAplica:false, monto, proveedorId, numeroFactura, fechaFactura:fecha, formaPago:'FIMA', fechaPago:fecha, pagosRealizados:[{fecha, monto, fondo, formaPago:'FIMA'}]});
+    const categoria = tipoGasto==='fijo' ? 'costosFijos' : document.getElementById('f-fima-cat').value;
+    state.pagos.push({id:newId('p'), tipo:tipoGasto, obraId: tipoGasto==='obra' ? obraId : null, categoria, concepto, origenFondo:fondo, numeroOC, cantidad:1, unitario:monto, ivaAplica:false, monto, proveedorId, numeroFactura, fechaFactura:fecha, formaPago:'FIMA', fechaPago:fecha, pagosRealizados:[{fecha, monto, fondo, formaPago:'FIMA'}]});
+    if(tipoGasto==='obra'){ const o = getObra(obraId); if(o) recomputeObraReal(o); }
   }
   closeModal(); renderAll();
 }
