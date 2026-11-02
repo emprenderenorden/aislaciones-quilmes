@@ -63,7 +63,7 @@ const SCHEMAS = {
     'fechaPago', 'numeroOC', 'origenFondo', 'pagosRealizadosJSON', 'vinculoJSON'],
   ordenesCompra: ['id', 'numero', 'fecha', 'solicitante', 'tipo', 'obraId', 'categoria',
     'itemsJSON', 'monto', 'ivaAplica', 'proveedorId', 'estado', 'comentarioDueno', 'pagoId',
-    'cotizacionUsd', 'notaMaterial', 'notaGeneral', 'moneda', 'obraIdsJSON', 'pagoIdsJSON'],
+    'cotizacionUsd', 'notaMaterial', 'notaGeneral', 'moneda', 'obraIdsJSON', 'pagoIdsJSON', 'firmaTesoreria'],
   proveedores: ['id', 'nombre', 'cuit', 'telefono', 'email'],
   stock: ['id', 'nombre', 'unidad', 'cantidad', 'costoUnitario', 'categoria', 'stockMinimo'],
   stockMovimientos: ['id', 'fecha', 'tipo', 'stockId', 'cantidad', 'obraId', 'monto'],
@@ -72,7 +72,8 @@ const SCHEMAS = {
   movimientosFima: ['fecha', 'fondo', 'obraId', 'concepto', 'tipo', 'monto', 'subcategoria', 'id'],
   datosEmpresa: ['nombre', 'cuit', 'telefono', 'email', 'direccion', 'localidad',
     'condicionImpositiva', 'condicionesGenerales', 'logoDataUrl',
-    'firmaSolicitaNombre', 'firmaSolicitaImg', 'firmaApruebaNombre', 'firmaApruebaImg'],
+    'firmaSolicitaNombre', 'firmaSolicitaImg', 'firmaApruebaNombre', 'firmaApruebaImg',
+    'firmaTesoreriaNombre', 'firmaTesoreriaImg'],
   eliminados: ['coleccion', 'id', 'fecha'],
   // Conceptos de la grilla de Costos fijos (Pagos → Costos fijos).
   costosFijos: ['id', 'nombre', 'categoria', 'montoMensual', 'formaPago', 'diaPago'],
@@ -275,6 +276,7 @@ function readState_() {
     cotizacionUsd: toNumOrNull_(r.cotizacionUsd), notaMaterial: r.notaMaterial || '',
     notaGeneral: r.notaGeneral || '', moneda: r.moneda || 'ars',
     obraIds: parseJsonField_(r.obraIdsJSON, undefined), pagoIds: parseJsonField_(r.pagoIdsJSON, []),
+    firmaTesoreria: toBool_(r.firmaTesoreria),
   }));
 
   const proveedores = sheetToRows_(ss.getSheetByName(SHEET_NAMES.proveedores), SCHEMAS.proveedores);
@@ -359,6 +361,7 @@ function writeState_(state) {
     JSON.stringify(o.items || []), o.monto, o.ivaAplica ? 'TRUE' : 'FALSE', o.proveedorId, o.estado, o.comentarioDueno,
     o.pagoId, o.cotizacionUsd, o.notaMaterial || '', o.notaGeneral || '', o.moneda || 'ars',
     o.obraIds && o.obraIds.length ? JSON.stringify(o.obraIds) : '', JSON.stringify(o.pagoIds || []),
+    o.firmaTesoreria ? 'TRUE' : 'FALSE',
   ]);
 
   writeRows_(ss.getSheetByName(SHEET_NAMES.proveedores), SCHEMAS.proveedores, state.proveedores || [],
@@ -390,6 +393,7 @@ function writeState_(state) {
     e.nombre || '', e.cuit || '', e.telefono || '', e.email || '', e.direccion || '',
     e.localidad || '', e.condicionImpositiva || '', e.condicionesGenerales || '', e.logoDataUrl || '',
     campoFirma('firmaSolicitaNombre'), campoFirma('firmaSolicitaImg'), campoFirma('firmaApruebaNombre'), campoFirma('firmaApruebaImg'),
+    campoFirma('firmaTesoreriaNombre'), campoFirma('firmaTesoreriaImg'),
   ]);
 
   // Igual: si el guardado viene de una versión vieja de la app (sin esta

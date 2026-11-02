@@ -65,10 +65,13 @@ El dueño confirmó (29/10) que hizo el redeploy que agrupaba:
       su trabajador y quincena) y columnas de firmas al final de
       `DatosEmpresa` (`firmaSolicitaNombre/Img`, `firmaApruebaNombre/Img`).
 
-**No hay cambios de backend pendientes.** Al volver a desplegar, recordar
-cambiar `SECRET` por la clave real (el repo tiene el placeholder) y hacer
-Implementar → Administrar implementaciones → lápiz → Nueva versión (misma
-URL).
+**Pendiente (02/11) — redeploy necesario:**
+
+- [ ] `ordenesCompra`: columna `firmaTesoreria` (tilde "Lleva firma de
+      Tesorería") y `DatosEmpresa`: columnas `firmaTesoreriaNombre` /
+      `firmaTesoreriaImg`. Al pegar el archivo, cambiar `SECRET` por la
+      clave real (el repo tiene el placeholder) y hacer Implementar →
+      Administrar implementaciones → lápiz → Nueva versión (misma URL).
 
 Cuando se sume un cambio de backend nuevo, se anota acá como pendiente y
 se agrupan varios antes de volver a desplegar (ver instrucciones al
@@ -1326,4 +1329,48 @@ principio de `backend-AppsScript.gs`).
     de egresos, sale de Costos fijos y queda guardado; eliminarlo después
     borra también el egreso de FIMA y devuelve la plata al fondo; un
     egreso nuevo del fondo Obras queda imputado a la obra (Estadía).
+- **Nuevo (02/11): bonos por obra, firma de Tesorería y editar una OC ya
+  comprada para repartirla entre obras.**
+  - **Bonos / extras por obra** ("+ Bono" en Jornales y en el detalle de
+    sueldo): trabajador, obra, monto, nota, fecha y la quincena en que se
+    cobra. Se guardan en la obra (`jornalesConfig.bonos`, lista con id —
+    viaja en `jornalesConfigJSON`, sin redeploy). Suman a esa quincena
+    (`desgloseQuincena` → línea "Bono obra X"; por lo tanto también a la
+    fila de jornales de Costos fijos y al gasto que se registra ahí) y al
+    costo real de Mano de obra de la obra (`obraJornalesCostoReal`).
+    Columna "Bonos" en el historial; se editan y eliminan desde el
+    detalle. Al cambiar la obra de un bono se borra de la vieja y se crea
+    con id nuevo en la nueva. Se combinan como los documentos de la obra
+    (`unionPorId` con `eliminadosLocalmente.bonos` / `vistosEnServidor`).
+  - **Firma de Tesorería** (Leandro Parodi): tercer firmante en "✍ Firmas"
+    y tilde "Lleva firma de Tesorería" en el formulario de la OC
+    (`o.firmaTesoreria`); si está, la OC y su orden de pago salen con las
+    tres firmas. **Requiere redeploy** (checklist arriba).
+  - **Editar una OC comprada**: "Editar" pide confirmación ("ya fue
+    comprada, ¿igual querés editarla?") y ya no bloquea cambiar las obras
+    (antes no se podía pasar de una a varias ni cambiar a cuáles iba). Con
+    más de una obra aparece una columna "Obra" por material. Si queda (o
+    estaba) repartida entre varias, al guardar `reasignarPagosOcComprada`
+    deshace lo aplicado de los pagos viejos, los borra y crea uno por obra
+    según el subtotal de sus materiales, repartiendo también cada pago ya
+    hecho (fecha, medio, fondo, programados) en la misma proporción — el
+    total que salió de caja o de cada fondo no cambia, solo a qué obra se
+    imputa.
+  - **Fix de sincronización encontrado en las pruebas:** la marca de "lo
+    edité yo" (`editadosLocalmente`) no se limpiaba nunca, así que una
+    pestaña que alguna vez editó un registro lo hacía volver si otra
+    persona lo borraba después (en las listas principales lo frenaba la
+    hoja `Eliminados` del backend, pero no en lo que vive dentro de una
+    obra, como bonos o documentos). Ahora un guardado confirmado limpia la
+    marca de lo que guardó (`contadorEdiciones` /
+    `limpiarEdicionesGuardadas`), salvo que se haya vuelto a editar
+    mientras se guardaba.
+  - Probado (`funciones-tests.js`, F9–F11): bono que suma a la quincena y
+    al real de la obra, historial, detalle, Costos fijos, persistencia,
+    edición y un bono borrado que no vuelve aunque otra pestaña que lo
+    había editado guarde después; firma de Tesorería en OC y OP solo con
+    el tilde, y guardada; OC comprada de una obra repartida entre dos (dos
+    pagos 6.000/4.000 pagados, real de cada obra, fondo FIMA y total de
+    egresos sin cambios, egresos de FIMA repartidos por obra; eliminar uno
+    devuelve solo su parte). Las pruebas de sincronización siguen pasando.
 

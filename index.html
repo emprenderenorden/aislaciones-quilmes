@@ -419,7 +419,7 @@
   <div class="view" id="view-jornales">
     <div class="topbar">
       <div><h1>Jornales</h1><div class="sub">Asistencia, sueldos y horas extra del personal</div></div>
-      <div class="topbar-actions"><button class="btn btn-ghost" onclick="openModalAdelanto(null, document.getElementById('jh-mes')?.value)">+ Adelanto</button><button class="btn btn-primary" onclick="openModalTrabajador(null)">+ Agregar trabajador</button></div>
+      <div class="topbar-actions"><button class="btn btn-ghost" onclick="openModalBono(null, document.getElementById('jh-mes')?.value)">+ Bono</button><button class="btn btn-ghost" onclick="openModalAdelanto(null, document.getElementById('jh-mes')?.value)">+ Adelanto</button><button class="btn btn-primary" onclick="openModalTrabajador(null)">+ Agregar trabajador</button></div>
     </div>
     <div class="week-nav">
       <button class="nav-arrow" onclick="changeWeek(-1)">‹</button>
@@ -442,7 +442,7 @@
       </div>
     </div>
     <div class="card card-table"><table>
-      <thead><tr><th>Personal</th><th>Puesto</th><th class="num">Sueldo mensual</th><th class="num">Sueldo diario</th><th class="num">Días trabajados</th><th class="num">Días ausentes</th><th class="num">Horas extra</th><th class="num">Viaje</th><th class="num">Adelantos</th><th class="num">1ª quincena (transf.)</th><th class="num">2ª quincena (efvo.)</th><th class="num">Sueldo a cobrar</th><th></th></tr></thead>
+      <thead><tr><th>Personal</th><th>Puesto</th><th class="num">Sueldo mensual</th><th class="num">Sueldo diario</th><th class="num">Días trabajados</th><th class="num">Días ausentes</th><th class="num">Horas extra</th><th class="num">Viaje</th><th class="num">Bonos</th><th class="num">Adelantos</th><th class="num">1ª quincena (transf.)</th><th class="num">2ª quincena (efvo.)</th><th class="num">Sueldo a cobrar</th><th></th></tr></thead>
       <tbody id="jornales-historial-body"></tbody>
     </table></div>
   </div>
@@ -984,6 +984,7 @@ const eliminadosLocalmente = {
   stock: new Set(), stockMovimientos: new Set(), trabajadores: new Set(), jornales: new Set(),
   movimientosFima: new Set(), costosFijos: new Set(),
   documentos: new Set(), // id del documento (dentro de una obra)
+  bonos: new Set(),      // id del bono (dentro de jornalesConfig de una obra)
   asignados: new Set(),  // "idDeLaObra|idDelTrabajador" (quitado de la obra)
 };
 function marcarEliminado(coleccion, id){ if(id!==undefined) eliminadosLocalmente[coleccion].add(id); }
@@ -1005,13 +1006,31 @@ function marcarEliminado(coleccion, id){ if(id!==undefined) eliminadosLocalmente
 const editadosLocalmente = {
   pagos: new Set(), ordenesCompra: new Set(), proveedores: new Set(),
   stock: new Set(), trabajadores: new Set(), ingresos: new Set(), movimientosFima: new Set(),
-  costosFijos: new Set(),
+  costosFijos: new Set(), bonos: new Set(),
   diasJornales: new Set(), // "idDeLaFilaDeJornales|índiceDelDía" (0-6)
   camposObra: new Set(),   // "idDeLaObra|nombreDelCampo"
   asignados: new Set(),    // "idDeLaObra|idDelTrabajador" (asignado a la obra acá)
   jornalesCfg: new Set(),  // "idDeLaObra|idDelTrabajador" (horas extra / viaje editados acá)
 };
-function marcarEditado(coleccion, id){ if(id!==undefined) editadosLocalmente[coleccion].add(id); }
+// La marca de "lo edité yo" vale hasta que esa edición queda guardada: un
+// guardado confirmado la saca (si no se volvió a editar mientras tanto),
+// para que una edición vieja ya guardada no gane después contra un cambio
+// o un borrado posterior de otra persona.
+const contadorEdiciones = new Map();
+function marcarEditado(coleccion, id){
+  if(id===undefined) return;
+  editadosLocalmente[coleccion].add(id);
+  const k = coleccion+'|'+id;
+  contadorEdiciones.set(k, (contadorEdiciones.get(k)||0)+1);
+}
+function limpiarEdicionesGuardadas(enviadas){
+  enviadas.forEach((v,k)=>{
+    if(contadorEdiciones.get(k)!==v) return; // se volvió a editar mientras se guardaba
+    const i = k.indexOf('|');
+    editadosLocalmente[k.slice(0,i)].delete(k.slice(i+1));
+    contadorEdiciones.delete(k);
+  });
+}
 function marcarEditadoDia(jornalId, dayIdx){ editadosLocalmente.diasJornales.add(jornalId+'|'+dayIdx); }
 function marcarEditadoObra(obraId, campo){ editadosLocalmente.camposObra.add(obraId+'|'+campo); }
 // ---- Borrados hechos en OTRA pestaña / por OTRA persona ----
@@ -1029,7 +1048,7 @@ const vistosEnServidor = {
   obras: new Set(), pagos: new Set(), ordenesCompra: new Set(), proveedores: new Set(),
   stock: new Set(), stockMovimientos: new Set(), trabajadores: new Set(), jornales: new Set(),
   movimientosFima: new Set(), costosFijos: new Set(),
-  documentos: new Set(), ingresos: new Set(), asignados: new Set(), // anidados en cada obra
+  documentos: new Set(), ingresos: new Set(), asignados: new Set(), bonos: new Set(), // anidados en cada obra
 };
 const COLECCIONES_PLANAS = ['pagos','ordenesCompra','proveedores','stock','stockMovimientos','trabajadores','movimientosFima','costosFijos'];
 const COLECCIONES_CON_ID = ['obras','jornales',...COLECCIONES_PLANAS];
@@ -1048,6 +1067,7 @@ function idsDeEstado(s){
     (o.documentos||[]).forEach(d=>{ if(d && d.id) out.push(['documentos', d.id]); });
     (o.ingresosList||[]).forEach(i=>{ if(i && i.id) out.push(['ingresos', i.id]); });
     ((o.jornalesConfig&&o.jornalesConfig.asignados)||[]).forEach(tid=>out.push(['asignados', o.id+'|'+tid]));
+    ((o.jornalesConfig&&o.jornalesConfig.bonos)||[]).forEach(b=>{ if(b && b.id) out.push(['bonos', b.id]); });
   });
   return out;
 }
@@ -1187,6 +1207,8 @@ function mergeObraTrasConflicto(obraLocal, obraServidor){
     asignados: [...asigServidor, ...asigLocalesNuevos],
     horasExtra: porTrabajador(cfgLocal.horasExtra, cfgServidor.horasExtra),
     viaje: porTrabajador(cfgLocal.viaje, cfgServidor.viaje),
+    // Bonos: lista con id, igual que los documentos de la obra.
+    bonos: unionPorId(cfgLocal.bonos, cfgServidor.bonos, eliminadosLocalmente.bonos, editadosLocalmente.bonos, vistosEnServidor.bonos),
   };
   // ingresosList: igual que las demás colecciones planas, un cobro que ya
   // existía en las dos listas (editar monto/fecha de un cobro ya cargado,
@@ -1265,11 +1287,13 @@ async function saveStateCore(reintentos){
     // acá no debe quedar marcado como ya guardado).
     const idsEnviados = idsDeEstado(state);
     const edicionEmpresaEnviada = datosEmpresaEdicion;
+    const edicionesEnviadas = new Map(contadorEdiciones);
     const res = await fetch(STATE_API_URL, {method:'POST', body:JSON.stringify({secret:API_SECRET, state, eliminados: eliminadosParaEnviar()})});
     const data = await res.json();
     if(data && data.ok){
       state.rev = data.rev;
       registrarVistos(idsEnviados);
+      limpiarEdicionesGuardadas(edicionesEnviadas);
       if(edicionEmpresaEnviada===datosEmpresaEdicion) datosEmpresaEditadoLocal = false;
       hayGuardadoPendiente = false;
       ocultarAvisoGuardadoFallido();
@@ -2595,6 +2619,18 @@ const esAdelanto = (p)=> !!(p && p.trabajadorId && p.descuentaPeriodo);
 function adelantosDeQuincena(trabajadorId, mes, q){
   return state.pagos.filter(p=>esAdelanto(p) && p.trabajadorId===trabajadorId && p.descuentaPeriodo===mes && Number(p.descuentaQuincena)===q);
 }
+// Bonos o extras por una obra puntual: se guardan en la obra
+// (jornalesConfig.bonos: id, trabajadorId, monto, nota, fecha, periodo
+// "AAAA-MM" y quincena 1|2 en la que se cobran). Suman al sueldo de esa
+// quincena y al costo real de Mano de obra de esa obra.
+function todosLosBonos(){
+  const out = [];
+  state.obras.forEach(o=>((o.jornalesConfig&&o.jornalesConfig.bonos)||[]).forEach(b=>out.push({...b, obraId:o.id})));
+  return out;
+}
+function bonosDeQuincena(trabajadorId, mes, q){
+  return todosLosBonos().filter(b=>b.trabajadorId===trabajadorId && b.periodo===mes && Number(b.quincena)===q);
+}
 // Desglose de una quincena: mitad del sueldo mensual, menos $100.000 fijos
 // por cada ausencia que cayó en esa quincena puntual (nunca por debajo de
 // $0, no se arrastra el excedente a la otra quincena), más las horas extra
@@ -2608,8 +2644,10 @@ function desgloseQuincena(trabajador, mes, q){
   const horas = horasExtraPorQuincena(trabajador.id, mes)[q];
   const viaje = viajeExtraPorQuincena(trabajador.id, mes)[q];
   const adelantos = adelantosDeQuincena(trabajador.id, mes, q);
+  const bonos = bonosDeQuincena(trabajador.id, mes, q);
+  const totalBonos = bonos.reduce((a,b)=>a+(Number(b.monto)||0),0);
   const descuentoAusencias = Math.min(base, dias.ausente*DESCUENTO_AUSENCIA);
-  const subtotal = base - descuentoAusencias + horas*VALOR_HORA_EXTRA + viaje;
+  const subtotal = base - descuentoAusencias + horas*VALOR_HORA_EXTRA + viaje + totalBonos;
   const totalAdelantos = adelantos.reduce((a,p)=>a+p.monto,0);
   const descuentoAdelantos = Math.min(subtotal, totalAdelantos);
   return {
@@ -2617,6 +2655,7 @@ function desgloseQuincena(trabajador, mes, q){
     topeAusencias: dias.ausente*DESCUENTO_AUSENCIA > base,
     horasExtra: horas, montoHorasExtra: horas*VALOR_HORA_EXTRA,
     diasViaje: Math.round(viaje/VALOR_VIAJE), montoViaje: viaje,
+    bonos, totalBonos,
     adelantos, totalAdelantos, topeAdelantos: totalAdelantos > subtotal,
     total: subtotal - descuentoAdelantos,
   };
@@ -2639,6 +2678,7 @@ function desgloseSueldoHtml(t, mes){
       ${fila(`Días ausentes (${d.ausentes})${d.topeAusencias?' — tope: la quincena no baja de $0':''}`, d.descuentoAusencias, '− ')}
       ${fila(`Horas extra (${d.horasExtra} h × ${fmt(VALOR_HORA_EXTRA)})`, d.montoHorasExtra, '+ ')}
       ${fila(`Días de viaje (${d.diasViaje} × ${fmt(VALOR_VIAJE)})`, d.montoViaje, '+ ')}
+      ${d.bonos.map(b=>fila(`Bono obra ${getObra(b.obraId)?.code||''}${b.nota?' — '+b.nota:''}`, Number(b.monto)||0, '+ ')).join('')}
       ${d.adelantos.length ? d.adelantos.map(a=>fila(`Adelanto del ${fmtFecha(a.fechaPago||a.fechaFactura)}${a.nota?' — '+a.nota:''}`, a.monto, '− ')).join('') : fila('Adelantos', 0, '− ')}
       ${d.topeAdelantos?`<tr><td colspan="2" style="color:#6B7573;font-size:11.5px;">Los adelantos superan lo que cobra en la quincena: queda en $0.</td></tr>`:''}
       <tr style="font-weight:700;"><td>Total ${q===1?'1ª':'2ª'} quincena</td><td class="num">${fmt(d.total)}</td></tr>`;
@@ -2650,6 +2690,7 @@ function desgloseSueldoHtml(t, mes){
 function openModalDetalleSueldo(trabajadorId, mes){
   const t = getTrabajador(trabajadorId); if(!t) return;
   const adelantosMes = state.pagos.filter(p=>esAdelanto(p) && p.trabajadorId===trabajadorId && p.descuentaPeriodo===mes);
+  const bonosMes = todosLosBonos().filter(b=>b.trabajadorId===trabajadorId && b.periodo===mes);
   modalEl.innerHTML = `<h3>Sueldo — ${t.nombre}</h3>
     <div class="modal-sub">${mesLabel(mes)} · ${t.puesto} · Sueldo mensual ${fmt(t.sueldoMensual||0)}</div>
     <div class="card card-table">${desgloseSueldoHtml(t, mes)}</div>
@@ -2657,8 +2698,66 @@ function openModalDetalleSueldo(trabajadorId, mes){
     <div class="card card-table"><table><thead><tr><th>Fecha</th><th>Quincena</th><th>Medio</th><th class="num">Monto</th><th></th></tr></thead><tbody>
       ${adelantosMes.length ? adelantosMes.map(a=>`<tr><td class="mono">${fmtFecha(a.fechaPago||a.fechaFactura)}</td><td>${Number(a.descuentaQuincena)===1?'1ª':'2ª'}</td><td>${a.formaPago||'—'}</td><td class="num">${fmt(a.monto)}</td><td><span class="link-btn danger" onclick="eliminarAdelanto('${a.id}','${t.id}','${mes}')">Eliminar</span></td></tr>`).join('') : '<tr class="empty-row"><td colspan="5">Sin adelantos este mes</td></tr>'}
     </tbody></table></div>
+    <div class="section-title" style="margin:16px 0 8px;"><h2 style="font-size:13.5px;">Bonos / extras por obra que se cobran este mes</h2><span class="link-btn" onclick="openModalBono('${t.id}','${mes}')">+ Bono</span></div>
+    <div class="card card-table"><table><thead><tr><th>Obra</th><th>Quincena</th><th>Nota</th><th class="num">Monto</th><th></th></tr></thead><tbody>
+      ${bonosMes.length ? bonosMes.map(b=>`<tr><td><span class="obra-code">${getObra(b.obraId)?.code||'—'}</span></td><td>${Number(b.quincena)===1?'1ª':'2ª'}</td><td>${b.nota||'—'}</td><td class="num">${fmt(b.monto)}</td><td><span class="link-btn" onclick="openModalBono('${t.id}','${mes}','${b.obraId}','${b.id}')">Editar</span> · <span class="link-btn danger" onclick="eliminarBono('${b.obraId}','${b.id}','${t.id}','${mes}')">Eliminar</span></td></tr>`).join('') : '<tr class="empty-row"><td colspan="5">Sin bonos este mes</td></tr>'}
+    </tbody></table></div>
     <div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal()">Cerrar</button><button class="btn btn-primary" onclick="imprimirDetalleSueldo('${t.id}','${mes}')">⬇ Descargar PDF</button></div>`;
   overlay.classList.add('open');
+}
+// Alta / edición de un bono. Si al editar se cambia la obra, se borra de la
+// obra vieja y se crea con un id nuevo en la nueva (el registro de borrados
+// es por id: reusar el mismo id en otra obra lo haría desaparecer).
+function openModalBono(trabajadorId, mes, obraIdEdit, bonoId){
+  const o = obraIdEdit ? getObra(obraIdEdit) : null;
+  const b = o ? ((o.jornalesConfig&&o.jornalesConfig.bonos)||[]).find(x=>x.id===bonoId) : null;
+  const hoy = today();
+  const mesDefault = b ? b.periodo : (mes || hoy.slice(0,7));
+  const qDefault = b ? Number(b.quincena) : (mesDefault===hoy.slice(0,7) ? quincenaDeFecha(hoy) : 1);
+  const trabajadoresOrd = [...state.trabajadores].sort((a,c)=>a.nombre.localeCompare(c.nombre));
+  modalEl.innerHTML = `<h3>${b?'Editar bono':'Registrar bono / extra por obra'}</h3><div class="modal-sub">Suma al sueldo de la quincena elegida y al costo real de Mano de obra de la obra</div>
+    <div class="form-grid">
+      <div class="field"><label>Trabajador</label><select id="f-bono-trab">${trabajadoresOrd.map(t=>`<option value="${t.id}" ${t.id===(b?b.trabajadorId:trabajadorId)?'selected':''}>${t.nombre}</option>`).join('')||'<option disabled>No hay personal cargado</option>'}</select></div>
+      <div class="field"><label>Obra</label>${comboHTML('f-bono-obra', opcionesObras(), obraIdEdit||null, {placeholder:'Tipeá código o cliente…'})}</div>
+      <div class="field"><label>Monto ($)</label><input id="f-bono-monto" class="mono-in" type="number" step="0.01" min="0" value="${b?b.monto:0}"></div>
+      <div class="field"><label>Fecha</label><input id="f-bono-fecha" type="date" value="${b&&b.fecha?b.fecha:hoy}"></div>
+      <div class="field"><label>Se cobra en el mes</label><input id="f-bono-mes" type="month" value="${mesDefault}"></div>
+      <div class="field"><label>Quincena</label><select id="f-bono-q"><option value="1" ${qDefault===1?'selected':''}>1ª quincena</option><option value="2" ${qDefault===2?'selected':''}>2ª quincena</option></select></div>
+      <div class="field span2"><label>Nota (opcional)</label><input id="f-bono-nota" placeholder="Ej: bono por terminar antes de plazo" value="${b?escAttr(b.nota||''):''}"></div>
+    </div>
+    <div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" onclick="submitBono('${obraIdEdit||''}','${bonoId||''}')">${b?'Guardar cambios':'Registrar bono'}</button></div>`;
+  overlay.classList.add('open');
+}
+function submitBono(obraIdEdit, bonoId){
+  const t = getTrabajador(document.getElementById('f-bono-trab').value);
+  if(!t){ alert('Elegí un trabajador.'); return; }
+  const obra = getObra(document.getElementById('f-bono-obra').value);
+  if(!obra){ alert('Elegí la obra del bono.'); return; }
+  const monto = r2(+document.getElementById('f-bono-monto').value||0);
+  if(monto<=0){ alert('Ingresá el monto del bono.'); return; }
+  const fecha = document.getElementById('f-bono-fecha').value || today();
+  const datos = {trabajadorId:t.id, monto, fecha, periodo: document.getElementById('f-bono-mes').value || fecha.slice(0,7),
+    quincena: +document.getElementById('f-bono-q').value===2 ? 2 : 1, nota: document.getElementById('f-bono-nota').value.trim()};
+  const vieja = obraIdEdit ? getObra(obraIdEdit) : null;
+  const existente = vieja && bonoId ? ((vieja.jornalesConfig&&vieja.jornalesConfig.bonos)||[]).find(x=>x.id===bonoId) : null;
+  if(existente && vieja.id===obra.id){
+    Object.assign(existente, datos); marcarEditado('bonos', existente.id);
+  } else {
+    if(existente){ marcarEliminado('bonos', existente.id); vieja.jornalesConfig.bonos = vieja.jornalesConfig.bonos.filter(x=>x.id!==existente.id); }
+    const cfg = obra.jornalesConfig = obra.jornalesConfig || {asignados:[], horasExtra:{}, viaje:{}};
+    cfg.bonos = cfg.bonos || [];
+    cfg.bonos.push({id:newId('bo'), ...datos});
+  }
+  closeModal(); renderAll();
+}
+function eliminarBono(obraId, bonoId, trabajadorId, mes){
+  const o = getObra(obraId); if(!o || !o.jornalesConfig) return;
+  const b = (o.jornalesConfig.bonos||[]).find(x=>x.id===bonoId); if(!b) return;
+  if(!confirm(`¿Eliminar el bono de ${fmt(b.monto)} (obra ${o.code})?`)) return;
+  marcarEliminado('bonos', bonoId);
+  o.jornalesConfig.bonos = o.jornalesConfig.bonos.filter(x=>x.id!==bonoId);
+  renderAll();
+  if(trabajadorId) openModalDetalleSueldo(trabajadorId, mes);
 }
 function imprimirDetalleSueldo(trabajadorId, mes){
   const t = getTrabajador(trabajadorId); if(!t) return;
@@ -2727,8 +2826,8 @@ function renderJornalesHistorial(){
   ids.sort((a,b)=> getTrabajador(a).nombre.localeCompare(getTrabajador(b).nombre));
 
   const body = document.getElementById('jornales-historial-body');
-  if(!ids.length){ body.innerHTML = `<tr class="empty-row"><td colspan="13">No hay personal cargado</td></tr>`; return; }
-  let granT=0, granA=0, granV=0, granAd=0, granQ1=0, granQ2=0;
+  if(!ids.length){ body.innerHTML = `<tr class="empty-row"><td colspan="14">No hay personal cargado</td></tr>`; return; }
+  let granT=0, granA=0, granV=0, granB=0, granAd=0, granQ1=0, granQ2=0;
   body.innerHTML = ids.map(id=>{
     const t = getTrabajador(id);
     const {trabajado, ausente} = diasDelMes(id, mes);
@@ -2737,9 +2836,10 @@ function renderJornalesHistorial(){
     const viaje = viajeExtraDelMes(id, mes);
     const {q1, q2} = sueldoPorQuincena(t, mes);
     const adelantos = adelantosDeQuincena(id, mes, 1).concat(adelantosDeQuincena(id, mes, 2)).reduce((a,p)=>a+p.monto,0);
-    granT+=trabajado; granA+=ausente; granV+=viaje; granAd+=adelantos; granQ1+=q1; granQ2+=q2;
-    return `<tr><td style="font-weight:600;">${t.nombre}</td><td>${t.puesto}</td><td class="num">${fmt(t.sueldoMensual||0)}</td><td class="num">${fmt(diario)}</td><td class="num">${trabajado}</td><td class="num">${ausente}</td><td class="num">${horasExtra}</td><td class="num">${fmt(viaje)}</td><td class="num">${adelantos?'− '+fmt(adelantos):fmt(0)}</td><td class="num">${fmt(q1)}</td><td class="num">${fmt(q2)}</td><td class="num">${fmt(q1+q2)}</td><td><span class="link-btn" onclick="openModalDetalleSueldo('${id}','${mes}')">Detalle</span> · <span class="link-btn" onclick="openModalObrasTrabajador('${id}','${mes}')">Ver obras</span> · <span class="link-btn" onclick="openModalTrabajador('${id}')">Editar</span></td></tr>`;
-  }).join('') + `<tr class="subtotal-row"><td colspan="4">Total general</td><td class="num">${granT}</td><td class="num">${granA}</td><td></td><td class="num">${fmt(granV)}</td><td class="num">${granAd?'− '+fmt(granAd):fmt(0)}</td><td class="num">${fmt(granQ1)}</td><td class="num">${fmt(granQ2)}</td><td class="num">${fmt(granQ1+granQ2)}</td><td></td></tr>`;
+    const bonos = bonosDeQuincena(id, mes, 1).concat(bonosDeQuincena(id, mes, 2)).reduce((a,b)=>a+(Number(b.monto)||0),0);
+    granT+=trabajado; granA+=ausente; granV+=viaje; granB+=bonos; granAd+=adelantos; granQ1+=q1; granQ2+=q2;
+    return `<tr><td style="font-weight:600;">${t.nombre}</td><td>${t.puesto}</td><td class="num">${fmt(t.sueldoMensual||0)}</td><td class="num">${fmt(diario)}</td><td class="num">${trabajado}</td><td class="num">${ausente}</td><td class="num">${horasExtra}</td><td class="num">${fmt(viaje)}</td><td class="num">${fmt(bonos)}</td><td class="num">${adelantos?'− '+fmt(adelantos):fmt(0)}</td><td class="num">${fmt(q1)}</td><td class="num">${fmt(q2)}</td><td class="num">${fmt(q1+q2)}</td><td><span class="link-btn" onclick="openModalDetalleSueldo('${id}','${mes}')">Detalle</span> · <span class="link-btn" onclick="openModalObrasTrabajador('${id}','${mes}')">Ver obras</span> · <span class="link-btn" onclick="openModalTrabajador('${id}')">Editar</span></td></tr>`;
+  }).join('') + `<tr class="subtotal-row"><td colspan="4">Total general</td><td class="num">${granT}</td><td class="num">${granA}</td><td></td><td class="num">${fmt(granV)}</td><td class="num">${fmt(granB)}</td><td class="num">${granAd?'− '+fmt(granAd):fmt(0)}</td><td class="num">${fmt(granQ1)}</td><td class="num">${fmt(granQ2)}</td><td class="num">${fmt(granQ1+granQ2)}</td><td></td></tr>`;
 }
 function diasPorObra(trabajadorId, mes){
   const porObra = {};
@@ -2808,6 +2908,8 @@ function eliminarTrabajador(id){
     o.jornalesConfig.asignados = (o.jornalesConfig.asignados||[]).filter(tid=>tid!==id);
     if(o.jornalesConfig.horasExtra) delete o.jornalesConfig.horasExtra[id];
     if(o.jornalesConfig.viaje) delete o.jornalesConfig.viaje[id];
+    (o.jornalesConfig.bonos||[]).forEach(b=>{ if(b.trabajadorId===id) marcarEliminado('bonos', b.id); });
+    if(o.jornalesConfig.bonos) o.jornalesConfig.bonos = o.jornalesConfig.bonos.filter(b=>b.trabajadorId!==id);
     eliminadosLocalmente.asignados.add(o.id+'|'+id);
     editadosLocalmente.asignados.delete(o.id+'|'+id);
     editadosLocalmente.jornalesCfg.add(o.id+'|'+id);
@@ -2847,6 +2949,7 @@ function obraJornalesCostoReal(obra){
   });
   const horasExtra = (obra.jornalesConfig && obra.jornalesConfig.horasExtra) || {};
   Object.values(horasExtra).forEach(h=>{ total += (Number(h)||0) * VALOR_HORA_EXTRA; });
+  ((obra.jornalesConfig && obra.jornalesConfig.bonos) || []).forEach(b=>{ total += Number(b.monto)||0; });
   return total;
 }
 let obraJornalesWeek = {};
@@ -3407,7 +3510,7 @@ function printCss(){
     .totales{display:flex;justify-content:flex-end;margin:10px 0;} .totales table{width:280px;margin:0;}
     .totales td:first-child{color:#6B7573;} .totales tr:last-child td{font-weight:700;font-size:14px;}
     .cond ul{margin:4px 0 0;padding-left:18px;} .cond li{margin-bottom:3px;}
-    .firmas{display:flex;gap:40px;margin-top:36px;} .firmas .firma{flex:1;display:flex;flex-direction:column;justify-content:flex-end;}
+    .firmas{display:flex;gap:28px;margin-top:36px;} .firmas .firma{flex:1;display:flex;flex-direction:column;justify-content:flex-end;}
     .firmas .firma img{display:block;max-height:72px;max-width:100%;margin:0 auto -6px;}
     .firmas .linea{border-top:1px solid #333;padding-top:6px;font-size:11.5px;color:#6B7573;text-align:center;}
     .foot{margin-top:24px;font-size:10.5px;color:#9AA3A1;text-align:center;}
@@ -3494,8 +3597,9 @@ function ocItemsTablaHtml(o, obrasCodes){
       </tbody>
     </table>`;
 }
-// Firmas al pie de la OC y de la orden de pago: "Solicitado por" y
-// "Aprobación comercial" (se sacó "Recibí conforme"). Si se cargaron las
+// Firmas al pie de la OC y de la orden de pago: "Solicitado por",
+// "Aprobación comercial" y, si la OC lo tiene tildado, "Tesorería" (se
+// sacó "Recibí conforme"). Si se cargaron las
 // firmas digitales (ver openModalFirmas), salen como imagen sobre la
 // línea, como si el papel estuviera firmado y escaneado. La de aprobación
 // solo se estampa si la orden ya está autorizada — una OC pendiente
@@ -3506,6 +3610,7 @@ function firmasHtml(o, conAprobacion){
   return `<div class="firmas">
       ${bloque(e.firmaSolicitaImg, 'Solicitado por', o.solicitante || e.firmaSolicitaNombre)}
       ${bloque(conAprobacion ? e.firmaApruebaImg : '', 'Aprobación comercial', conAprobacion ? e.firmaApruebaNombre : '')}
+      ${o.firmaTesoreria ? bloque(e.firmaTesoreriaImg, 'Tesorería', e.firmaTesoreriaNombre || 'Leandro Parodi') : ''}
     </div>`;
 }
 // Pagos generados al marcar la OC como comprada (uno solo, o uno por obra
@@ -3554,13 +3659,15 @@ function imprimirOrdenPago(id){
 // Son siempre las mismas dos personas: se firma una sola vez (con el dedo
 // en el celular, o con el mouse) y la imagen queda guardada en los datos
 // de la empresa — sale en todas las OC y órdenes de pago.
-const FIRMANTES = [{clave:'Solicita', titulo:'Solicitado por'}, {clave:'Aprueba', titulo:'Aprobación comercial'}];
+// Tesorería (Leandro Parodi) firma solo las OC que tienen el tilde
+// "Lleva firma de Tesorería" (o.firmaTesoreria), y sus órdenes de pago.
+const FIRMANTES = [{clave:'Solicita', titulo:'Solicitado por'}, {clave:'Aprueba', titulo:'Aprobación comercial'}, {clave:'Tesoreria', titulo:'Tesorería', nombreSugerido:'Leandro Parodi'}];
 const firmaPads = {};
 function openModalFirmas(){
   const e = state.datosEmpresa;
-  modalEl.innerHTML = `<h3>Firmas</h3><div class="modal-sub">Se firma una sola vez (con el dedo en el celular o con el mouse) y la firma sale impresa al pie de todas las órdenes de compra y órdenes de pago.</div>
+  modalEl.innerHTML = `<h3>Firmas</h3><div class="modal-sub">Se firma una sola vez (con el dedo en el celular o con el mouse) y la firma sale impresa al pie de las órdenes de compra y órdenes de pago. La de Tesorería sale solo en las OC que tienen tildado "Lleva firma de Tesorería".</div>
     ${FIRMANTES.map(f=>`<div class="field" style="margin-bottom:16px;"><label>${f.titulo}</label>
-      <input id="f-firma-nombre-${f.clave}" placeholder="Nombre y apellido" value="${e['firma'+f.clave+'Nombre']||''}" style="margin-bottom:8px;">
+      <input id="f-firma-nombre-${f.clave}" placeholder="Nombre y apellido" value="${e['firma'+f.clave+'Nombre']||f.nombreSugerido||''}" style="margin-bottom:8px;">
       <canvas id="firma-pad-${f.clave}" class="firma-pad" width="500" height="170"></canvas>
       <div style="display:flex;justify-content:space-between;font-size:11.5px;color:var(--muted);margin-top:4px;"><span>Firmá dentro del recuadro</span><span class="link-btn danger" onclick="borrarFirmaPad('${f.clave}')">Borrar firma</span></div>
     </div>`).join('')}
@@ -3633,7 +3740,7 @@ function renderOrdenes(){
     let acciones = '';
     if(o.estado==='pendiente') acciones = `<span class="link-btn" onclick="openModalOrdenCompra('${o.id}')">Editar</span> · <span class="link-btn" onclick="openModalAutorizarOrden('${o.id}')">Autorizar</span> · <span class="link-btn danger" onclick="openModalRechazarOrden('${o.id}')">Rechazar</span>`;
     if(o.estado==='autorizada') acciones = `<span class="link-btn" onclick="openModalOrdenCompra('${o.id}')">Editar</span> · <span class="link-btn" onclick="openModalEfectivizarOrden('${o.id}')">Marcar como comprada →</span>`;
-    if(o.estado==='comprada') acciones = `<span class="link-btn" onclick="openModalOrdenCompra('${o.id}')">Editar</span> · <span class="link-btn" onclick="verOrdenEnPagos('${o.id}')">Ver en Pagos →</span>`;
+    if(o.estado==='comprada') acciones = `<span class="link-btn" onclick="editarOcComprada('${o.id}')">Editar</span> · <span class="link-btn" onclick="verOrdenEnPagos('${o.id}')">Ver en Pagos →</span>`;
     if(o.estado==='rechazada') acciones = o.comentarioDueno ? `<span class="hint">Motivo: ${o.comentarioDueno}</span>` : '';
     if(acciones) acciones += ' · ';
     acciones += `<span class="link-btn" onclick="imprimirOrden('${o.id}')" title="Abrir para imprimir o guardar como PDF">⬇ Descargar OC</span>`;
@@ -3644,13 +3751,12 @@ function renderOrdenes(){
 function openModalOrdenCompra(id){
   const existing = id ? getOrden(id) : null;
   const obraIdsSel = existing ? ocObraIds(existing) : [];
-  // Una vez comprada y repartida entre varias obras, la asignación queda
-  // fija (se hizo al marcarla como comprada, ver submitEfectivizarOrden) —
-  // no se puede volver a elegir a cuáles va acá, para no desincronizar los
-  // pagos ya generados. Si es de una sola obra, se puede seguir moviendo a
-  // otra (como siempre).
-  const obrasBloqueadas = existing && existing.estado==='comprada' && obraIdsSel.length>1;
-  const obraChecksHtml = state.obras.map(o=>`<label data-buscar="${escAttr(o.code+' '+(o.cliente||'')+' '+(o.encargado||''))}" style="display:inline-flex;align-items:center;gap:5px;font-size:12.5px;margin:3px 12px 3px 0;"><input type="checkbox" class="oc-obra-check" value="${o.id}" ${obraIdsSel.includes(o.id)?'checked':''} ${obrasBloqueadas?'disabled':''}> ${o.code}</label>`).join('');
+  // Ya comprada: las obras se pueden cambiar igual (se avisa antes, ver
+  // editarOcComprada) — al guardar se rearman los pagos por obra
+  // (reasignarPagosOcComprada). Con más de una obra, cada material elige
+  // su obra en la tabla de materiales.
+  ocEditandoComprada = !!(existing && existing.estado==='comprada');
+  const obraChecksHtml = state.obras.map(o=>`<label data-buscar="${escAttr(o.code+' '+(o.cliente||'')+' '+(o.encargado||''))}" style="display:inline-flex;align-items:center;gap:5px;font-size:12.5px;margin:3px 12px 3px 0;"><input type="checkbox" class="oc-obra-check" value="${o.id}" ${obraIdsSel.includes(o.id)?'checked':''} onchange="renderOcItemsTable()"> ${o.code}</label>`).join('');
   const tipo = existing?existing.tipo:'obra';
   modalEl.innerHTML = `<h3>${existing?'Editar orden de compra':'Nueva orden de compra'}</h3><div class="modal-sub">${existing?existing.numero:'Se genera un número al guardar'}</div>
     <div class="form-grid">
@@ -3660,7 +3766,7 @@ function openModalOrdenCompra(id){
         <option value="variable" ${tipo==='variable'?'selected':''}>Gasto variable</option>
         <option value="stock" ${tipo==='stock'?'selected':''}>Stock</option>
       </select></div>
-      <div class="field span2" id="wrap-oc-obra"><label>Obra(s)${obrasBloqueadas?' — ya comprada y repartida, no se puede cambiar':''}</label>${state.obras.length>6&&!obrasBloqueadas?`<input placeholder="Buscar obra (código o cliente)…" oninput="filtrarObrasOc(this.value)" style="margin-bottom:6px;">`:''}<div>${obraChecksHtml}</div></div>
+      <div class="field span2" id="wrap-oc-obra"><label>Obra(s)${ocEditandoComprada?' — ya comprada: si cambiás las obras, se reparten los pagos':''}</label>${state.obras.length>6?`<input placeholder="Buscar obra (código o cliente)…" oninput="filtrarObrasOc(this.value)" style="margin-bottom:6px;">`:''}<div>${obraChecksHtml}</div></div>
       <div class="field" id="wrap-oc-cat"><label>Categoría</label><select id="f-cat">${catOptionsForTipo(tipo, existing?existing.categoria:null)}</select></div>
       <div class="field span2"><label>Proveedor</label><select id="f-proveedor" onchange="onProveedorSelectChange(this)">${proveedorOptionsHTML(existing?existing.proveedorId:null)}</select><div style="margin-top:4px;font-size:11.5px;color:var(--muted);">Para cargar o corregir CUIT/teléfono/mail de un proveedor ya existente, andá a Pagos → Proveedores → Editar datos.</div></div>
       <div class="field hidden span2" id="wrap-proveedor-nuevo"><label>Nombre del nuevo proveedor</label><input id="f-proveedor-nuevo" placeholder="Nombre"></div>
@@ -3676,11 +3782,12 @@ function openModalOrdenCompra(id){
       <div class="field"><label>Fecha</label><input id="f-fecha" type="date" value="${existing?existing.fecha:today()}"></div>
     </div>
     <div class="section-title" style="margin:18px 0 8px;"><h2 style="font-size:13.5px;">Materiales / productos</h2></div>
-    <div class="card card-table"><table><thead><tr><th style="width:44%;">Producto</th><th class="num">Cantidad</th><th class="num" id="oc-th-unitario">Precio unitario</th><th class="num" id="oc-th-subtotal">Subtotal</th><th></th></tr></thead><tbody id="oc-items-body"></tbody></table>
+    <div class="card card-table"><table><thead><tr><th style="width:44%;">Producto</th><th class="num">Cantidad</th><th class="num" id="oc-th-unitario">Precio unitario</th><th class="num" id="oc-th-subtotal">Subtotal</th><th id="oc-th-obra" class="hidden">Obra</th><th></th></tr></thead><tbody id="oc-items-body"></tbody></table>
       <div style="padding:10px 12px;display:flex;justify-content:space-between;align-items:center;"><span class="link-btn" onclick="addOcItem()">+ Agregar ítem</span>
         <label style="display:flex;align-items:center;gap:6px;font-size:13px;"><input type="checkbox" id="f-oc-iva" ${existing&&existing.ivaAplica?'checked':''} onchange="renderOcItemsTable()"> + IVA (21%)</label></div></div>
     <div class="form-grid" style="margin-top:12px;">
       <div class="field span2"><label>Nota sobre los materiales</label><textarea id="f-nota-material" placeholder="Ej: entregar en obra, marca específica, etc.">${existing&&existing.notaMaterial?existing.notaMaterial:''}</textarea></div>
+      <div class="field checkbox span2"><input type="checkbox" id="f-oc-tesoreria" ${existing&&existing.firmaTesoreria?'checked':''}><label>Lleva firma de Tesorería (${state.datosEmpresa.firmaTesoreriaNombre||'Leandro Parodi'}) — en la OC y en su orden de pago</label></div>
       <div class="field span2"><label>Nota general de la orden</label><textarea id="f-nota-general" placeholder="Observaciones generales para esta OC">${existing&&existing.notaGeneral?existing.notaGeneral:''}</textarea></div>
     </div>
     <div class="modal-preview" style="background:var(--teal-soft);border-radius:10px;padding:12px 14px;margin-top:12px;font-size:13px;color:var(--teal-deep);font-family:'Montserrat',sans-serif;" id="oc-preview">Monto estimado: $ 0</div>
@@ -3690,6 +3797,7 @@ function openModalOrdenCompra(id){
   syncOcTipoVisibility(); onOcMonedaChange();
 }
 function syncOcTipoVisibility(){
+  if(document.getElementById('oc-items-body')) renderOcItemsTable();
   const tipo = document.getElementById('f-tipo').value;
   document.getElementById('wrap-oc-obra').classList.toggle('hidden', tipo!=='obra');
   document.getElementById('wrap-oc-cat').classList.toggle('hidden', tipo==='stock');
@@ -3712,6 +3820,18 @@ function onOcMonedaChange(){
   renderOcItemsTable();
 }
 let ocItemsDraft = [];
+let ocEditandoComprada = false;
+// En una OC ya comprada con más de una obra tildada, cada material elige a
+// cuál va (al marcarla comprada eso se hace en submitEfectivizarOrden).
+function ocObrasPorItem(){
+  if(!ocEditandoComprada || document.getElementById('f-tipo')?.value!=='obra') return [];
+  const ids = Array.from(document.querySelectorAll('.oc-obra-check:checked')).map(el=>el.value);
+  return ids.length>1 ? ids : [];
+}
+function editarOcComprada(id){
+  if(!confirm('Esta orden de compra ya fue comprada (ya tiene su pago en Pagos). ¿Igual querés editarla?\n\nSi cambiás las obras, los pagos se reparten entre las obras nuevas sin cambiar lo que ya salió de caja o de FIMA.')) return;
+  openModalOrdenCompra(id);
+}
 function ocItemsTotal(){ return ocItemsDraft.reduce((a,it)=>a+it.cantidad*it.unitario,0); } // subtotal en la moneda cargada (pesos o dólares)
 function ocSubtotalArs(){ const sub = ocItemsTotal(); return ocEsUsd() ? sub*ocCotizacion() : sub; }
 function ocIvaAplica(){ const el = document.getElementById('f-oc-iva'); return el ? el.checked : false; }
@@ -3735,12 +3855,15 @@ function renderOcItemsTable(){
   document.getElementById('oc-th-unitario').textContent = esUsd ? 'Precio unitario (US$)' : 'Precio unitario';
   document.getElementById('oc-th-subtotal').textContent = esUsd ? 'Subtotal (US$)' : 'Subtotal';
   const attrsProducto = sugerenciasHTML('oc-productos', productosConocidos());
+  const obrasPorItem = ocObrasPorItem();
+  document.getElementById('oc-th-obra').classList.toggle('hidden', !obrasPorItem.length);
   document.getElementById('oc-items-body').innerHTML = ocItemsDraft.map((it,i)=>`
     <tr>
       <td><input class="cell-input" placeholder="Tipeá para buscar o escribí uno nuevo" value="${escAttr(it.producto)}" ${attrsProducto} oninput="updateOcItem(${i},'producto',this.value);comboAbrir(this)"></td>
       <td><input class="cell-input mono-in" type="number" step="0.01" value="${it.cantidad}" oninput="updateOcItem(${i},'cantidad',this.value)"></td>
       <td><input class="cell-input mono-in" type="number" step="0.01" value="${it.unitario}" oninput="updateOcItem(${i},'unitario',this.value)"></td>
       <td class="num" id="oc-item-total-${i}">${esUsd?fmtUsdDec(it.cantidad*it.unitario):fmtDec(it.cantidad*it.unitario)}</td>
+      ${obrasPorItem.length?`<td><select class="cell-input" style="min-width:96px;" onchange="ocItemsDraft[${i}].obraId=this.value||null"><option value="">— Elegir —</option>${obrasPorItem.map(oid=>`<option value="${oid}" ${it.obraId===oid?'selected':''}>${getObra(oid)?.code||oid}</option>`).join('')}</select></td>`:''}
       <td>${ocItemsDraft.length>1?`<span class="link-btn danger" onclick="removeOcItem(${i})">✕</span>`:''}</td>
     </tr>`).join('');
   renderOcPreview();
@@ -3786,45 +3909,30 @@ function submitOrdenCompra(id){
   const fecha = document.getElementById('f-fecha').value || today();
   const notaMaterial = document.getElementById('f-nota-material').value.trim();
   const notaGeneral = document.getElementById('f-nota-general').value.trim();
+  const firmaTesoreria = document.getElementById('f-oc-tesoreria').checked;
   if(id){
     const o = getOrden(id);
     const idsPrevias = ocObraIds(o);
-    // Ya comprada y repartida entre varias obras: la asignación queda fija
-    // (el checkbox de obras ya viene deshabilitado en el modal para este
-    // caso, pero se valida igual acá por las dudas). Tampoco se puede
-    // convertir de una sola obra a varias después de comprada — para eso
-    // hay que cargar una orden nueva.
-    if(o.estado==='comprada' && idsPrevias.length>1){
-      const mismasObras = obraIdsElegidas.length===idsPrevias.length && idsPrevias.every(x=>obraIdsElegidas.includes(x));
-      if(!mismasObras){ alert('Esta orden ya está comprada y repartida entre varias obras — no se puede cambiar a cuáles. Si necesitás otro destino, cargá una orden nueva.'); return; }
-    }
-    if(o.estado==='comprada' && idsPrevias.length<=1 && obraIdsElegidas.length>1){
-      alert('Esta orden ya fue comprada para una sola obra — no se puede repartir entre varias ahora. Si necesitás repartirla, cargá una orden nueva.');
-      return;
-    }
-    if(o.estado==='comprada' && idsPrevias.length>1){
-      // Reparto proporcional del monto/categoría nuevos entre los pagos ya
-      // generados para cada obra (uno por obra, ver submitEfectivizarOrden)
-      // — no se vuelve a preguntar qué material va a cuál.
-      if(items.some(it=>!it.obraId)){ alert('Hay materiales sin obra asignada en una compra ya repartida entre varias obras — no se pueden agregar materiales nuevos así. Cargá una orden nueva para eso.'); return; }
-      const totalSub = items.reduce((a,it)=>a+it.cantidad*it.unitario,0);
-      idsPrevias.forEach(obId=>{
-        const pago = (o.pagoIds||[]).map(pid=>state.pagos.find(p=>p.id===pid)).find(p=>p && p.obraId===obId);
-        if(!pago) return;
-        const subObra = items.filter(it=>it.obraId===obId).reduce((a,it)=>a+it.cantidad*it.unitario,0);
-        const share = totalSub>0 ? subObra/totalSub : 1/idsPrevias.length;
-        pago.monto = monto*share; pago.categoria = categoria; pago.concepto = ocProductosTxt({items:items.filter(it=>it.obraId===obId)});
-        marcarEditado('pagos', pago.id);
-      });
-      Object.assign(o, {tipo, obraId, obraIds, categoria, proveedorId, items, monto, moneda, ivaAplica, solicitante, fecha, cotizacionUsd, notaMaterial, notaGeneral});
-      marcarEditado('ordenesCompra', o.id);
-      idsPrevias.forEach(obId=>{ const ob=getObra(obId); if(ob) recomputeObraReal(ob); });
-      closeModal(); renderAll();
-      return;
+    // Ya comprada: si queda (o estaba) repartida entre varias obras, se
+    // rearman los pagos, uno por obra (ver reasignarPagosOcComprada). Con
+    // una sola obra antes y después, sigue el camino de siempre (más abajo):
+    // se actualiza el único pago.
+    if(o.estado==='comprada'){
+      const multiNuevo = tipo==='obra' && obraIdsElegidas.length>1;
+      if(multiNuevo && items.some(it=>!obraIdsElegidas.includes(it.obraId))){ alert('Elegí a qué obra va cada material (columna "Obra" de la tabla de materiales).'); return; }
+      if(multiNuevo || idsPrevias.length>1){
+        if(!multiNuevo) items.forEach(it=>{ it.obraId = null; });
+        Object.assign(o, {tipo, obraId, obraIds, categoria, proveedorId, items, monto, moneda, ivaAplica, solicitante, fecha, cotizacionUsd, notaMaterial, notaGeneral, firmaTesoreria});
+        reasignarPagosOcComprada(o);
+        marcarEditado('ordenesCompra', o.id);
+        [...new Set([...idsPrevias, ...obraIdsElegidas])].forEach(obId=>{ const ob=getObra(obId); if(ob) recomputeObraReal(ob); });
+        closeModal(); renderAll();
+        return;
+      }
     }
     const pagoPrevio = o.pagoId ? state.pagos.find(p=>p.id===o.pagoId) : null;
     const previo = {tipo:o.tipo, obraId:o.obraId};
-    Object.assign(o, {tipo, obraId, obraIds, categoria, proveedorId, items, monto, moneda, ivaAplica, solicitante, fecha, cotizacionUsd, notaMaterial, notaGeneral});
+    Object.assign(o, {tipo, obraId, obraIds, categoria, proveedorId, items, monto, moneda, ivaAplica, solicitante, fecha, cotizacionUsd, notaMaterial, notaGeneral, firmaTesoreria});
     marcarEditado('ordenesCompra', o.id);
     // Si la OC ya está marcada como comprada, tiene un pago real vinculado
     // (creado en submitEfectivizarOrden) y sumó su monto al costo real de
@@ -3840,9 +3948,61 @@ function submitOrdenCompra(id){
       if(tipo==='obra' && obraId){ const obraNueva=getObra(obraId); if(obraNueva) recomputeObraReal(obraNueva); }
     }
   } else {
-    state.ordenesCompra.push({id:newId('oc'), numero: nextOcNumero(), fecha, solicitante, tipo, obraId, obraIds, categoria, items, monto, moneda, ivaAplica, proveedorId, estado:'pendiente', comentarioDueno:null, pagoId:null, pagoIds:[], cotizacionUsd, notaMaterial, notaGeneral});
+    state.ordenesCompra.push({id:newId('oc'), numero: nextOcNumero(), fecha, solicitante, tipo, obraId, obraIds, categoria, items, monto, moneda, ivaAplica, proveedorId, estado:'pendiente', comentarioDueno:null, pagoId:null, pagoIds:[], firmaTesoreria, cotizacionUsd, notaMaterial, notaGeneral});
   }
   closeModal(); renderAll();
+}
+// Rearma los pagos de una OC ya comprada después de cambiarle las obras:
+// deshace lo que ya habían descontado los pagos viejos (caja / egresos de
+// FIMA), los borra, y crea uno por obra (o uno solo) repartiendo el monto
+// según el subtotal de los materiales de cada obra. Lo que ya se había
+// pagado (cada fecha, medio y fondo, y lo programado) se reparte en la
+// misma proporción y se vuelve a aplicar — el total que salió de caja o de
+// cada fondo queda igual, solo cambia a qué obra se imputa.
+function reasignarPagosOcComprada(o){
+  const viejos = ocPagosVinculados(o);
+  if(!viejos.length) return;
+  const base = viejos[0];
+  const porClave = new Map();
+  viejos.forEach(p=>(p.pagosRealizados||[]).forEach(pr=>{
+    const aplicado = pr.aplicado!==false;
+    const k = [pr.fecha, pr.fondo||'', pr.formaPago||'', aplicado].join('|');
+    const e = porClave.get(k) || {fecha:pr.fecha, fondo:pr.fondo||null, formaPago:pr.formaPago, aplicado, monto:0};
+    e.monto += pr.monto; porClave.set(k, e);
+  }));
+  const entradas = [...porClave.values()].map(e=>({...e, resto:e.monto}));
+  viejos.forEach(p=>{ revertirAplicacionesPago(p); marcarEliminado('pagos', p.id); });
+  state.pagos = state.pagos.filter(p=>!viejos.includes(p));
+  const ids = ocObraIds(o);
+  const destinos = (o.tipo==='obra' && ids.length>1)
+    ? ids.map(obId=>({obraId:obId, items:o.items.filter(it=>it.obraId===obId)})).filter(d=>d.items.length)
+    : [{obraId: o.tipo==='obra' ? o.obraId : null, items:o.items}];
+  const subtotal = (its)=> its.reduce((a,it)=>a+it.cantidad*it.unitario,0);
+  const totalSub = subtotal(o.items);
+  let restoMonto = o.monto;
+  const nuevos = destinos.map((d,i)=>{
+    const ultimo = i===destinos.length-1;
+    const share = totalSub>0 ? subtotal(d.items)/totalSub : 1/destinos.length;
+    const monto = ultimo ? r2(restoMonto) : r2(o.monto*share); restoMonto -= monto;
+    const cantidad = d.items.reduce((a,it)=>a+it.cantidad,0);
+    const neto = o.ivaAplica ? monto/1.21 : monto;
+    const p = {id:newId('p'), tipo:o.tipo, obraId:d.obraId, categoria:o.categoria||base.categoria, concepto:ocProductosTxt({items:d.items}), numeroOC:o.numero,
+      cantidad, unitario: cantidad ? neto/cantidad : neto, ivaAplica:o.ivaAplica, monto, proveedorId:o.proveedorId, numeroFactura:base.numeroFactura,
+      fechaFactura:base.fechaFactura, formaPago:base.formaPago, fechaPago:base.fechaPago, origenFondo:base.origenFondo, pagosRealizados:[]};
+    entradas.forEach(e=>{
+      const m = ultimo ? r2(e.resto) : r2(e.monto*share); e.resto -= m;
+      if(m<MEDIO_CENTAVO) return;
+      p.pagosRealizados.push({fecha:e.fecha, monto:m, fondo:e.fondo, formaPago:e.formaPago, aplicado:e.aplicado});
+      if(!e.aplicado) return;
+      if(e.fondo) state.movimientosFima.push({id:newId('fm'), fecha:e.fecha, fondo:e.fondo, obraId:p.obraId, concepto:p.concepto, tipo:'out', monto:m});
+      else state.caja -= m;
+    });
+    state.pagos.push(p);
+    return p;
+  });
+  recomputeFondos();
+  if(nuevos.length>1){ o.pagoIds = nuevos.map(p=>p.id); o.pagoId = null; }
+  else { o.pagoId = nuevos[0].id; o.pagoIds = []; }
 }
 function openModalAutorizarOrden(id){
   const o = getOrden(id); const prov = getProveedor(o.proveedorId);
