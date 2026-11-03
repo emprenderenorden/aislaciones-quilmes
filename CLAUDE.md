@@ -70,14 +70,16 @@ El dueño confirmó (03/11) que hizo el redeploy de:
 - [x] `ordenesCompra`: columna `firmaTesoreria` y `DatosEmpresa`: columnas
       `firmaTesoreriaNombre` / `firmaTesoreriaImg`.
 
-**Pendiente (03/11) — redeploy necesario:**
+El dueño confirmó (03/11) que hizo también el redeploy de:
 
-- [ ] `trabajadores`: columna `configJSON` (tipo mensual/por día, valor
+- [x] `trabajadores`: columna `configJSON` (tipo mensual/por día, valor
       por día y valores propios de la persona) y `DatosEmpresa`: columna
-      `valoresJornalesJSON` (valores generales de jornales). Al pegar el
-      archivo, cambiar `SECRET` por la clave real (el repo tiene el
-      placeholder) y hacer Implementar → Administrar implementaciones →
-      lápiz → Nueva versión (misma URL).
+      `valoresJornalesJSON` (valores generales de jornales).
+
+**No hay cambios de backend pendientes.** Al volver a desplegar, recordar
+cambiar `SECRET` por la clave real (el repo tiene el placeholder) y hacer
+Implementar → Administrar implementaciones → lápiz → Nueva versión (misma
+URL).
 
 Cuando se sume un cambio de backend nuevo, se anota acá como pendiente y
 se agrupan varios antes de volver a desplegar (ver instrucciones al
