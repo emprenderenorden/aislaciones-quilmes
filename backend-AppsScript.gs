@@ -67,13 +67,15 @@ const SCHEMAS = {
   proveedores: ['id', 'nombre', 'cuit', 'telefono', 'email'],
   stock: ['id', 'nombre', 'unidad', 'cantidad', 'costoUnitario', 'categoria', 'stockMinimo'],
   stockMovimientos: ['id', 'fecha', 'tipo', 'stockId', 'cantidad', 'obraId', 'monto'],
-  trabajadores: ['id', 'nombre', 'puesto', 'sueldoMensual'],
+  // configJSON: tipo ('mensual' | 'dia'), valorDia y valores propios
+  // (horaExtra, viaje, descuentoAusencia, presentismo).
+  trabajadores: ['id', 'nombre', 'puesto', 'sueldoMensual', 'configJSON'],
   jornales: ['id', 'trabajadorId', 'obraId', 'semanaInicio', 'diasJSON'],
   movimientosFima: ['fecha', 'fondo', 'obraId', 'concepto', 'tipo', 'monto', 'subcategoria', 'id'],
   datosEmpresa: ['nombre', 'cuit', 'telefono', 'email', 'direccion', 'localidad',
     'condicionImpositiva', 'condicionesGenerales', 'logoDataUrl',
     'firmaSolicitaNombre', 'firmaSolicitaImg', 'firmaApruebaNombre', 'firmaApruebaImg',
-    'firmaTesoreriaNombre', 'firmaTesoreriaImg'],
+    'firmaTesoreriaNombre', 'firmaTesoreriaImg', 'valoresJornalesJSON'],
   eliminados: ['coleccion', 'id', 'fecha'],
   // Conceptos de la grilla de Costos fijos (Pagos → Costos fijos).
   costosFijos: ['id', 'nombre', 'categoria', 'montoMensual', 'formaPago', 'diaPago'],
@@ -291,6 +293,7 @@ function readState_() {
   }));
   const trabajadores = sheetToRows_(ss.getSheetByName(SHEET_NAMES.trabajadores), SCHEMAS.trabajadores).map(r => ({
     id: r.id, nombre: r.nombre, puesto: r.puesto, sueldoMensual: Number(r.sueldoMensual) || 0,
+    ...configTrabajador_(r.configJSON),
   }));
   // "obraId" a nivel de fila quedó en desuso (cada día de "dias" guarda su
   // propia obra); se sigue leyendo por compatibilidad con datos viejos, pero
@@ -308,6 +311,8 @@ function readState_() {
 
   const empresaRows = sheetToRows_(ss.getSheetByName(SHEET_NAMES.datosEmpresa), SCHEMAS.datosEmpresa);
   const datosEmpresa = empresaRows.length ? empresaRows[0] : {};
+  datosEmpresa.valoresJornales = parseJsonField_(datosEmpresa.valoresJornalesJSON, undefined);
+  delete datosEmpresa.valoresJornalesJSON;
 
   const costosFijos = sheetToRows_(ss.getSheetByName(SHEET_NAMES.costosFijos), SCHEMAS.costosFijos).map(r => ({
     id: String(r.id), nombre: String(r.nombre), categoria: r.categoria || 'otros',
@@ -374,7 +379,8 @@ function writeState_(state) {
     m => [m.id, m.fecha, m.tipo, m.stockId, m.cantidad, m.obraId, m.monto]);
 
   writeRows_(ss.getSheetByName(SHEET_NAMES.trabajadores), SCHEMAS.trabajadores, state.trabajadores || [],
-    t => [t.id, t.nombre, t.puesto, t.sueldoMensual || 0]);
+    t => [t.id, t.nombre, t.puesto, t.sueldoMensual || 0,
+      JSON.stringify({ tipo: t.tipo || 'mensual', valorDia: t.valorDia || 0, valores: t.valores || {} })]);
 
   writeRows_(ss.getSheetByName(SHEET_NAMES.jornales), SCHEMAS.jornales, state.jornales || [],
     j => [j.id, j.trabajadorId, '', j.semanaInicio, JSON.stringify(j.dias || [])]);
@@ -394,6 +400,7 @@ function writeState_(state) {
     e.localidad || '', e.condicionImpositiva || '', e.condicionesGenerales || '', e.logoDataUrl || '',
     campoFirma('firmaSolicitaNombre'), campoFirma('firmaSolicitaImg'), campoFirma('firmaApruebaNombre'), campoFirma('firmaApruebaImg'),
     campoFirma('firmaTesoreriaNombre'), campoFirma('firmaTesoreriaImg'),
+    e.valoresJornales !== undefined ? JSON.stringify(e.valoresJornales || {}) : (empresaPrevia.valoresJornalesJSON || ''),
   ]);
 
   // Igual: si el guardado viene de una versión vieja de la app (sin esta
@@ -402,6 +409,11 @@ function writeState_(state) {
     writeRows_(ss.getSheetByName(SHEET_NAMES.costosFijos), SCHEMAS.costosFijos, state.costosFijos,
       c => [c.id, c.nombre, c.categoria || 'otros', c.montoMensual || 0, c.formaPago || '', c.diaPago || 1]);
   }
+}
+
+function configTrabajador_(raw) {
+  const c = parseJsonField_(raw, {}) || {};
+  return { tipo: c.tipo === 'dia' ? 'dia' : 'mensual', valorDia: Number(c.valorDia) || 0, valores: c.valores || {} };
 }
 
 function vinculoPagoJSON_(p) {

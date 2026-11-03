@@ -419,7 +419,7 @@
   <div class="view" id="view-jornales">
     <div class="topbar">
       <div><h1>Jornales</h1><div class="sub">Asistencia, sueldos y horas extra del personal</div></div>
-      <div class="topbar-actions"><button class="btn btn-ghost" onclick="openModalBono(null, document.getElementById('jh-mes')?.value)">+ Bono</button><button class="btn btn-ghost" onclick="openModalAdelanto(null, document.getElementById('jh-mes')?.value)">+ Adelanto</button><button class="btn btn-primary" onclick="openModalTrabajador(null)">+ Agregar trabajador</button></div>
+      <div class="topbar-actions"><button class="btn btn-ghost" onclick="openModalValoresJornales()">⚙ Valores de jornales</button><button class="btn btn-ghost" onclick="openModalBono(null, document.getElementById('jh-mes')?.value)">+ Bono</button><button class="btn btn-ghost" onclick="openModalAdelanto(null, document.getElementById('jh-mes')?.value)">+ Adelanto</button><button class="btn btn-primary" onclick="openModalTrabajador(null)">+ Agregar trabajador</button></div>
     </div>
     <div class="week-nav">
       <button class="nav-arrow" onclick="changeWeek(-1)">‹</button>
@@ -850,14 +850,27 @@ function repararIdsFima(){
   return huboCambios;
 }
 const today = ()=> new Date().toISOString().slice(0,10);
-const VALOR_HORA_EXTRA = 10000;
-// Extra por día trabajado de viaje (obras en las que el equipo viaja) — a
-// diferencia de las horas extra (un número suelto por obra, sin atar a
-// días puntuales), este extra sale de los días ya marcados "trabajado" en
-// esa obra para el trabajador marcado como "de viaje" — así la quincena a
-// la que se atribuye es la de la fecha real de cada día, no la fecha de
-// inicio de la obra.
-const VALOR_VIAJE = 80000;
+// Valores de jornales: los carga el negocio en Jornales → "⚙ Valores de
+// jornales" (se guardan en datosEmpresa.valoresJornales) y cada trabajador
+// puede tener los suyos propios (trabajador.valores — vacío = el general).
+// Los de acá son los que se usaban fijos antes, y siguen valiendo mientras
+// nadie los cambie.
+//  - horaExtra: por hora extra cargada en una obra.
+//  - viaje: por día trabajado en una obra marcada "de viaje" para esa persona.
+//  - descuentoAusencia: por día ausente (solo trabajadores mensuales).
+//  - presentismo: extra mensual (solo mensuales), se cobra en la 2ª quincena
+//    si en el mes no tuvo más ausencias que `faltasPermitidas`.
+const VALORES_JORNALES_DEFAULT = {horaExtra:10000, viaje:80000, descuentoAusencia:100000, presentismo:0, faltasPermitidas:0};
+function valoresJornales(){ return {...VALORES_JORNALES_DEFAULT, ...((state.datosEmpresa && state.datosEmpresa.valoresJornales) || {})}; }
+const tieneValor = (v)=> v!==undefined && v!==null && v!=='' && !isNaN(+v);
+function valorJornal(trabajador, clave){
+  const propio = trabajador && trabajador.valores ? trabajador.valores[clave] : undefined;
+  return tieneValor(propio) ? +propio : (+valoresJornales()[clave] || 0);
+}
+// Dos tipos de trabajador: mensual (en blanco — sueldo mensual, como
+// siempre) o por día (en negro — se le paga solo cada día marcado
+// "trabajado", a su valor por día; los días que no viene no se pagan).
+const esPorDia = (t)=> !!t && t.tipo==='dia';
 function esHabil_(y,m0,d){ const wd = new Date(y,m0,d).getDay(); return wd>=1 && wd<=5; }
 function diasHabilesDelMes(yyyyMM){
   const [y,m] = yyyyMM.split('-').map(Number);
@@ -868,6 +881,7 @@ function diasHabilesDelMes(yyyyMM){
 }
 function sueldoDiarioTrabajador(trabajador, yyyyMM){
   if(!trabajador) return 0;
+  if(esPorDia(trabajador)) return +trabajador.valorDia || 0;
   const habiles = diasHabilesDelMes(yyyyMM);
   return habiles>0 ? (trabajador.sueldoMensual||0)/habiles : 0;
 }
@@ -2549,11 +2563,9 @@ function horasExtraDelMes(trabajadorId, mes){
   });
   return total;
 }
-// Aunque el sueldo se carga mensual, el pago es quincenal (1ª quincena por
-// transferencia, 2ª en efectivo) — antes la ausencia descontaba el sueldo
-// diario proporcional de cada persona; ahora descuenta un monto fijo para
-// cualquiera, sea cual sea su sueldo.
-const DESCUENTO_AUSENCIA = 100000;
+// El pago es quincenal (1ª quincena por transferencia, 2ª en efectivo).
+// Una ausencia de un trabajador mensual descuenta un monto fijo
+// (valorJornal(t,'descuentoAusencia')), no el sueldo diario proporcional.
 function quincenaDeFecha(fecha){ return +fecha.slice(8,10)<=15 ? 1 : 2; }
 // Igual que diasDelMes, pero separado por quincena para el desglose de pago.
 function diasDelMesPorQuincena(trabajadorId, mes){
@@ -2593,12 +2605,13 @@ function viajeExtraDelMes(trabajadorId, mes){
       if(cell.estado!=='trabajado' || !cell.obraId) return;
       if(addDays(row.semanaInicio, i).slice(0,7)!==mes) return;
       const obra = getObra(cell.obraId);
-      if(obra && obra.jornalesConfig && obra.jornalesConfig.viaje && obra.jornalesConfig.viaje[trabajadorId]) total += VALOR_VIAJE;
+      if(obra && obra.jornalesConfig && obra.jornalesConfig.viaje && obra.jornalesConfig.viaje[trabajadorId]) total += valorJornal(getTrabajador(trabajadorId), 'viaje');
     });
   });
   return total;
 }
-function viajeExtraPorQuincena(trabajadorId, mes){
+// Días de viaje (no plata) por quincena — el monto es días × valor de viaje.
+function diasViajePorQuincena(trabajadorId, mes){
   const res = {1:0, 2:0};
   state.jornales.forEach(row=>{
     if(row.trabajadorId!==trabajadorId) return;
@@ -2607,7 +2620,7 @@ function viajeExtraPorQuincena(trabajadorId, mes){
       const fecha = addDays(row.semanaInicio, i);
       if(fecha.slice(0,7)!==mes) return;
       const obra = getObra(cell.obraId);
-      if(obra && obra.jornalesConfig && obra.jornalesConfig.viaje && obra.jornalesConfig.viaje[trabajadorId]) res[quincenaDeFecha(fecha)] += VALOR_VIAJE;
+      if(obra && obra.jornalesConfig && obra.jornalesConfig.viaje && obra.jornalesConfig.viaje[trabajadorId]) res[quincenaDeFecha(fecha)]++;
     });
   });
   return res;
@@ -2631,30 +2644,43 @@ function todosLosBonos(){
 function bonosDeQuincena(trabajadorId, mes, q){
   return todosLosBonos().filter(b=>b.trabajadorId===trabajadorId && b.periodo===mes && Number(b.quincena)===q);
 }
-// Desglose de una quincena: mitad del sueldo mensual, menos $100.000 fijos
-// por cada ausencia que cayó en esa quincena puntual (nunca por debajo de
-// $0, no se arrastra el excedente a la otra quincena), más las horas extra
-// y el extra de viaje de esa quincena, menos los adelantos que se
-// descuentan de esa quincena (tampoco por debajo de $0). El pago del
-// sueldo en sí sigue sin generar gasto ni movimiento de FIMA — esto es
-// solo el desglose de cuánto corresponde en cada una (ver CLAUDE.md).
+// Desglose de una quincena.
+//  - Mensual: mitad del sueldo mensual, menos el descuento fijo por cada
+//    ausencia de esa quincena (nunca por debajo de $0, no se arrastra a la
+//    otra), y en la 2ª quincena el presentismo si en el mes no faltó más de
+//    lo permitido.
+//  - Por día: días trabajados en la quincena × su valor por día (las
+//    ausencias no descuentan: simplemente no se pagan).
+// A los dos se les suman horas extra, viaje y bonos de esa quincena y se
+// les restan los adelantos (tampoco por debajo de $0). Los valores salen
+// de valorJornal (generales o propios de la persona).
 function desgloseQuincena(trabajador, mes, q){
-  const base = (trabajador.sueldoMensual||0)/2;
+  const porDia = esPorDia(trabajador);
   const dias = diasDelMesPorQuincena(trabajador.id, mes)[q];
+  const valorDia = porDia ? (+trabajador.valorDia||0) : 0;
+  const base = porDia ? dias.trabajado*valorDia : (trabajador.sueldoMensual||0)/2;
   const horas = horasExtraPorQuincena(trabajador.id, mes)[q];
-  const viaje = viajeExtraPorQuincena(trabajador.id, mes)[q];
+  const valorHora = valorJornal(trabajador, 'horaExtra');
+  const diasViaje = diasViajePorQuincena(trabajador.id, mes)[q];
+  const valorViaje = valorJornal(trabajador, 'viaje');
   const adelantos = adelantosDeQuincena(trabajador.id, mes, q);
   const bonos = bonosDeQuincena(trabajador.id, mes, q);
   const totalBonos = bonos.reduce((a,b)=>a+(Number(b.monto)||0),0);
-  const descuentoAusencias = Math.min(base, dias.ausente*DESCUENTO_AUSENCIA);
-  const subtotal = base - descuentoAusencias + horas*VALOR_HORA_EXTRA + viaje + totalBonos;
+  const valorAusencia = porDia ? 0 : valorJornal(trabajador, 'descuentoAusencia');
+  const descuentoAusencias = Math.min(base, dias.ausente*valorAusencia);
+  const montoPresentismoConf = porDia ? 0 : valorJornal(trabajador, 'presentismo');
+  const ausentesMes = q===2 && montoPresentismoConf>0 ? diasDelMes(trabajador.id, mes).ausente : 0;
+  const ganaPresentismo = q===2 && montoPresentismoConf>0 && ausentesMes <= (+valoresJornales().faltasPermitidas||0);
+  const presentismo = ganaPresentismo ? montoPresentismoConf : 0;
+  const subtotal = base - descuentoAusencias + horas*valorHora + diasViaje*valorViaje + totalBonos + presentismo;
   const totalAdelantos = adelantos.reduce((a,p)=>a+p.monto,0);
   const descuentoAdelantos = Math.min(subtotal, totalAdelantos);
   return {
-    base, diasTrabajados: dias.trabajado, ausentes: dias.ausente, descuentoAusencias,
-    topeAusencias: dias.ausente*DESCUENTO_AUSENCIA > base,
-    horasExtra: horas, montoHorasExtra: horas*VALOR_HORA_EXTRA,
-    diasViaje: Math.round(viaje/VALOR_VIAJE), montoViaje: viaje,
+    porDia, valorDia, base, diasTrabajados: dias.trabajado, ausentes: dias.ausente, valorAusencia, descuentoAusencias,
+    topeAusencias: dias.ausente*valorAusencia > base,
+    horasExtra: horas, valorHora, montoHorasExtra: horas*valorHora,
+    diasViaje, valorViaje, montoViaje: diasViaje*valorViaje,
+    presentismoAplica: q===2 && montoPresentismoConf>0, presentismo, ausentesMes,
     bonos, totalBonos,
     adelantos, totalAdelantos, topeAdelantos: totalAdelantos > subtotal,
     total: subtotal - descuentoAdelantos,
@@ -2674,10 +2700,11 @@ function desgloseSueldoHtml(t, mes){
     const d = desgloseQuincena(t, mes, q);
     const nombreQ = q===1 ? '1ª quincena (1 al 15)' : '2ª quincena (16 a fin de mes)';
     return `<tr class="subtotal-row"><td colspan="2">${nombreQ}</td></tr>
-      ${fila('Sueldo de la quincena (mitad del mensual)', d.base)}
-      ${fila(`Días ausentes (${d.ausentes})${d.topeAusencias?' — tope: la quincena no baja de $0':''}`, d.descuentoAusencias, '− ')}
-      ${fila(`Horas extra (${d.horasExtra} h × ${fmt(VALOR_HORA_EXTRA)})`, d.montoHorasExtra, '+ ')}
-      ${fila(`Días de viaje (${d.diasViaje} × ${fmt(VALOR_VIAJE)})`, d.montoViaje, '+ ')}
+      ${d.porDia ? fila(`Días trabajados (${d.diasTrabajados} × ${fmt(d.valorDia)})`, d.base) : fila('Sueldo de la quincena (mitad del mensual)', d.base)}
+      ${d.porDia ? '' : fila(`Días ausentes (${d.ausentes} × ${fmt(d.valorAusencia)})${d.topeAusencias?' — tope: la quincena no baja de $0':''}`, d.descuentoAusencias, '− ')}
+      ${fila(`Horas extra (${d.horasExtra} h × ${fmt(d.valorHora)})`, d.montoHorasExtra, '+ ')}
+      ${fila(`Días de viaje (${d.diasViaje} × ${fmt(d.valorViaje)})`, d.montoViaje, '+ ')}
+      ${d.presentismoAplica ? fila(d.presentismo ? 'Presentismo del mes' : `Presentismo del mes — no corresponde (${d.ausentesMes} ausencia${d.ausentesMes===1?'':'s'} en el mes)`, d.presentismo, '+ ') : ''}
       ${d.bonos.map(b=>fila(`Bono obra ${getObra(b.obraId)?.code||''}${b.nota?' — '+b.nota:''}`, Number(b.monto)||0, '+ ')).join('')}
       ${d.adelantos.length ? d.adelantos.map(a=>fila(`Adelanto del ${fmtFecha(a.fechaPago||a.fechaFactura)}${a.nota?' — '+a.nota:''}`, a.monto, '− ')).join('') : fila('Adelantos', 0, '− ')}
       ${d.topeAdelantos?`<tr><td colspan="2" style="color:#6B7573;font-size:11.5px;">Los adelantos superan lo que cobra en la quincena: queda en $0.</td></tr>`:''}
@@ -2692,7 +2719,7 @@ function openModalDetalleSueldo(trabajadorId, mes){
   const adelantosMes = state.pagos.filter(p=>esAdelanto(p) && p.trabajadorId===trabajadorId && p.descuentaPeriodo===mes);
   const bonosMes = todosLosBonos().filter(b=>b.trabajadorId===trabajadorId && b.periodo===mes);
   modalEl.innerHTML = `<h3>Sueldo — ${t.nombre}</h3>
-    <div class="modal-sub">${mesLabel(mes)} · ${t.puesto} · Sueldo mensual ${fmt(t.sueldoMensual||0)}</div>
+    <div class="modal-sub">${mesLabel(mes)} · ${t.puesto} · ${sueldoTrabajadorTxt(t)}</div>
     <div class="card card-table">${desgloseSueldoHtml(t, mes)}</div>
     <div class="section-title" style="margin:16px 0 8px;"><h2 style="font-size:13.5px;">Adelantos que se descuentan este mes</h2><span class="link-btn" onclick="openModalAdelanto('${t.id}','${mes}')">+ Adelanto</span></div>
     <div class="card card-table"><table><thead><tr><th>Fecha</th><th>Quincena</th><th>Medio</th><th class="num">Monto</th><th></th></tr></thead><tbody>
@@ -2761,7 +2788,7 @@ function eliminarBono(obraId, bonoId, trabajadorId, mes){
 }
 function imprimirDetalleSueldo(trabajadorId, mes){
   const t = getTrabajador(trabajadorId); if(!t) return;
-  const header = printHeaderHtml('DETALLE DE SUELDO', t.nombre, [mesLabel(mes), `${t.puesto} · Sueldo mensual ${fmt(t.sueldoMensual||0)}`]);
+  const header = printHeaderHtml('DETALLE DE SUELDO', t.nombre, [mesLabel(mes), `${t.puesto} · ${sueldoTrabajadorTxt(t)}`]);
   abrirVentanaImpresion(`Sueldo ${t.nombre} — ${mesLabel(mes)}`, `${header}
     <style>.desglose-sueldo .subtotal-row td{background:#F1F4F3;font-weight:700;}</style>
     ${desgloseSueldoHtml(t, mes)}
@@ -2838,7 +2865,7 @@ function renderJornalesHistorial(){
     const adelantos = adelantosDeQuincena(id, mes, 1).concat(adelantosDeQuincena(id, mes, 2)).reduce((a,p)=>a+p.monto,0);
     const bonos = bonosDeQuincena(id, mes, 1).concat(bonosDeQuincena(id, mes, 2)).reduce((a,b)=>a+(Number(b.monto)||0),0);
     granT+=trabajado; granA+=ausente; granV+=viaje; granB+=bonos; granAd+=adelantos; granQ1+=q1; granQ2+=q2;
-    return `<tr><td style="font-weight:600;">${t.nombre}</td><td>${t.puesto}</td><td class="num">${fmt(t.sueldoMensual||0)}</td><td class="num">${fmt(diario)}</td><td class="num">${trabajado}</td><td class="num">${ausente}</td><td class="num">${horasExtra}</td><td class="num">${fmt(viaje)}</td><td class="num">${fmt(bonos)}</td><td class="num">${adelantos?'− '+fmt(adelantos):fmt(0)}</td><td class="num">${fmt(q1)}</td><td class="num">${fmt(q2)}</td><td class="num">${fmt(q1+q2)}</td><td><span class="link-btn" onclick="openModalDetalleSueldo('${id}','${mes}')">Detalle</span> · <span class="link-btn" onclick="openModalObrasTrabajador('${id}','${mes}')">Ver obras</span> · <span class="link-btn" onclick="openModalTrabajador('${id}')">Editar</span></td></tr>`;
+    return `<tr><td style="font-weight:600;">${t.nombre}</td><td>${t.puesto}</td><td class="num">${esPorDia(t)?'<span style="color:var(--muted);">Por día</span>':fmt(t.sueldoMensual||0)}</td><td class="num">${fmt(diario)}</td><td class="num">${trabajado}</td><td class="num">${esPorDia(t)?'—':ausente}</td><td class="num">${horasExtra}</td><td class="num">${fmt(viaje)}</td><td class="num">${fmt(bonos)}</td><td class="num">${adelantos?'− '+fmt(adelantos):fmt(0)}</td><td class="num">${fmt(q1)}</td><td class="num">${fmt(q2)}</td><td class="num">${fmt(q1+q2)}</td><td><span class="link-btn" onclick="openModalDetalleSueldo('${id}','${mes}')">Detalle</span> · <span class="link-btn" onclick="openModalObrasTrabajador('${id}','${mes}')">Ver obras</span> · <span class="link-btn" onclick="openModalTrabajador('${id}')">Editar</span></td></tr>`;
   }).join('') + `<tr class="subtotal-row"><td colspan="4">Total general</td><td class="num">${granT}</td><td class="num">${granA}</td><td></td><td class="num">${fmt(granV)}</td><td class="num">${fmt(granB)}</td><td class="num">${granAd?'− '+fmt(granAd):fmt(0)}</td><td class="num">${fmt(granQ1)}</td><td class="num">${fmt(granQ2)}</td><td class="num">${fmt(granQ1+granQ2)}</td><td></td></tr>`;
 }
 function diasPorObra(trabajadorId, mes){
@@ -2880,7 +2907,14 @@ function openModalTrabajador(id){
     <div class="form-grid">
       <div class="field span2"><label>Nombre</label><input id="f-trab-nombre" placeholder="Nombre y apellido" value="${existing?existing.nombre:''}"></div>
       <div class="field"><label>Puesto</label><select id="f-trab-puesto">${puestos.map(p=>`<option ${existing&&existing.puesto===p?'selected':''}>${p}</option>`).join('')}</select></div>
-      <div class="field"><label>Sueldo mensual</label><input id="f-trab-sueldo" class="cell-input mono-in" type="number" step="0.01" min="0" value="${existing?(existing.sueldoMensual||0):0}"></div>
+      <div class="field"><label>Tipo</label><select id="f-trab-tipo" onchange="onTipoTrabajadorChange()"><option value="mensual" ${!esPorDia(existing)?'selected':''}>Mensual (en blanco)</option><option value="dia" ${esPorDia(existing)?'selected':''}>Por día (en negro)</option></select></div>
+      <div class="field" id="wrap-trab-sueldo"><label>Sueldo mensual</label><input id="f-trab-sueldo" class="cell-input mono-in" type="number" step="0.01" min="0" value="${existing?(existing.sueldoMensual||0):0}"></div>
+      <div class="field hidden" id="wrap-trab-dia"><label>Valor por día trabajado</label><input id="f-trab-dia" class="cell-input mono-in" type="number" step="0.01" min="0" value="${existing?(existing.valorDia||0):0}"></div>
+    </div>
+    <div class="section-title" style="margin:14px 0 6px;"><h2 style="font-size:13px;">Valores propios de esta persona (opcional)</h2></div>
+    <div class="modal-sub" style="margin-bottom:8px;">Dejalos vacíos para usar los valores generales (Jornales → ⚙ Valores de jornales). Se muestra el general de referencia.</div>
+    <div class="form-grid">
+      ${CAMPOS_VALORES_JORNALES.filter(c=>c.clave!=='faltasPermitidas').map(c=>`<div class="field ${c.soloMensual?'solo-mensual':''}"><label>${c.label}</label><input id="f-trab-val-${c.clave}" class="cell-input mono-in" type="number" step="0.01" min="0" placeholder="General: ${fmt(valoresJornales()[c.clave])}" value="${existing&&existing.valores&&tieneValor(existing.valores[c.clave])?existing.valores[c.clave]:''}"></div>`).join('')}
     </div>
     <div class="modal-actions">
       <button class="btn btn-ghost" onclick="closeModal()">Cancelar</button>
@@ -2888,6 +2922,40 @@ function openModalTrabajador(id){
       <button class="btn btn-primary" onclick="submitTrabajador('${id||''}')">${existing?'Guardar cambios':'Agregar'}</button>
     </div>`;
   overlay.classList.add('open');
+  onTipoTrabajadorChange();
+}
+function onTipoTrabajadorChange(){
+  const porDia = document.getElementById('f-trab-tipo').value==='dia';
+  document.getElementById('wrap-trab-sueldo').classList.toggle('hidden', porDia);
+  document.getElementById('wrap-trab-dia').classList.toggle('hidden', !porDia);
+  document.querySelectorAll('#modal-content .solo-mensual').forEach(el=>el.classList.toggle('hidden', porDia));
+}
+const CAMPOS_VALORES_JORNALES = [
+  {clave:'horaExtra', label:'Hora extra ($ por hora)'},
+  {clave:'viaje', label:'Viaje ($ por día trabajado en obra de viaje)'},
+  {clave:'descuentoAusencia', label:'Descuento por día ausente ($)', soloMensual:true},
+  {clave:'presentismo', label:'Presentismo ($ por mes)', soloMensual:true},
+  {clave:'faltasPermitidas', label:'Faltas permitidas en el mes para cobrar presentismo'},
+];
+const sueldoTrabajadorTxt = (t)=> esPorDia(t) ? `Por día ${fmt(t.valorDia||0)}` : `Sueldo mensual ${fmt(t.sueldoMensual||0)}`;
+// Valores generales de jornales — los edita el negocio, no hace falta
+// cambiar el código. Cada trabajador puede tener los suyos (openModalTrabajador).
+function openModalValoresJornales(){
+  const v = valoresJornales();
+  modalEl.innerHTML = `<h3>Valores de jornales</h3><div class="modal-sub">Valen para todo el personal, salvo que una persona tenga un valor propio cargado (Editar trabajador). Cambiarlos recalcula también lo que se muestra de meses anteriores; las quincenas ya registradas como pagadas no cambian.</div>
+    <div class="form-grid">
+      ${CAMPOS_VALORES_JORNALES.map(c=>`<div class="field"><label>${c.label}${c.soloMensual?' — solo mensuales':''}</label><input id="f-vj-${c.clave}" class="mono-in" type="number" step="${c.clave==='faltasPermitidas'?'1':'0.01'}" min="0" value="${v[c.clave]}"></div>`).join('')}
+    </div>
+    <div class="modal-sub" style="margin-top:6px;">El presentismo se suma en la 2ª quincena de cada mes, a los trabajadores mensuales que no faltaron más que lo permitido. Con $0 no se aplica.</div>
+    <div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" onclick="submitValoresJornales()">Guardar</button></div>`;
+  overlay.classList.add('open');
+}
+function submitValoresJornales(){
+  const v = {};
+  CAMPOS_VALORES_JORNALES.forEach(c=>{ const x = +document.getElementById('f-vj-'+c.clave).value; v[c.clave] = x>0 ? (c.clave==='faltasPermitidas' ? Math.round(x) : r2(x)) : 0; });
+  state.datosEmpresa.valoresJornales = v;
+  marcarEditadoDatosEmpresa();
+  closeModal(); renderAll();
 }
 // Borra al trabajador y todo su historial de jornales (días cargados en
 // cualquier obra) — también lo saca de la asignación y horas extra de las
@@ -2922,9 +2990,17 @@ function submitTrabajador(id){
   const nombre = document.getElementById('f-trab-nombre').value.trim();
   if(!nombre){ alert('Ingresá el nombre del trabajador.'); return; }
   const puesto = document.getElementById('f-trab-puesto').value;
-  const sueldoMensual = +document.getElementById('f-trab-sueldo').value || 0;
-  if(id){ Object.assign(getTrabajador(id), {nombre, puesto, sueldoMensual}); marcarEditado('trabajadores', id); }
-  else { state.trabajadores.push({id:newId('t'), nombre, puesto, sueldoMensual}); }
+  const tipo = document.getElementById('f-trab-tipo').value==='dia' ? 'dia' : 'mensual';
+  const sueldoMensual = tipo==='mensual' ? (+document.getElementById('f-trab-sueldo').value || 0) : 0;
+  const valorDia = tipo==='dia' ? (+document.getElementById('f-trab-dia').value || 0) : 0;
+  const valores = {};
+  CAMPOS_VALORES_JORNALES.forEach(c=>{
+    const el = document.getElementById('f-trab-val-'+c.clave);
+    if(el && el.value!=='' && !(c.soloMensual && tipo==='dia')) valores[c.clave] = r2(Math.max(0, +el.value||0));
+  });
+  const datos = {nombre, puesto, tipo, sueldoMensual, valorDia, valores};
+  if(id){ Object.assign(getTrabajador(id), datos); marcarEditado('trabajadores', id); }
+  else { state.trabajadores.push({id:newId('t'), ...datos}); }
   closeModal(); renderAll();
 }
 
@@ -2944,11 +3020,11 @@ function obraJornalesCostoReal(obra){
       if(!trabajador) return;
       const fecha = addDays(row.semanaInicio, i);
       total += sueldoDiarioTrabajador(trabajador, fecha.slice(0,7));
-      if(viaje[row.trabajadorId]) total += VALOR_VIAJE;
+      if(viaje[row.trabajadorId]) total += valorJornal(trabajador, 'viaje');
     });
   });
   const horasExtra = (obra.jornalesConfig && obra.jornalesConfig.horasExtra) || {};
-  Object.values(horasExtra).forEach(h=>{ total += (Number(h)||0) * VALOR_HORA_EXTRA; });
+  Object.entries(horasExtra).forEach(([tid,h])=>{ total += (Number(h)||0) * valorJornal(getTrabajador(tid), 'horaExtra'); });
   ((obra.jornalesConfig && obra.jornalesConfig.bonos) || []).forEach(b=>{ total += Number(b.monto)||0; });
   return total;
 }
@@ -3003,8 +3079,8 @@ function setHorasExtraObra(obraId, trabajadorId, valor){
   editadosLocalmente.jornalesCfg.add(obraId+'|'+trabajadorId);
   renderAll();
 }
-// Marca a un trabajador como "de viaje" en esta obra — el extra de
-// $80.000 (VALOR_VIAJE) se suma solo, por cada día que ya tenga marcado
+// Marca a un trabajador como "de viaje" en esta obra — el extra de viaje
+// (valorJornal(t,'viaje')) se suma solo, por cada día que ya tenga marcado
 // "trabajado" en esta obra (ver obraJornalesCostoReal y viajeExtraPorDia),
 // no es un monto que se cargue a mano como las horas extra.
 function setViajeObra(obraId, trabajadorId, checked){
@@ -3040,7 +3116,7 @@ function renderObraJornalesCard(o){
     const ausentes = row.dias.filter(c=>c.estado==='ausente').length;
     const horasExtra = cfg.horasExtra[tid] || 0;
     const esViaje = !!cfg.viaje[tid];
-    return `<tr><td style="font-weight:600;">${t.nombre}</td><td>${t.puesto}</td>${dayCells}<td class="num">${trabajados}</td><td class="num">${ausentes}</td><td><input class="cell-input mono-in" type="number" step="0.01" min="0" style="width:80px;" value="${horasExtra}" onchange="setHorasExtraObra('${o.id}','${tid}',this.value)"></td><td style="text-align:center;"><input type="checkbox" title="Suma ${fmt(VALOR_VIAJE)} por cada día trabajado en esta obra" ${esViaje?'checked':''} onchange="setViajeObra('${o.id}','${tid}',this.checked)"></td><td><span class="link-btn danger" onclick="quitarTrabajadorObra('${o.id}','${tid}')">Quitar</span></td></tr>`;
+    return `<tr><td style="font-weight:600;">${t.nombre}</td><td>${t.puesto}</td>${dayCells}<td class="num">${trabajados}</td><td class="num">${ausentes}</td><td><input class="cell-input mono-in" type="number" step="0.01" min="0" style="width:80px;" value="${horasExtra}" onchange="setHorasExtraObra('${o.id}','${tid}',this.value)"></td><td style="text-align:center;"><input type="checkbox" title="Suma ${fmt(valorJornal(t,'viaje'))} por cada día trabajado en esta obra" ${esViaje?'checked':''} onchange="setViajeObra('${o.id}','${tid}',this.checked)"></td><td><span class="link-btn danger" onclick="quitarTrabajadorObra('${o.id}','${tid}')">Quitar</span></td></tr>`;
   }).join('');
   return `
     <div class="section-title"><h2>Jornales de la obra</h2><span class="hint">Se ve también en Jornales, con el número de esta obra</span></div>

@@ -82,7 +82,7 @@ const mesActual=new Date().toISOString().slice(0,7);
     ok(/− \$ 50\.000,00/.test(filaHist), 'el historial muestra la columna Adelantos');
     await A.evaluate(m=>openModalDetalleSueldo('t1', m), mesActual);
     const det=await A.textContent('#modal-content');
-    ok(/Días ausentes \(1\)/.test(det) && /Total 1ª quincena/.test(det) && /Total del mes/.test(det) && /Adelanto del/.test(det), 'el detalle muestra ausentes, adelanto, total por quincena y total del mes');
+    ok(/Días ausentes \(1 ×/.test(det) && /Total 1ª quincena/.test(det) && /Total del mes/.test(det) && /Adelanto del/.test(det), 'el detalle muestra ausentes, adelanto, total por quincena y total del mes');
     await A.click('#modal-content .modal-actions button.btn-primary');
     const impreso=await A.evaluate(()=>window.__impreso||'');
     ok(/DETALLE DE SUELDO/.test(impreso) && /350\.000,00/.test(impreso), 'el PDF del detalle se genera con los totales');
@@ -446,6 +446,64 @@ const mesActual=new Date().toISOString().slice(0,7);
     await A.evaluate(()=>{ const p=ocPagosVinculados(getOrden('ocR')).find(p=>p.obraId==='ob2'); eliminarGasto(p.id); });
     ok(await A.evaluate(f=>state.fondos.obras===f+4000, fondo0), 'eliminar el pago de una obra devuelve solo su parte al fondo');
     await A.close();
+  });
+
+  console.log('F12 — valores de jornales configurables, trabajadores por día y presentismo');
+  await withServer(async()=>{
+    const A=await tab(b,'nuevo.html');
+    // un día trabajado en la obra 748 en la 1ª quincena y uno ausente, para t1 (mensual)
+    await A.evaluate(m=>{
+      const marcar=(tid,fecha,estado,obraId)=>{ const lunes=mondayOf(fecha); let row=state.jornales.find(r=>r.trabajadorId===tid&&r.semanaInicio===lunes); if(!row){ row={id:newId('j'),trabajadorId:tid,semanaInicio:lunes,dias:Array(7).fill(0).map(()=>({estado:'sin_obra',obraId:null}))}; state.jornales.push(row);} row.dias[(new Date(fecha+'T00:00:00').getDay()+6)%7]={estado,obraId}; };
+      window.__marcar=marcar;
+      getTrabajador('t1').sueldoMensual=1000000;
+      marcar('t1', m+'-03','trabajado','ob1'); marcar('t1', m+'-04','ausente',null);
+      getObra('ob1').jornalesConfig.horasExtra={t1:2}; getObra('ob1').fechaInicio=m+'-01'; getObra('ob1').jornalesConfig.viaje={t1:true};
+      renderAll();
+    }, mesActual);
+    const d0=await A.evaluate(m=>desgloseQuincena(getTrabajador('t1'),m,1), mesActual);
+    ok(d0.descuentoAusencias===100000 && d0.montoHorasExtra===20000 && d0.montoViaje===80000, 'sin tocar nada, valen los valores de siempre (100.000 / 10.000 / 80.000)');
+    // valores generales nuevos
+    await A.evaluate(()=>{ showView('jornales'); });
+    await A.click('text=⚙ Valores de jornales');
+    await A.fill('#f-vj-horaExtra','15000'); await A.fill('#f-vj-viaje','90000'); await A.fill('#f-vj-descuentoAusencia','50000'); await A.fill('#f-vj-presentismo','40000');
+    await A.click('#modal-content .modal-actions button.btn-primary');
+    const d1=await A.evaluate(m=>desgloseQuincena(getTrabajador('t1'),m,1), mesActual);
+    ok(d1.descuentoAusencias===50000 && d1.montoHorasExtra===30000 && d1.montoViaje===90000, 'los valores generales editados se aplican (50.000 / 15.000 / 90.000)');
+    ok(await A.evaluate(m=>desgloseQuincena(getTrabajador('t1'),m,2).presentismo, mesActual)===0, 'con una ausencia en el mes no cobra presentismo');
+    ok(await A.evaluate(m=>desgloseQuincena(getTrabajador('t2'),m,2).presentismo, mesActual)===40000, 'sin ausencias cobra el presentismo en la 2ª quincena');
+    ok(await A.evaluate(m=>desgloseQuincena(getTrabajador('t2'),m,1).presentismo, mesActual)===0, 'y no en la 1ª');
+    // valor propio de t1 para hora extra
+    await A.evaluate(()=>openModalTrabajador('t1'));
+    ok((await A.getAttribute('#f-trab-val-horaExtra','placeholder')).includes('15.000'), 'el formulario del trabajador muestra el valor general de referencia');
+    await A.fill('#f-trab-val-horaExtra','20000');
+    await A.click('#modal-content .modal-actions button.btn-primary');
+    ok(await A.evaluate(m=>desgloseQuincena(getTrabajador('t1'),m,1).montoHorasExtra, mesActual)===40000, 'un valor propio de la persona pisa al general (2 h × 20.000)');
+    ok(await A.evaluate(m=>desgloseQuincena(getTrabajador('t2'),m,1).valorHora, mesActual)===15000, 'y a los demás les sigue valiendo el general');
+    // trabajador por día
+    await A.evaluate(()=>openModalTrabajador(null));
+    await A.fill('#f-trab-nombre','Pedro'); await A.selectOption('#f-trab-tipo','dia');
+    ok(await A.isVisible('#f-trab-dia') && !(await A.isVisible('#f-trab-sueldo')) && !(await A.isVisible('#f-trab-val-presentismo')), 'al elegir "Por día" pide el valor por día (sin sueldo mensual ni presentismo)');
+    await A.fill('#f-trab-dia','45000');
+    await A.click('#modal-content .modal-actions button.btn-primary');
+    const pedro=await A.evaluate(()=>state.trabajadores.find(t=>t.nombre==='Pedro').id);
+    const real0=await A.evaluate(()=>obraJornalesCostoReal(getObra('ob1')));
+    await A.evaluate(([m,id])=>{ __marcar(id, m+'-05','trabajado','ob1'); __marcar(id, m+'-06','trabajado','ob1'); __marcar(id, m+'-07','ausente',null); __marcar(id, m+'-20','trabajado','ob1'); renderAll(); }, [mesActual, pedro]);
+    const dp1=await A.evaluate(([m,id])=>desgloseQuincena(getTrabajador(id),m,1), [mesActual, pedro]);
+    ok(dp1.base===90000 && dp1.descuentoAusencias===0 && dp1.presentismo===0, 'por día: 1ª quincena = 2 días × 45.000, la ausencia no descuenta nada');
+    ok(await A.evaluate(([m,id])=>desgloseQuincena(getTrabajador(id),m,2).base, [mesActual, pedro])===45000, '2ª quincena = 1 día × 45.000');
+    ok(await A.evaluate(r=>obraJornalesCostoReal(getObra('ob1'))===r+135000, real0), 'el costo de mano de obra de la obra suma sus 3 días a su valor por día');
+    await A.evaluate(([m,id])=>openModalDetalleSueldo(id,m), [mesActual, pedro]);
+    const det=await A.textContent('#modal-content');
+    ok(/Por día \$ 45\.000,00/.test(det) && /Días trabajados \(2 × \$ 45\.000,00\)/.test(det) && !/Días ausentes/.test(det), 'el detalle de un trabajador por día muestra días × valor');
+    await A.evaluate(()=>closeModal());
+    await esperarGuardado(A);
+    const s=await dump();
+    const sp=s.trabajadores.find(t=>t.id===pedro), s1=s.trabajadores.find(t=>t.id==='t1');
+    ok(sp.tipo==='dia' && sp.valorDia===45000 && s1.tipo==='mensual' && s1.valores.horaExtra===20000, 'tipo, valor por día y valores propios quedan guardados');
+    ok(s.datosEmpresa.valoresJornales && s.datosEmpresa.valoresJornales.horaExtra===15000 && s.datosEmpresa.valoresJornales.presentismo===40000, 'los valores generales quedan guardados');
+    const B=await tab(b,'nuevo.html');
+    ok(await B.evaluate(([m,id])=>desgloseQuincena(getTrabajador(id),m,1).base, [mesActual, pedro])===90000 && await B.evaluate(m=>desgloseQuincena(getTrabajador('t1'),m,1).montoHorasExtra, mesActual)===40000, 'otra pestaña recién abierta calcula igual');
+    await A.close(); await B.close();
   });
 
   await b.close();

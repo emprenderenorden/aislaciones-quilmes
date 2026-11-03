@@ -65,13 +65,19 @@ El dueño confirmó (29/10) que hizo el redeploy que agrupaba:
       su trabajador y quincena) y columnas de firmas al final de
       `DatosEmpresa` (`firmaSolicitaNombre/Img`, `firmaApruebaNombre/Img`).
 
-**Pendiente (02/11) — redeploy necesario:**
+El dueño confirmó (03/11) que hizo el redeploy de:
 
-- [ ] `ordenesCompra`: columna `firmaTesoreria` (tilde "Lleva firma de
-      Tesorería") y `DatosEmpresa`: columnas `firmaTesoreriaNombre` /
-      `firmaTesoreriaImg`. Al pegar el archivo, cambiar `SECRET` por la
-      clave real (el repo tiene el placeholder) y hacer Implementar →
-      Administrar implementaciones → lápiz → Nueva versión (misma URL).
+- [x] `ordenesCompra`: columna `firmaTesoreria` y `DatosEmpresa`: columnas
+      `firmaTesoreriaNombre` / `firmaTesoreriaImg`.
+
+**Pendiente (03/11) — redeploy necesario:**
+
+- [ ] `trabajadores`: columna `configJSON` (tipo mensual/por día, valor
+      por día y valores propios de la persona) y `DatosEmpresa`: columna
+      `valoresJornalesJSON` (valores generales de jornales). Al pegar el
+      archivo, cambiar `SECRET` por la clave real (el repo tiene el
+      placeholder) y hacer Implementar → Administrar implementaciones →
+      lápiz → Nueva versión (misma URL).
 
 Cuando se sume un cambio de backend nuevo, se anota acá como pendiente y
 se agrupan varios antes de volver a desplegar (ver instrucciones al
@@ -1373,4 +1379,37 @@ principio de `backend-AppsScript.gs`).
     pagos 6.000/4.000 pagados, real de cada obra, fondo FIMA y total de
     egresos sin cambios, egresos de FIMA repartidos por obra; eliminar uno
     devuelve solo su parte). Las pruebas de sincronización siguen pasando.
+- **Nuevo (03/11): valores de jornales configurables, trabajadores por día
+  y presentismo.** Los valores estaban fijos en el código (hora extra
+  $10.000, viaje $80.000, descuento por ausencia $100.000) y había un solo
+  tipo de trabajador (mensual).
+  - **"⚙ Valores de jornales"** (Jornales): hora extra, viaje por día,
+    descuento por ausencia, presentismo mensual y faltas permitidas para
+    cobrarlo — los edita el negocio (`datosEmpresa.valoresJornales`, con
+    los valores de antes por defecto: `VALORES_JORNALES_DEFAULT`).
+    **Valores propios por persona** en Editar trabajador
+    (`trabajador.valores`; vacío = el general). Todo el cálculo pasa por
+    `valorJornal(trabajador, clave)`.
+  - **Tipo de trabajador** (`trabajador.tipo`): `mensual` (en blanco, como
+    siempre) o `dia` (en negro): cobra días trabajados × `valorDia`, las
+    ausencias no descuentan (simplemente no se pagan), no tiene
+    presentismo; suma horas extra, viaje y bonos y resta adelantos igual
+    que los mensuales; se paga por quincena. Al costo de la obra se le
+    imputa su valor por día (`sueldoDiarioTrabajador`).
+  - **Presentismo** (solo mensuales): se suma en la 2ª quincena si en el
+    mes no tuvo más ausencias que las permitidas (0 por defecto). Línea
+    propia en el detalle de sueldo (también avisa cuando no corresponde).
+  - Cambiar un valor recalcula lo que se muestra de meses anteriores; las
+    quincenas ya registradas como pagadas (gasto) no cambian.
+  - **Requiere redeploy** (checklist arriba). Hasta entonces se pierden al
+    recargar: el tipo/valor por día de cada trabajador, sus valores
+    propios y los valores generales (vuelven los de antes).
+  - Probado (`funciones-tests.js`, F12): valores de siempre sin tocar
+    nada; valores generales editados; valor propio que pisa al general
+    solo para esa persona; trabajador por día (2 días × 45.000 en la 1ª
+    quincena, la ausencia no descuenta, 1 día en la 2ª, costo de la obra
+    +135.000, detalle con días × valor); presentismo (con una falta no,
+    sin faltas sí, solo en la 2ª quincena); persistencia en la planilla y
+    otra pestaña que calcula igual. El resto de las pruebas siguen
+    pasando.
 
