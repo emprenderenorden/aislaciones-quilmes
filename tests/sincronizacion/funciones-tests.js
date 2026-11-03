@@ -265,7 +265,7 @@ const mesActual=new Date().toISOString().slice(0,7);
     await A.close();
   });
 
-  console.log('F7 — gastos variables y pestaña Compras de materiales');
+  console.log('F7 — gastos variables y pestañas Gastos de obra / Compras de stock');
   await withServer(async()=>{
     const A=await tab(b,'nuevo.html');
     const hoy=new Date().toISOString().slice(0,10);
@@ -280,12 +280,20 @@ const mesActual=new Date().toISOString().slice(0,7);
     ok(await A.isVisible('#pagos-body >> text=Amoladora'), 'aparece en la pestaña Gastos variables');
     await A.evaluate(()=>setPagosCategoriaFilter('variable|viaticos'));
     ok(!(await A.isVisible('#pagos-body >> text=Amoladora')), 'el filtro por categoría (Viáticos) la oculta');
-    await A.evaluate(()=>{ state.pagos.push({id:'pgSt',tipo:'stock',obraId:null,categoria:'stock',concepto:'Lana stock',cantidad:1,unitario:5,ivaAplica:false,monto:5,proveedorId:null,numeroFactura:null,fechaFactura:today(),formaPago:'A definir',fechaPago:null,numeroOC:null,origenFondo:null,pagosRealizados:[]}); state.pagos.push({id:'pgOb',tipo:'obra',obraId:'ob1',categoria:'materiaPrima',concepto:'Lana obra',cantidad:1,unitario:5,ivaAplica:false,monto:5,proveedorId:null,numeroFactura:null,fechaFactura:today(),formaPago:'A definir',fechaPago:null,numeroOC:null,origenFondo:null,pagosRealizados:[]}); setPagosFilter('compras'); renderAll(); });
-    const compras=await A.textContent('#pagos-body');
-    ok(/Lana stock/.test(compras) && /Lana obra/.test(compras) && !/Amoladora/.test(compras) && !/Gasto X/.test(compras), 'Compras de materiales junta obra y stock, sin fijos ni variables');
-    await A.evaluate(()=>setPagosCategoriaFilter('stock|*'));
+    await A.evaluate(()=>{ state.pagos.push({id:'pgSt',tipo:'stock',obraId:null,categoria:'stock',concepto:'Lana stock',cantidad:1,unitario:5,ivaAplica:false,monto:5,proveedorId:null,numeroFactura:null,fechaFactura:today(),formaPago:'A definir',fechaPago:null,numeroOC:null,origenFondo:null,pagosRealizados:[]}); state.pagos.push({id:'pgOb',tipo:'obra',obraId:'ob1',categoria:'materiaPrima',concepto:'Lana obra',cantidad:1,unitario:5,ivaAplica:false,monto:5,proveedorId:null,numeroFactura:null,fechaFactura:today(),formaPago:'A definir',fechaPago:null,numeroOC:null,origenFondo:null,pagosRealizados:[]}); setPagosFilter('obra'); renderAll(); });
+    const deObra=await A.textContent('#pagos-body');
+    ok(/Lana obra/.test(deObra) && !/Lana stock/.test(deObra) && !/Amoladora/.test(deObra) && !/Gasto X/.test(deObra), 'Gastos de obra muestra solo gastos de obra (sin stock, fijos ni variables)');
+    await A.evaluate(()=>setPagosCategoriaFilter('obra|combustible'));
+    ok(!(await A.isVisible('#pagos-body >> text=Lana obra')), 'y se filtra por categoría de obra (Combustible oculta los materiales)');
+    await A.evaluate(()=>{ setPagosFilter('obra'); });
+    await A.click('text=+ Registrar pago');
+    ok(await A.evaluate(()=>document.getElementById('f-tipo').value)==='obra', 'desde Gastos de obra, "Registrar pago" viene como gasto de obra');
+    await A.evaluate(()=>{ closeModal(); setPagosFilter('stock'); });
     const soloStock=await A.textContent('#pagos-body');
-    ok(/Lana stock/.test(soloStock) && !/Lana obra/.test(soloStock), 'y se puede filtrar solo reposición de stock');
+    ok(/Lana stock/.test(soloStock) && !/Lana obra/.test(soloStock), 'Compras de stock es una pestaña aparte, solo con la reposición de stock');
+    await A.click('text=+ Registrar pago');
+    ok(await A.isVisible('#f-material-q'), 'y desde ahí "Registrar pago" abre la compra de stock');
+    await A.evaluate(()=>closeModal());
     // editar un gasto de stock no lo convierte en fijo
     await A.evaluate(()=>{ openModalCompra(null,'pgSt'); }); await A.click('#modal-content .modal-actions button.btn-primary');
     ok(await A.evaluate(()=>state.pagos.find(p=>p.id==='pgSt').tipo)==='stock', 'editar un gasto de stock lo deja como stock');

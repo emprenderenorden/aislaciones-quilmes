@@ -495,14 +495,15 @@
       <div class="topbar-actions">
         <button class="btn btn-ghost hidden" id="btn-pdf-pagos" onclick="imprimirPagos()" title="Abrir para imprimir o guardar como PDF">⬇ Descargar PDF</button>
         <button class="btn btn-ghost" onclick="openModalMovimientoFima()">+ Ingreso a FIMA</button>
-        <button class="btn btn-primary" onclick="openModalCompra(null, null, state.pagosFilter==='variable'?'variable':null)">+ Registrar pago</button>
+        <button class="btn btn-primary" onclick="registrarPagoDesdePestana()">+ Registrar pago</button>
       </div>
     </div>
     <div class="section-title"><div class="filter-tabs">
       <div class="filter-tab active" data-filter="todos" onclick="setPagosFilter('todos')">Todos</div>
-      <div class="filter-tab" data-filter="compras" onclick="setPagosFilter('compras')">Compras de materiales</div>
+      <div class="filter-tab" data-filter="obra" onclick="setPagosFilter('obra')">Gastos de obra</div>
       <div class="filter-tab" data-filter="fijo" onclick="setPagosFilter('fijo')">Costos fijos</div>
       <div class="filter-tab" data-filter="variable" onclick="setPagosFilter('variable')">Gastos variables</div>
+      <div class="filter-tab" data-filter="stock" onclick="setPagosFilter('stock')">Compras de stock</div>
       <div class="filter-tab" data-filter="fima" onclick="setPagosFilter('fima')">Ingresos a FIMA</div>
       <div class="filter-tab" data-filter="proveedores" onclick="setPagosFilter('proveedores')">Proveedores</div>
     </div>
@@ -3517,7 +3518,7 @@ function ocBadge(numeroOC){ return numeroOC ? `<span class="oc-code">${numeroOC}
 function verOrdenEnPagos(id){
   const o = getOrden(id); if(!o) return;
   showView('pagos');
-  setPagosFilter(o.tipo==='obra'||o.tipo==='stock' ? 'compras' : o.tipo);
+  setPagosFilter(o.tipo);
 }
 function openModalConfigEmpresa(){
   const e = state.datosEmpresa;
@@ -4190,6 +4191,13 @@ function submitEfectivizarOrden(id){
 }
 
 /* ======================= PAGOS ======================= */
+// "+ Registrar pago" abre el formulario que corresponde a la pestaña en la
+// que se está: en Compras de stock, la compra de stock (repone cantidad);
+// en Gastos de obra / variables, el gasto con ese tipo ya elegido.
+function registrarPagoDesdePestana(){
+  if(state.pagosFilter==='stock') return openModalStockCompra();
+  openModalCompra(null, null, ['obra','variable'].includes(state.pagosFilter) ? state.pagosFilter : null);
+}
 function setPagosFilter(f){
   state.pagosFilter=f;
   document.querySelectorAll('.filter-tab').forEach(t=>t.classList.toggle('active', t.dataset.filter===f));
@@ -4203,7 +4211,7 @@ function setPagosCategoriaFilter(v){ state.pagosCategoriaFilter = v; renderPagos
 function categoriaOptionsForPagosFilter(){
   const conTipo = (tipo, labels)=> Object.fromEntries(Object.entries(labels).map(([k,l])=>[tipo+'|'+k, l]));
   const obra = conTipo('obra', {materiaPrima:catLabel.materiaPrima, manoObra:catLabel.manoObra, combustible:catLabel.combustible, telepase:catLabel.telepase, logistica:catLabel.logistica, estadia:catLabel.estadia, otros:catLabel.otros});
-  if(state.pagosFilter==='compras') return {...obra, 'stock|*':'Reposición de stock'};
+  if(state.pagosFilter==='obra') return obra;
   if(state.pagosFilter==='variable') return conTipo('variable', catVariableLabel);
   const marca = (o, sufijo)=> Object.fromEntries(Object.entries(o).map(([k,l])=>[k, l+sufijo]));
   return {...obra, 'stock|*':'Reposición de stock', ...marca(conTipo('fijo', catFijaLabel), ' (fijo)'), ...marca(conTipo('variable', catVariableLabel), ' (variable)')};
@@ -4213,8 +4221,7 @@ function categoriaOptionsForPagosFilter(){
 // se ve filtrado en ese momento.
 function pagosFiltrados(){
   let rows = state.pagos;
-  if(state.pagosFilter==='compras') rows = rows.filter(p=>p.tipo==='obra'||p.tipo==='stock');
-  else if(state.pagosFilter!=='todos') rows = rows.filter(p=>p.tipo===state.pagosFilter);
+  if(state.pagosFilter!=='todos') rows = rows.filter(p=>p.tipo===state.pagosFilter);
   if(state.pagosCategoriaFilter!=='todas'){
     const [tipo, cat] = state.pagosCategoriaFilter.split('|');
     rows = rows.filter(p=>p.tipo===tipo && (cat==='*' || p.categoria===cat));
@@ -4230,7 +4237,7 @@ function renderPagos(){
   document.getElementById('btn-pdf-pagos').classList.toggle('hidden', state.pagosFilter==='fima'||state.pagosFilter==='proveedores'||state.pagosFilter==='fijo');
 
   const catFilterEl = document.getElementById('pagos-cat-filter');
-  const mostrarCatFilter = !['fima','proveedores','fijo'].includes(state.pagosFilter);
+  const mostrarCatFilter = !['fima','proveedores','fijo','stock'].includes(state.pagosFilter);
   catFilterEl.classList.toggle('hidden', !mostrarCatFilter);
   if(mostrarCatFilter){
     const opts = categoriaOptionsForPagosFilter();
@@ -4668,7 +4675,7 @@ function quitarPagoQuincena(mes, q){
 // (mismo pagosFiltrados() que usa la tabla) — mismo mecanismo que imprimirOrden.
 function imprimirPagos(){
   const rows = pagosFiltrados();
-  const filtroTxt = state.pagosFilter==='todos' ? 'Todos los pagos' : {compras:'Compras de materiales', variable:'Gastos variables', fijo:'Costos fijos'}[state.pagosFilter];
+  const filtroTxt = state.pagosFilter==='todos' ? 'Todos los pagos' : {obra:'Gastos de obra', variable:'Gastos variables', fijo:'Costos fijos', stock:'Compras de stock'}[state.pagosFilter];
   const catTxt = state.pagosCategoriaFilter!=='todas' ? categoriaOptionsForPagosFilter()[state.pagosCategoriaFilter] : null;
   const header = printHeaderHtml('PLANILLA DE PAGOS', filtroTxt, [
     catTxt?`Categoría: ${catTxt}`:null, `${rows.length} pago${rows.length===1?'':'s'}`,
@@ -4861,7 +4868,6 @@ function submitIngreso(obraId, editId){
 function openModalCompra(preselectObraId, editId, preselectTipo){
   const editing = editId ? state.pagos.find(x=>x.id===editId) : null;
   const obraIdActual = editing ? editing.obraId : preselectObraId;
-  const isObra = editing ? editing.tipo==='obra' : !!preselectObraId;
   const tipoActual = editing ? editing.tipo : (preselectObraId ? 'obra' : (preselectTipo || 'fijo'));
   const medioActual = editing ? editing.formaPago : 'A definir';
   modalEl.innerHTML = `

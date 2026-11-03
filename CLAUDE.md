@@ -1414,4 +1414,15 @@ principio de `backend-AppsScript.gs`).
     sin faltas sí, solo en la 2ª quincena); persistencia en la planilla y
     otra pestaña que calcula igual. El resto de las pruebas siguen
     pasando.
+- **Cambio (03/11): pestañas de Pagos por tipo de gasto.** La pestaña
+  "Compras de materiales" (que en realidad mostraba todos los gastos de
+  obra — combustible, estadía, etc. — más la reposición de stock) se
+  separó en dos: **Gastos de obra** (`tipo:'obra'`, con filtro por
+  categoría de obra) y **Compras de stock** (`tipo:'stock'`, pestaña
+  aparte). Quedan: Todos · Gastos de obra · Costos fijos · Gastos
+  variables · Compras de stock · Ingresos a FIMA · Proveedores. "+
+  Registrar pago" abre el formulario de la pestaña en la que se está
+  (`registrarPagoDesdePestana`): gasto de obra o variable con el tipo ya
+  elegido, o la compra de stock. Solo de pantalla, sin cambios de datos ni
+  de backend. Probado (`funciones-tests.js`, F7).
 
